@@ -50,6 +50,12 @@ val interpret_program_dcalc :
     providing for each argument a thunked empty default. Returns a list of all
     the computed values for the scope variables of the executed scope. *)
 
+val interpret_program_pierre :
+  (dcalc, 'm) gexpr program ->
+  ScopeName.t ->
+  (Uid.MarkedString.info * ((yes, no, yes) interpr_kind, 'm) gexpr) list
+(** Similar to [interpret_program_dcalc] but with default values as inputs *)
+
 val interpret_program_lcalc :
   (lcalc, 'm) gexpr program ->
   ScopeName.t ->

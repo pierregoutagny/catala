@@ -1,0 +1,34 @@
+## Article
+
+```catala
+declaration scope TestDefaultValues:
+  input x content integer
+  input b content boolean
+  context output x_o content integer
+  context output b_o content boolean
+
+scope TestDefaultValues:
+  definition x_o equals x
+  definition b_o equals b
+```
+
+```catala-test-inline
+$ catala Interpret --scope=TestDefaultValues
+[ERROR]
+This scope needs input arguments to be executed. But the Catala built-in interpreter does not have a way to retrieve input values from the command line, so it cannot execute this scope. Please create another scope that provides the input arguments to this one and execute it instead.
+
+┌─⯈ tests/test_concolic/test_default_value.catala_en:5.9-5.10:
+└─┐
+5 │   input x content integer
+  │         ‾
+  └─ Article
+#return code 123#
+```
+
+```catala-test-inline
+$ catala Pierre --scope=TestDefaultValues
+[RESULT] Computation successful! Results:
+[RESULT] b_o = true
+[RESULT] x_o = 42
+```
+
