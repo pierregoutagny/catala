@@ -621,7 +621,7 @@ module Commands = struct
       Passes.dcalc options ~includes ~optimize ~check_invariants
     in
     Interpreter.load_runtime_modules prg;
-    print_interpretation_results options Interpreter.interpret_program_pierre prg
+    print_interpretation_results options Concolic.interpret_program_default_values prg
       (get_scope_uid ctx ex_scope)
 
   let interpret_cmd =
