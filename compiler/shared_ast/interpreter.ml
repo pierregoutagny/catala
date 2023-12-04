@@ -624,8 +624,8 @@ let rec evaluate_expr :
       Message.raise_spanned_error pos
         "function has not been reduced to a lambda at evaluation (should not \
          happen if the term was well-typed")
-  | EAbs { binder; tys } -> Expr.unbox (Expr.eabs (Bindlib.box binder) tys m)
-  | ELit _ as e -> Mark.add m e
+  | EAbs _ -> e
+  | ELit _ -> e
   | EOp { op; tys } -> Expr.unbox (Expr.eop (Operator.translate op) tys m)
   (* | EAbs _ as e -> Marked.mark m e (* these are values *) *)
   | EStruct { fields = es; name } ->
@@ -728,7 +728,7 @@ let rec evaluate_expr :
             "Expected a boolean literal for the result of this assertion \
              (should not happen if the term was well-typed)")
   | ECustom _ -> e
-  | EEmptyError -> Mark.copy e EEmptyError
+  | EEmptyError -> e
   | EErrorOnEmpty e' -> (
     match evaluate_expr ctx lang e' with
     | EEmptyError, _ ->
