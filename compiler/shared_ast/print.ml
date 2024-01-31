@@ -431,6 +431,7 @@ module Precedence = struct
     | EPureDefault _ -> Contained
     | EEmptyError -> Contained
     | EErrorOnEmpty _ -> App
+    | EGenericError -> Contained
     | ERaise _ -> App
     | ECatch _ -> App
     | ECustom _ -> Contained
@@ -655,6 +656,7 @@ module ExprGen (C : EXPR_PARAM) = struct
           (default_punct (List.hd colors))
           "⟩"
       | EEmptyError -> lit_style fmt "∅"
+      | EGenericError -> lit_style fmt "↯"
       | EErrorOnEmpty e' ->
         Format.fprintf fmt "@[<hov 2>%a@ %a@]" op_style "error_empty"
           (rhs exprc) e'
@@ -1113,6 +1115,7 @@ module UserFacing = struct
       Format.fprintf ppf "@[<hov 2>%a@ %a@]" EnumConstructor.format cons
         (value ~fallback lang) e
     | EEmptyError -> Format.pp_print_string ppf "ø"
+    | EGenericError -> Format.pp_print_string ppf "↯"
     | EAbs _ -> Format.pp_print_string ppf "<function>"
     | EExternal _ -> Format.pp_print_string ppf "<external>"
     | EApp _ | EAppOp _ | EVar _ | EIfThenElse _ | EMatch _ | ETupleAccess _
