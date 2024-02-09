@@ -828,10 +828,12 @@ let make_z3_struct_access
     let sort = StructName.Map.find name ctx.ctx_z3structs in
     let fields = StructName.Map.find name ctx.ctx_decl.ctx_structs in
     let z3_accessors = List.hd (Z3.Datatype.get_accessors sort) in
+    (*
     Message.emit_debug "struct accessors %s"
       (List.fold_left
          (fun acc a -> Z3.FuncDecl.to_string a ^ "," ^ acc)
          "" z3_accessors);
+         *)
     let idx_mappings =
       List.combine (StructField.Map.keys fields) z3_accessors
     in
@@ -928,8 +930,8 @@ let replace_EVar_mark
     match Var.Map.find_opt v vars_args with
     | Some arg ->
       let symb_expr = get_symb_expr arg in
-      Message.emit_debug "EApp>binder put mark %a on var %a" SymbExpr.formatter
-        symb_expr (Print.expr ()) e;
+      (*Message.emit_debug "EApp>binder put mark %a on var " SymbExpr.formatter
+        symb_expr (* (Print.expr ()) e *);*)
       add_conc_info_e symb_expr ~constraints:[] e
     (* NOTE CONC we keep the position from the var, as in concrete
        interpreter *)
@@ -1580,8 +1582,8 @@ let rec evaluate_expr : context -> Cli.backend_lang -> conc_expr -> conc_result
           Message.emit_debug "EApp>EAbs args are";
           List.iter
             (fun arg ->
-              Message.emit_debug "EApp>EAbs arg %a | %a | %i" (Print.expr ())
-                arg SymbExpr.formatter (get_symb_expr arg)
+              Message.emit_debug "EApp>EAbs arg | %a | %i"
+                (* (Print.expr ()) arg *) SymbExpr.formatter (get_symb_expr arg)
                 (List.length (get_constraints arg)))
             args;
           let marked_eb =
@@ -1953,8 +1955,7 @@ let rec evaluate_expr : context -> Cli.backend_lang -> conc_expr -> conc_result
           cons;
         } -> (
       (* FIXME add metadata to find this case instead of this big match *)
-      Message.emit_debug "... it's a context variable definition %a"
-        (Print.expr ()) except;
+      Message.emit_debug "... it's a context variable definition";
 
       let app = evaluate_expr ctx lang except in
       propagate_generic_error app []
@@ -2671,8 +2672,9 @@ let interpret_program_concolic (type m) (p : (dcalc, m) gexpr program) s :
           | EGenericError ->
             (* TODO better error messages *)
             (* TODO test the different cases *)
-            Message.emit_result "Found error %a" SymbExpr.formatter
+            Message.emit_result "Found error %a at %s" SymbExpr.formatter
               (get_symb_expr_r res)
+              (Pos.to_string_short (Expr.pos res))
           | _ ->
             Message.raise_spanned_error (Expr.pos scope_e)
               "The concolic interpretation of a program should always yield a \
