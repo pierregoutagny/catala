@@ -1376,7 +1376,14 @@ let rec evaluate_operator
   | Div_rat_rat, [((ELit (LRat x), _) as e1); ((ELit (LRat y), _) as e2)] ->
     handle_division ctx m
       (fun x y -> ELit (LRat (o_div_rat_rat x y)))
+(*
       Z3.Arithmetic.mk_div x y e1 e2
+*)
+(* FIXME *)
+      (fun ctx e1 e2 ->
+        (* convert e1 to a [Real] explicitely to avoid using integer division *)
+        let e1_rat = Z3.Arithmetic.Integer.mk_int2real ctx e1 in
+        Z3.Arithmetic.mk_div ctx e1_rat e2) x y e1 e2
   | Div_mon_mon, [((ELit (LMoney x), _) as e1); ((ELit (LMoney y), _) as e2)] ->
     handle_division ctx m
       (fun x y -> ELit (LRat (o_div_mon_mon x y)))
