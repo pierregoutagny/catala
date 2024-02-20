@@ -102,6 +102,16 @@ module SymbExpr = struct
     let err = make conflict message in
     Symb_error err
 
+  let equal_reentrant r1 r2 : bool =
+    StructField.equal r1.name r2.name
+
+  let equal symb1 symb2 : bool =
+    match symb1, symb2 with
+    | Symb_z3 s1, Symb_z3 s2 -> Z3.Expr.equal s1 s2
+    | Symb_reentrant r1, Symb_reentrant r2 -> equal_reentrant r1 r2
+    | Symb_none, Symb_none -> true
+    | Symb_error e1, Symb_error e2 -> true (* FIXME is this ok? an error is an error... *)
+
   let map_z3 (f : z3_expr -> z3_expr) = function
     | Symb_z3 e -> Symb_z3 (f e)
     | x -> x
@@ -155,6 +165,17 @@ type pc_expr = Pc_z3 of s_expr | Pc_reentrant of reentrant
 (* path constraint cannot be empty (this looks like a GADT but it would be
    overkill I think) *)
 type path_constraint = { expr : pc_expr; pos : Pos.t; branch : bool }
+
+let equal_reentrant r1 r2 : bool =
+  StructField.equal r1.name r2.name && r1.is_empty = r2.is_empty
+
+let equal_pc_expr e1 e2 : bool =
+  match e1, e2 with
+  | PC_z3 s1, Pc_z3 s2 -> Z3.Expr.equal s1 s2
+  | Pc_reentrant r1, Pc_reentrant r2 -> equal_reentrant r1 r2
+
+let equal_path_constraint pc1 pc2 : bool =
+
 
 type annotated_path_constraint =
   | Negated of path_constraint
@@ -343,6 +364,39 @@ let del_genericerror e =
      nodes. *)
   Expr.unbox (f e)
 
+(** Optimizations *)
+(* FIXME move *)
+
+module Optimizations = struct
+  type flag = OTrivial | OPatternMatch
+
+  let optim_list = ["trivial", OTrivial; "matching", OPatternMatch]
+  let trivial : flag list -> bool = List.mem OTrivial
+  let patternmatch : flag list -> bool = List.mem OPatternMatch
+
+  let remove_trivial_constraints opt (pcs : path_constraint list) =
+    if not (trivial opt) then pcs
+    else begin
+      let f pc =
+        match pc.expr with Pc_z3 s -> not (Z3.Boolean.is_true s) | _ -> true
+      in
+      List.filter f pcs
+    end
+
+  module PatternMatch = struct
+    type result_conditions_map = (conc_expr * { has_cons: bool; conditions: s_expr list }) list
+
+    let equal_conc_expr (e1: conc_expr) (e2: conc_expr) =
+      let e1_symb = get_symb_expr e1 in
+      let e2_symb = get_symb_expr e2 in
+      SymbExpr.equal e1_symb e2_symb
+
+
+    let add_condition (m: result_conditions_map) (result: conc_expr) ()
+
+  end
+end
+
 (** Transform any DCalc expression into a concolic expression with no symbolic
     expression and no constraints *)
 let init_conc_expr (e : (('c, 'e) conc_interpr_kind, 'm) gexpr) : conc_expr =
@@ -358,6 +412,8 @@ type context = {
   ctx_decl : decl_ctx;
   (* The declaration context from the Catala program, containing information to
      precisely pretty print Catala expressions *)
+  ctx_optims : Optimizations.flag list;
+  (* The list of enabled optimizations *)
   ctx_dummy_sort : Z3.Sort.sort;
   (* A dummy sort for lambda abstractions *)
   ctx_dummy_const : s_expr;
@@ -671,7 +727,8 @@ let create_z3round (ctx : Z3.context) : Z3.FuncDecl.func_decl =
 let z3_round ctx = Z3_utils.z3_round_func ctx.ctx_z3round
 
 (* taken from z3backend, but without the option check *)
-let make_empty_context (decl_ctx : decl_ctx) : context =
+let make_empty_context (decl_ctx : decl_ctx) (optims : Optimizations.flag list)
+    : context =
   let z3_cfg = ["model", "true"; "proof", "false"] in
   let z3_ctx = Z3.mk_context z3_cfg in
   let z3_dummy_sort = Z3.Sort.mk_uninterpreted_s z3_ctx "!dummy_sort!" in
@@ -681,6 +738,7 @@ let make_empty_context (decl_ctx : decl_ctx) : context =
   {
     ctx_z3 = z3_ctx;
     ctx_decl = decl_ctx;
+    ctx_optims = optims;
     (*     ctx_funcdecl = Var.Map.empty; *)
     (*     ctx_z3vars = StringMap.empty; *)
     ctx_z3enums = EnumName.Map.empty;
@@ -904,6 +962,7 @@ let make_z3_arm_conditions
     (name : EnumName.t)
     (cons : EnumConstructor.t)
     (s : SymbExpr.t) : (SymbExpr.t * bool) list =
+
   let sort = EnumName.Map.find name ctx.ctx_z3enums in
   let constructors = EnumName.Map.find name ctx.ctx_decl.ctx_enums in
   let z3_recognizers = Z3.Datatype.get_recognizers sort in
@@ -2451,23 +2510,6 @@ module Solver = struct
     StructField.Map.mapi f input_marks
 end
 
-(** Optimizations *)
-
-module Optimizations = struct
-  type flag = OTrivial
-
-  let trivial : flag list -> bool = List.mem OTrivial
-
-  let remove_trivial_constraints opt (pcs : path_constraint list) =
-    if not (trivial opt) then pcs
-    else begin
-      let f pc =
-        match pc.expr with Pc_z3 s -> not (Z3.Boolean.is_true s) | _ -> true
-      in
-      List.filter f pcs
-    end
-end
-
 (** Computation path logic *)
 
 (* Two path constraint expressions are equal if they are of the same kind, and
@@ -2714,7 +2756,7 @@ let interpret_program_concolic
   let s_context_creation = Stats.start_step "create context" in
   let decl_ctx = p.decl_ctx in
   Message.emit_debug "[CONC] Create empty context";
-  let ctx = make_empty_context decl_ctx in
+  let ctx = make_empty_context decl_ctx optims in
   Message.emit_debug "[CONC] Initialize context";
   let ctx = init_context ctx in
   let stats = Stats.stop_step s_context_creation |> Stats.add_stat_step stats in
