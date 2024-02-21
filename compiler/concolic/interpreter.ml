@@ -346,10 +346,13 @@ let del_genericerror e =
 (** Optimizations *)
 
 module Optimizations = struct
-  type flag = OTrivial
+  type flag = OTrivial | OIncrementalSolver
 
-  let optim_list = ["trivial", OTrivial]
+  let optim_list : (string * flag) list =
+    ["trivial", OTrivial; "incremental", OIncrementalSolver]
+
   let trivial : flag list -> bool = List.mem OTrivial
+  let incremental_solver : flag list -> bool = List.mem OIncrementalSolver
 
   let remove_trivial_constraints opt (pcs : path_constraint list) =
     if not (trivial opt) then pcs
@@ -2167,18 +2170,49 @@ let eval_conc_with_input
   evaluate_expr ctx lang (Expr.unbox to_interpret)
 
 (** Constraint solving *)
-module Solver = struct
-  module Z3Solver = struct
-    type solver_result = Sat of Z3.Model.model option | Unsat | Unknown
+module Solver (Settings : sig
+  val optims : Optimizations.flag list
+end) =
+struct
+  type z3_solver_result = Z3Sat of Z3.Model.model option | Z3Unsat | Z3Unknown
 
-    let solve (z3ctx : Z3.context) (constraints : s_expr list) : solver_result =
-      let solver = Z3.Solver.mk_solver z3ctx None in
-      Z3.Solver.add solver constraints;
-      match Z3.Solver.check solver [] with
-      | SATISFIABLE -> Sat (Z3.Solver.get_model solver)
-      | UNSATISFIABLE -> Unsat
-      | UNKNOWN -> Unknown
+  module type Z3SolverType = sig
+    val init : Z3.context -> unit
+    val solve : s_expr list -> z3_solver_result
   end
+
+  module SimpleZ3Solver : Z3SolverType = struct
+    open Z3.Solver
+
+    let ctx = ref (Z3.mk_context [])
+    let init (z3ctx : Z3.context) = ctx := z3ctx
+
+    let solve (constraints : s_expr list) : z3_solver_result =
+      let solver = mk_solver !ctx None in
+      add solver constraints;
+      match check solver [] with
+      | SATISFIABLE -> Z3Sat (get_model solver)
+      | UNSATISFIABLE -> Z3Unsat
+      | UNKNOWN -> Z3Unknown
+  end
+
+  module IncrementalZ3Solver : Z3SolverType = SimpleZ3Solver
+
+  module MakeZ3Solver (Incremental : sig
+    val incremental : bool
+  end) : Z3SolverType = struct
+    let incremental = Incremental.incremental
+
+    let init : Z3.context -> unit =
+      if incremental then IncrementalZ3Solver.init else SimpleZ3Solver.init
+
+    let solve : s_expr list -> z3_solver_result =
+      if incremental then IncrementalZ3Solver.solve else SimpleZ3Solver.solve
+  end
+
+  module Z3Solver = MakeZ3Solver (struct
+    let incremental = Optimizations.incremental_solver Settings.optims
+  end)
 
   type input = pc_expr list
 
@@ -2186,6 +2220,8 @@ module Solver = struct
     model_z3 : Z3.Model.model;
     model_empty_reentrants : StructField.Set.t;
   }
+
+  type solver_result = Sat of model option | Unsat | Unknown
 
   (* TODO make formatter *)
   let string_of_model m =
@@ -2203,8 +2239,6 @@ module Solver = struct
     in
     "z3: " ^ z3_string ^ "\nreentrant: " ^ empty_reentrants_string
 
-  type solver_result = Sat of model option | Unsat | Unknown
-
   let split_input (l : input) : s_expr list * StructField.Set.t =
     let rec aux l (acc_z3 : s_expr list) (acc_reentrant : StructField.Set.t) =
       match l with
@@ -2217,14 +2251,15 @@ module Solver = struct
     in
     aux l [] StructField.Set.empty
 
-  let solve (ctx : context) (constraints : input) =
+  let init (ctx : context) = Z3Solver.init ctx.ctx_z3
+
+  let solve (constraints : input) =
     let z3_constraints, model_empty_reentrants = split_input constraints in
-    match Z3Solver.solve ctx.ctx_z3 z3_constraints with
-    | Z3Solver.Sat (Some model_z3) ->
-      Sat (Some { model_z3; model_empty_reentrants })
-    | Z3Solver.Sat None -> Sat None
-    | Z3Solver.Unsat -> Unsat
-    | Z3Solver.Unknown -> Unknown
+    match Z3Solver.solve z3_constraints with
+    | Z3Sat (Some model_z3) -> Sat (Some { model_z3; model_empty_reentrants })
+    | Z3Sat None -> Sat None
+    | Z3Unsat -> Unsat
+    | Z3Unknown -> Unknown
 
   (** Create a dummy concolic mark with a position and a type. It has no
       symbolic expression or constraints, and is used for subexpressions inside
@@ -2535,7 +2570,7 @@ let rec make_expected_path (path : annotated_path_constraint list) :
     feed in the solver. In doing so, actually negate constraints marked as
     Negated. This function shall be called on an output of [make_expected_path]. *)
 let constraint_list_of_path ctx (path : annotated_path_constraint list) :
-    Solver.input =
+    pc_expr list (* FIXME Solver.input? *) =
   let f = function
     | Normal c -> c.expr
     | Done c -> c.expr
@@ -2734,6 +2769,11 @@ let interpret_program_concolic
     (* TODO CONC should it be [mark_e] or something else? *)
     let input_marks = StructField.Map.mapi (make_input_mark ctx mark_e) taus in
 
+    let module Solver = Solver (struct
+      let optims = optims
+    end) in
+    Solver.init ctx;
+
     let s_loop = Stats.start_step "total loop time" in
     let rec concolic_loop (previous_path : annotated_path_constraint list) stats
         : Stats.t =
@@ -2749,7 +2789,7 @@ let interpret_program_concolic
       in
 
       let s_solve = Stats.start_step "solve" in
-      let solver_result = Solver.solve ctx solver_constraints in
+      let solver_result = Solver.solve solver_constraints in
       let exec = Stats.stop_step s_solve |> Stats.add_exec_step exec in
 
       match solver_result with

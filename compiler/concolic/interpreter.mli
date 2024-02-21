@@ -84,7 +84,7 @@ type conc_dest_kind = (yes, yes) conc_interpr_kind
 type conc_expr = (conc_src_kind, conc_info) gexpr
 
 module Optimizations : sig
-  type flag = OTrivial
+  type flag = OTrivial | OIncrementalSolver
 
   val optim_list : (string * flag) list
   (** Used for command line arguments *)
