@@ -1,10 +1,17 @@
 open Path_constraint.PathConstraint
 
-type flag = OTrivial | OLazyDefault
+type flag = | OTrivial
+            | OLazyDefault
+            | OIncrementalSolver
 
-let optim_list = ["trivial", OTrivial; "lazy-default", OLazyDefault]
+let optim_list = [
+  "trivial", OTrivial;
+  "lazy-default", OLazyDefault;
+  "incremental", OIncrementalSolver;
+]
 let trivial : flag list -> bool = List.mem OTrivial
 let lazy_default : flag list -> bool = List.mem OLazyDefault
+let incremental_solver : flag list -> bool = List.mem OIncrementalSolver
 
 let remove_trivial_constraints opt (pcs : naked_path) : naked_path =
   if not (trivial opt) then pcs

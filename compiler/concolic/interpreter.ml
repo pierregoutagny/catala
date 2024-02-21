@@ -2012,30 +2012,36 @@ let eval_conc_with_input
   evaluate_expr ctx lang (Expr.unbox to_interpret)
 
 (** Constraint solving *)
-module Solver = struct
+module Solver (Settings : sig
+  val optims : Optimizations.flag list
+end) =
+struct
   type unknown_info = {
     z3reason : string;
     z3stats : Z3.Statistics.statistics;
     z3solver_string : string;
     z3assertions : s_expr list;
   }
+  type z3_solver_result = Z3Sat of Z3.Model.model option | Z3Unsat | Z3Unknown of unknown_info
 
-  module Z3Solver = struct
+  module type Z3SolverType = sig
+    val init : Z3.context -> unit
+    val solve : s_expr list -> z3_solver_result
+  end
+
+  module SimpleZ3Solver : Z3SolverType = struct
     open Z3.Solver
 
-    type solver_result =
-      | Sat of Z3.Model.model option
-      | Unsat
-      | Unknown of unknown_info
+    let ctx = ref (Z3.mk_context [])
+    let init (z3ctx : Z3.context) = ctx := z3ctx
 
-    let solve (z3ctx : Z3.context) (constraints : s_expr list) : solver_result =
-      let solver = mk_solver z3ctx None in
+    let solve (constraints : s_expr list) : z3_solver_result =
+      let solver = mk_solver !ctx None in
       add solver constraints;
       match check solver [] with
-      | SATISFIABLE -> Sat (get_model solver)
-      | UNSATISFIABLE -> Unsat
-      | UNKNOWN ->
-        Unknown
+      | SATISFIABLE -> Z3Sat (get_model solver)
+      | UNSATISFIABLE -> Z3Unsat
+      | UNKNOWN -> Z3Unknown
           {
             z3reason = get_reason_unknown solver;
             z3stats = get_statistics solver;
@@ -2043,6 +2049,24 @@ module Solver = struct
             z3assertions = get_assertions solver;
           }
   end
+
+  module IncrementalZ3Solver : Z3SolverType = SimpleZ3Solver
+
+  module MakeZ3Solver (Incremental : sig
+    val incremental : bool
+  end) : Z3SolverType = struct
+    let incremental = Incremental.incremental
+
+    let init : Z3.context -> unit =
+      if incremental then IncrementalZ3Solver.init else SimpleZ3Solver.init
+
+    let solve : s_expr list -> z3_solver_result =
+      if incremental then IncrementalZ3Solver.solve else SimpleZ3Solver.solve
+  end
+
+  module Z3Solver = MakeZ3Solver (struct
+    let incremental = Optimizations.incremental_solver Settings.optims
+  end)
 
   type input = PathConstraint.pc_expr list
 
@@ -2094,14 +2118,15 @@ module Solver = struct
     in
     aux l [] StructField.Set.empty
 
-  let solve (ctx : context) (constraints : input) =
+  let init (ctx : context) = Z3Solver.init ctx.ctx_z3
+
+  let solve (constraints : input) =
     let z3_constraints, model_empty_reentrants = split_input constraints in
-    match Z3Solver.solve ctx.ctx_z3 z3_constraints with
-    | Z3Solver.Sat (Some model_z3) ->
-      Sat (Some { model_z3; model_empty_reentrants })
-    | Z3Solver.Sat None -> Sat None
-    | Z3Solver.Unsat -> Unsat
-    | Z3Solver.Unknown info -> Unknown info
+    match Z3Solver.solve z3_constraints with
+    | Z3Sat (Some model_z3) -> Sat (Some { model_z3; model_empty_reentrants })
+    | Z3Sat None -> Sat None
+    | Z3Unsat -> Unsat
+    | Z3Unknown info -> Unknown info
 
   (** Create a dummy concolic mark with a position and a type. It has no
       symbolic expression or constraints, and is used for subexpressions inside
@@ -2351,7 +2376,7 @@ end
     Negated. This function shall be called on an output of
     [PathConstraint.make_expected_path]. *)
 let constraint_list_of_path ctx (path : PathConstraint.annotated_path) :
-    Solver.input =
+    PathConstraint.pc_expr list (* FIXME Solver.input *) =
   let open PathConstraint in
   let f = function
     | Normal c -> c.expr
@@ -2554,6 +2579,12 @@ let interpret_program_concolic
       | None -> ()
     end;
 
+    let module Solver = Solver (struct
+      let optims = optims
+    end) in
+    Solver.init ctx;
+
+    let s_loop = Stats.start_step "total loop time" in
     let rec concolic_loop (previous_path : PathConstraint.annotated_path) stats
         : Stats.t =
       let exec = Stats.start_exec (List.length previous_path) in
@@ -2571,7 +2602,7 @@ let interpret_program_concolic
       in
 
       let s_solve = Stats.start_step "solve" in
-      let solver_result = Solver.solve ctx solver_constraints in
+      let solver_result = Solver.solve solver_constraints in
       let exec = Stats.stop_step s_solve |> Stats.add_exec_step exec in
 
       match solver_result with
