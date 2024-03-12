@@ -2111,7 +2111,7 @@ module Solver = struct
   (** Get a default literal value from a literal type *)
   let default_lit_of_tlit t : lit =
     match t with
-    | TBool -> LBool true
+    | TBool -> LBool false
     | TInt -> LInt (Z.of_int 0)
     | TMoney -> LMoney (Runtime.money_of_units_int 0)
     | TUnit -> LUnit
