@@ -2112,10 +2112,10 @@ module Solver = struct
   let default_lit_of_tlit t : lit =
     match t with
     | TBool -> LBool true
-    | TInt -> LInt (Z.of_int 42)
-    | TMoney -> LMoney (Runtime.money_of_units_int 42)
+    | TInt -> LInt (Z.of_int 0)
+    | TMoney -> LMoney (Runtime.money_of_units_int 0)
     | TUnit -> LUnit
-    | TRat -> LRat (Runtime.decimal_of_string "42")
+    | TRat -> LRat (Runtime.decimal_of_string "0")
     | TDate -> LDate DateEncoding.default_date
     | TDuration -> LDuration DateEncoding.default_duration
 
