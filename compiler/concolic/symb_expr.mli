@@ -17,6 +17,8 @@ module RuntimeError : sig
     except : runtime_error; (* TODO use actual exceptions from [Runtime]? *)
     message : message; (* TODO use formatted stuff instead *)
   }
+
+  val emit : t -> Pos.t -> unit
 end
 
 module SymbExpr : sig
@@ -69,8 +71,7 @@ module SymbExpr : sig
 
   (** {2 Printing} *)
 
-  (* FIXME remove [to_string] once its not used anymore *)
-  val to_string : ?typed:bool -> t -> string
+  val mk_formatter : typed:bool -> Format.formatter -> t -> unit
   val formatter : Format.formatter -> t -> unit
   val formatter_typed : Format.formatter -> t -> unit
 end

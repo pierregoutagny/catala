@@ -223,6 +223,45 @@ exception CompilerError of Content.t
 
 (** {1 Error printing} *)
 
+let emit_spanned_error
+    ?(span_msg : Content.message option)
+    ?(suggestion = ([] : string list))
+    (span : Pos.t)
+    format =
+  let continuation (message : Format.formatter -> unit) =
+    Content.emit
+      ([MainMessage message; Position { pos_message = span_msg; pos = span }]
+      @ match suggestion with [] -> [] | sugg -> [Suggestion sugg])
+      Result
+  in
+  Format.kdprintf continuation format
+
+let emit_multispanned_error_full
+    ?(suggestion = ([] : string list))
+    (spans : (Content.message option * Pos.t) list)
+    format =
+  Format.kdprintf
+    (fun message ->
+      Content.emit
+        (MainMessage message
+         :: List.map
+              (fun (pos_message, pos) -> Position { pos_message; pos })
+              spans
+        @ match suggestion with [] -> [] | sugg -> [Suggestion sugg])
+        Result)
+    format
+
+let emit_multispanned_error
+    ?(suggestion = ([] : string list))
+    (spans : (string option * Pos.t) list)
+    format =
+  emit_multispanned_error_full ~suggestion
+    (List.map
+       (fun (msg, pos) ->
+         Option.map (fun s ppf -> Format.pp_print_string ppf s) msg, pos)
+       spans)
+    format
+
 let raise_spanned_error
     ?(span_msg : Content.message option)
     ?(suggestion = ([] : string list))

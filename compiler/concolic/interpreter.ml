@@ -2369,8 +2369,8 @@ let print_fields language (prefix : string) fields =
         (if Cli.globals.debug then Print.expr ()
          else Print.UserFacing.value language)
         value
-        (if Cli.globals.debug then
-           " | " ^ SymbExpr.to_string (_get_symb_expr_unsafe value)
+        (if Cli.globals.debug then " | " ^ "not implemented"
+           (* SymbExpr.to_string (_get_symb_expr_unsafe value) *)
          else ""))
     ordered_fields
 
@@ -2570,12 +2570,18 @@ let interpret_program_concolic
                 (StructField.Map.bindings fields)
             in
             print_fields p.lang ". " outputs_list
-          | EGenericError ->
+          | EGenericError -> (
             (* TODO better error messages *)
             (* TODO test the different cases *)
-            Message.emit_result "Found error %a at %s" SymbExpr.formatter
-              (get_symb_expr_r res)
-              (Pos.to_string_short (Expr.pos res))
+            (* Message.emit_result "Found error %a at %s" SymbExpr.formatter
+               (get_symb_expr_r res) (Pos.to_string_short (Expr.pos res)) *)
+            Message.emit_result "Found an error:";
+            match get_symb_expr_r res with
+            | Symb_error e -> RuntimeError.emit e (Expr.pos res)
+            | _ ->
+              Message.raise_internal_error
+                "Output of scope is an error but its symbolic expression is not"
+            )
           | _ ->
             Message.raise_spanned_error (Expr.pos scope_e)
               "The concolic interpretation of a program should always yield a \

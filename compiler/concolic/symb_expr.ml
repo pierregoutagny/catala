@@ -39,6 +39,15 @@ module RuntimeError = struct
       | AssertionError -> "AssertionError"
     in
     "↯" ^ except_string ^ "↯"
+
+  let emit { except; message } pos =
+    match except with
+    | EmptyError -> Message.emit_spanned_error pos "%s" message
+    | ConflictError { spans } ->
+      Message.emit_multispanned_error spans "%s" message
+    | DivisionByZeroError { spans } ->
+      Message.emit_multispanned_error spans "%s" message
+    | AssertionError -> Message.emit_spanned_error pos "%s" message
 end
 
 module SymbExpr = struct
@@ -103,24 +112,22 @@ module SymbExpr = struct
   let map_none ~none = function Symb_none -> none | e -> e
   let simplify = map_z3 (fun e -> Z3.Expr.simplify e None)
 
-  let string_of_reentrant { name; _ } =
-    "<" ^ Mark.remove (StructField.get_info @@ name) ^ ">"
+  let format_reentrant fmt { name; _ } =
+    Format.fprintf fmt "<%s>" (Mark.remove (StructField.get_info @@ name))
 
   (* TODO formatter *)
-  let to_string ?(typed : bool = false) e =
+  let mk_formatter ~(typed : bool) fmt e =
     match e with
     | Symb_z3 s ->
       let str = Z3.Expr.to_string s in
       if typed then
-        "(" ^ str ^ ":" ^ (Z3.Sort.to_string @@ Z3.Expr.get_sort s) ^ ")"
-      else str
-    | Symb_reentrant r -> string_of_reentrant r
-    | Symb_none -> "None"
-    | Symb_error err -> RuntimeError.to_string err
+        Format.fprintf fmt "(%s:%s)" str
+          (Z3.Sort.to_string @@ Z3.Expr.get_sort s)
+      else Format.pp_print_string fmt str
+    | Symb_reentrant r -> format_reentrant fmt r
+    | Symb_none -> Format.pp_print_string fmt "None"
+    | Symb_error err -> Format.pp_print_string fmt (RuntimeError.to_string err)
 
-  let formatter (fmt : Format.formatter) (symb_expr : t) : unit =
-    Format.pp_print_string fmt (to_string symb_expr)
-
-  let formatter_typed (fmt : Format.formatter) (symb_expr : t) : unit =
-    Format.pp_print_string fmt (to_string ~typed:true symb_expr)
+  let formatter : Format.formatter -> t -> unit = mk_formatter ~typed:false
+  let formatter_typed : Format.formatter -> t -> unit = mk_formatter ~typed:true
 end

@@ -65,6 +65,19 @@ exception CompilerError of Content.t
 
 (** {1 Common error raising} *)
 
+val emit_spanned_error :
+  ?span_msg:Content.message ->
+  ?suggestion:string list ->
+  Pos.t ->
+  ('a, Format.formatter, unit, unit) format4 ->
+  'a
+
+val emit_multispanned_error :
+  ?suggestion:string list ->
+  (string option * Pos.t) list ->
+  ('a, Format.formatter, unit, unit) format4 ->
+  'a
+
 val raise_spanned_error :
   ?span_msg:Content.message ->
   ?suggestion:string list ->
