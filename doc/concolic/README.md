@@ -1,15 +1,13 @@
-# Running the concolic engine 
+# Running the concolic engine
 
 You can run the concolic engine on a file F with scope S using `dune exec catala -- Concolic F -s S`
 
 For example, running one of the tests can be done through `dune exec catala -- Concolic tests/test_concolic/good/except_one.catala_en  -s A`.
 
-# Real-World Testcase 
-
-## French Housing Benefits
+# Real-World Testcase: French Housing Benefits
 
 ```
-git clone -b concolic git@github.com:rmonat/catala-examples.git
+git clone -b cutecat git@github.com:rmonat/catala-examples.git
 dune exec catala -- Concolic ./catala-examples/aides_logement/tests/concolic/simple_nochild_noassert.catala_fr -s Test
 ```
 
@@ -77,4 +75,24 @@ After 126159 execution steps:
 Total concolic time: 3167.190 s
 17435 tests
 ======
+```
+## Measuring coverage through the Python backend 
+
+One time required setup, from the catala directory:
+
+```
+make build-runtime-python
+. _python_venv/bin/activate; python3 -m pip install coverage
+```
+
+Measuring coverage from the tests generated for `simple_nochild_noassert`. This is easy to generate, but for real coverage, it is better to try with `large_metropole_apl`.
+
+```
+. _python_venv/bin/activate
+dune exec catala -- Concolic --stats --optimize --conc-optim=trivial --conc-optim=lazy-default -s Test ../catala-examples/aides_logement/tests/concolic/simple_nochild_noassert.catala_fr --python_tests
+cd ../catala-examples/aides_logement/tests/concolic/
+echo """[run]
+dynamic_context = test_function""" >> .coveragerc # to know which test function covers which line(s)
+coverage run simple_nochild_noassert_test.py
+coverage html --show-contexts
 ```
