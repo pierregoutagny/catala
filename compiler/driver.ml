@@ -1099,7 +1099,9 @@ module Commands = struct
       else Some "/dev/null", File.with_formatter_of_file "/dev/null"
     in
     with_output (fun out_fmt ->
-        Interpreter.load_runtime_modules prg;
+        Interpreter.load_runtime_modules
+        ~hashf:Hash.(finalise ~closure_conversion:false ~monomorphize_types:false) (* as dcalc *)
+        prg;
         print_interpretation_results options
           (Concolic.Interpreter.interpret_program_concolic stats
              (if python_tests then
@@ -1123,7 +1125,7 @@ module Commands = struct
           "Python backend file does not exist, generating it with the same \
            options (not using avoid_exceptions nor close_conversion)"
       in
-      python options includes output optimize check_invariants false false
+      python options includes output optimize check_invariants false
 
   let concolic_cmd =
     let f no_typing =

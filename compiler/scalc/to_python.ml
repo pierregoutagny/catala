@@ -153,6 +153,42 @@ let python_keywords =
 (* todo: reserved names should also include built-in types and everything
    exposed by the runtime. *)
 
+
+(* TODO RAPH should functions from here... *)
+let avoid_keywords (s : string) : string =
+  if
+    match s with
+    (* list taken from
+       https://www.programiz.com/python-programming/keyword-list *)
+    | "False" | "None" | "True" | "and" | "as" | "assert" | "async" | "await"
+    | "break" | "class" | "continue" | "def" | "del" | "elif" | "else"
+    | "except" | "finally" | "for" | "from" | "global" | "if" | "import" | "in"
+    | "is" | "lambda" | "nonlocal" | "not" | "or" | "pass" | "raise" | "return"
+    | "try" | "while" | "with" | "yield" ->
+      true
+    | _ -> false
+  then s ^ "_"
+  else s
+
+module StringMap = String.Map
+
+module IntMap = Map.Make (struct
+  include Int
+
+  let format ppf i = Format.pp_print_int ppf i
+end)
+
+let clean_name (s : string) : string =
+  s
+  |> String.to_snake_case
+  |> Re.Pcre.substitute ~rex:(Re.Pcre.regexp "\\.") ~subst:(fun _ -> "_dot_")
+  |> avoid_keywords
+
+let format_name_cleaned (fmt : Format.formatter) (s : string) : unit =
+  Format.pp_print_string fmt (clean_name s)
+(* TODO RAPH ... to here be removed? *)
+
+
 let renaming =
   Renaming.program ()
     ~reserved:python_keywords

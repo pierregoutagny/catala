@@ -801,8 +801,8 @@ let rec compare : type a. (a, _) gexpr -> (a, _) gexpr -> int =
   | EDefault _, _ -> -1 | _, EDefault _ -> 1
   | EPureDefault _, _ -> -1 | _, EPureDefault _ -> 1
   | EEmpty , _ -> -1 | _, EEmpty  -> 1
-  | EErrorOnEmpty _, _ -> . | _, EErrorOnEmpty _ -> .
   | EGenericError , _ -> -1 | _, EGenericError  -> 1
+  | EErrorOnEmpty _, _ -> . | _, EErrorOnEmpty _ -> .
 
 let rec free_vars : ('a, 't) gexpr -> ('a, 't) gexpr Var.Set.t = function
   | EVar v, _ -> Var.Set.singleton v
