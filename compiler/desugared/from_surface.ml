@@ -42,7 +42,7 @@ let translate_binop :
     Ast.expr boxed =
  fun (op, op_pos) pos lhs rhs ->
   let op_expr op tys =
-    Expr.eappop ~op
+    Expr.eappop ~op:(op, op_pos)
       ~tys:(List.map (Mark.add op_pos) tys)
       ~args:[lhs; rhs]
       (Untyped { pos })
@@ -114,7 +114,10 @@ let translate_binop :
 
 let translate_unop ((op, op_pos) : S.unop Mark.pos) pos arg : Ast.expr boxed =
   let op_expr op ty =
-    Expr.eappop ~op ~tys:[Mark.add op_pos ty] ~args:[arg] (Untyped { pos })
+    Expr.eappop ~op:(op, op_pos)
+      ~tys:[Mark.add op_pos ty]
+      ~args:[arg]
+      (Untyped { pos })
   in
   match op with
   | S.Not -> op_expr Not (TLit TBool)
@@ -135,8 +138,7 @@ let raise_error_cons_not_found
     (constructor : string Mark.pos) =
   let constructors = Ident.Map.keys ctxt.local.constructor_idmap in
   let closest_constructors =
-    Suggestions.suggestion_minimum_levenshtein_distance_association constructors
-      (Mark.remove constructor)
+    Suggestions.best_candidates constructors (Mark.remove constructor)
   in
   Message.error
     ~pos_msg:(fun ppf -> Format.fprintf ppf "Here is your code :")
@@ -238,12 +240,12 @@ let rec translate_expr
   let rec_helper ?(local_vars = local_vars) e =
     translate_expr scope inside_definition_of ctxt local_vars e
   in
-  let rec detuplify_list names = function
+  let rec detuplify_list opos names = function
     (* Where a list is expected (e.g. after [among]), as syntactic sugar, if a
        tuple is found instead we transpose it into a list of tuples *)
     | S.Tuple ls, pos ->
       let m = Untyped { pos } in
-      let ls = List.map (detuplify_list []) ls in
+      let ls = List.map (detuplify_list opos []) ls in
       let rec zip names = function
         | [] -> assert false
         | [l] -> l
@@ -272,7 +274,7 @@ let rec translate_expr
               (Expr.make_tuple (Expr.evar x1 m :: explode (Expr.evar x2 m)) m)
               tys pos
           in
-          Expr.eappop ~op:Map2 ~args:[f_join; l1; rhs]
+          Expr.eappop ~op:(Map2, opos) ~args:[f_join; l1; rhs]
             ~tys:((TAny, pos) :: List.map (fun ty -> TArray ty, pos) tys)
             m
       in
@@ -286,7 +288,7 @@ let rec translate_expr
   match Mark.remove expr with
   | Paren e -> rec_helper e
   | Binop
-      ( (S.And, _pos_op),
+      ( (S.And, pos_op),
         ( TestMatchCase (e1_sub, ((constructors, Some binding), pos_pattern)),
           _pos_e1 ),
         e2 ) ->
@@ -302,15 +304,15 @@ let rec translate_expr
             let nop_var = Var.make "_" in
             Expr.make_abs [| nop_var |]
               (Expr.elit (LBool false) emark)
-              [tau] pos
+              [tau] pos_op
           else
             let binding_var = Var.make (Mark.remove binding) in
             let local_vars =
               Ident.Map.add (Mark.remove binding) binding_var local_vars
             in
             let e2 = rec_helper ~local_vars e2 in
-            Expr.make_abs [| binding_var |] e2 [tau] pos)
-        (EnumName.Map.find enum_uid ctxt.enums)
+            Expr.make_abs [| binding_var |] e2 [tau] pos_op)
+        (fst (EnumName.Map.find enum_uid ctxt.enums))
     in
     Expr.ematch ~e:(rec_helper e1_sub) ~name:enum_uid ~cases emark
   | Binop ((((S.And | S.Or | S.Xor), _) as op), e1, e2) ->
@@ -330,12 +332,18 @@ let rec translate_expr
       match l with
       | LNumber ((Int i, _), None) -> LInt (Runtime.integer_of_string i)
       | LNumber ((Int i, _), Some (Percent, _)) ->
-        LRat Runtime.(Oper.o_div_rat_rat (decimal_of_string i) rat100)
+        LRat
+          Runtime.(
+            Oper.o_div_rat_rat (Expr.pos_to_runtime pos) (decimal_of_string i)
+              rat100)
       | LNumber ((Dec (i, f), _), None) ->
         LRat Runtime.(decimal_of_string (i ^ "." ^ f))
       | LNumber ((Dec (i, f), _), Some (Percent, _)) ->
         LRat
-          Runtime.(Oper.o_div_rat_rat (decimal_of_string (i ^ "." ^ f)) rat100)
+          Runtime.(
+            Oper.o_div_rat_rat (Expr.pos_to_runtime pos)
+              (decimal_of_string (i ^ "." ^ f))
+              rat100)
       | LBool b -> LBool b
       | LMoneyAmount i ->
         LMoney
@@ -366,7 +374,7 @@ let rec translate_expr
           (try
              Runtime.date_of_numbers date.literal_date_year
                date.literal_date_month date.literal_date_day
-           with Runtime.ImpossibleDate ->
+           with Failure _ ->
              Message.error ~pos
                "There is an error in this date, it does not correspond to a \
                 correct calendar day")
@@ -487,7 +495,7 @@ let rec translate_expr
     in
     Expr.edstructaccess ~e ~field:(Mark.remove x) ~name_opt:(get_str ctxt path)
       emark
-  | FunCall ((Builtin b, _), [arg]) ->
+  | FunCall ((Builtin b, pos), [arg]) ->
     let op, ty =
       match b with
       | S.ToDecimal -> Op.ToRat, TAny
@@ -500,7 +508,7 @@ let rec translate_expr
       | S.FirstDayOfMonth -> Op.FirstDayOfMonth, TLit TDate
       | S.LastDayOfMonth -> Op.LastDayOfMonth, TLit TDate
     in
-    Expr.eappop ~op ~tys:[ty, pos] ~args:[rec_helper arg] emark
+    Expr.eappop ~op:(op, pos) ~tys:[ty, pos] ~args:[rec_helper arg] emark
   | S.Builtin _ ->
     Message.error ~pos "Invalid use of built-in: needs one operand"
   | FunCall (f, args) ->
@@ -604,7 +612,7 @@ let rec translate_expr
           StructField.Map.add f_uid f_e s_fields)
         StructField.Map.empty fields
     in
-    let expected_s_fields = StructName.Map.find s_uid ctxt.structs in
+    let expected_s_fields, _ = StructName.Map.find s_uid ctxt.structs in
     if
       StructField.Map.exists
         (fun expected_f _ -> not (StructField.Map.mem expected_f s_fields))
@@ -710,17 +718,17 @@ let rec translate_expr
           Expr.make_abs [| nop_var |]
             (Expr.elit (LBool (EnumConstructor.compare c_uid c_uid' = 0)) emark)
             [tau] pos)
-        (EnumName.Map.find enum_uid ctxt.enums)
+        (fst (EnumName.Map.find enum_uid ctxt.enums))
     in
     Expr.ematch ~e:(rec_helper e1) ~name:enum_uid ~cases emark
   | ArrayLit es -> Expr.earray (List.map rec_helper es) emark
   | Tuple es -> Expr.etuple (List.map rec_helper es) emark
   | TupleAccess (e, n) ->
     Expr.etupleaccess ~e:(rec_helper e) ~index:(Mark.remove n - 1) ~size:0 emark
-  | CollectionOp (((S.Filter { f } | S.Map { f }) as op), collection) ->
+  | CollectionOp ((((S.Filter { f } | S.Map { f }), opos) as op), collection) ->
     let param_names, predicate = f in
     let collection =
-      detuplify_list (List.map Mark.remove param_names) collection
+      detuplify_list opos (List.map Mark.remove param_names) collection
     in
     let params = List.map (fun n -> Var.make (Mark.remove n)) param_names in
     let local_vars =
@@ -756,18 +764,19 @@ let rec translate_expr
     Expr.eappop
       ~op:
         (match op with
-        | S.Map _ -> Map
-        | S.Filter _ -> Filter
+        | S.Map _, pos -> Map, pos
+        | S.Filter _, pos -> Filter, pos
         | _ -> assert false)
       ~tys:[TAny, pos; TAny, pos]
       ~args:[f_pred; collection] emark
   | CollectionOp
-      ( S.AggregateArgExtremum { max; default; f = param_names, predicate },
+      ( ( S.AggregateArgExtremum { max; default; f = param_names, predicate },
+          opos ),
         collection ) ->
     let default = rec_helper default in
     let pos_dft = Expr.pos default in
     let collection =
-      detuplify_list (List.map Mark.remove param_names) collection
+      detuplify_list opos (List.map Mark.remove param_names) collection
     in
     let params = List.map (fun n -> Var.make (Mark.remove n)) param_names in
     let local_vars =
@@ -775,7 +784,7 @@ let rec translate_expr
         (fun vars n p -> Ident.Map.add (Mark.remove n) p vars)
         local_vars param_names params
     in
-    let cmp_op = if max then Op.Gt else Op.Lt in
+    let cmp_op = if max then Op.Gt, opos else Op.Lt, opos in
     let f_pred =
       Expr.make_abs (Array.of_list params)
         (rec_helper ~local_vars predicate)
@@ -814,10 +823,10 @@ let rec translate_expr
     let weighted_result =
       Expr.make_let_in weights_var
         (TArray (TTuple [TAny, pos; TAny, pos], pos), pos)
-        (Expr.eappop ~op:Map
+        (Expr.eappop ~op:(Map, opos)
            ~tys:[TAny, pos; TArray (TAny, pos), pos]
            ~args:[add_weight_f; collection] emark)
-        (Expr.eappop ~op:Reduce
+        (Expr.eappop ~op:(Reduce, opos)
            ~tys:[TAny, pos; TAny, pos; TAny, pos]
            ~args:[reduce_f; default; Expr.evar weights_var emark]
            emark)
@@ -825,14 +834,15 @@ let rec translate_expr
     in
     Expr.etupleaccess ~e:weighted_result ~index:0 ~size:2 emark
   | CollectionOp
-      (((Exists { predicate } | Forall { predicate }) as op), collection) ->
+      ((((Exists { predicate } | Forall { predicate }), opos) as op), collection)
+    ->
     let collection =
-      detuplify_list (List.map Mark.remove (fst predicate)) collection
+      detuplify_list opos (List.map Mark.remove (fst predicate)) collection
     in
     let init, op =
       match op with
-      | Exists _ -> false, S.Or
-      | Forall _ -> true, S.And
+      | Exists _, pos -> false, (S.Or, pos)
+      | Forall _, pos -> true, (S.And, pos)
       | _ -> assert false
     in
     let init = Expr.elit (LBool init) emark in
@@ -851,15 +861,14 @@ let rec translate_expr
       Expr.eabs
         (Expr.bind
            (Array.of_list (acc_var :: params))
-           (translate_binop (op, pos) pos acc
-              (rec_helper ~local_vars predicate)))
+           (translate_binop op pos acc (rec_helper ~local_vars predicate)))
         [TAny, pos; TAny, pos]
         emark
     in
-    Expr.eappop ~op:Fold
+    Expr.eappop ~op:(Fold, opos)
       ~tys:[TAny, pos; TAny, pos; TAny, pos]
       ~args:[f; init; collection] emark
-  | CollectionOp (AggregateExtremum { max; default }, collection) ->
+  | CollectionOp ((AggregateExtremum { max; default }, opos), collection) ->
     let collection = rec_helper collection in
     let default = rec_helper default in
     let op = if max then S.Gt KPoly else S.Lt KPoly in
@@ -874,11 +883,11 @@ let rec translate_expr
         [TAny, pos; TAny, pos]
         pos
     in
-    Expr.eappop ~op:Reduce
+    Expr.eappop ~op:(Reduce, opos)
       ~tys:[TAny, pos; TAny, pos; TAny, pos]
       ~args:[op_f; default; collection]
       emark
-  | CollectionOp (AggregateSum { typ }, collection) ->
+  | CollectionOp ((AggregateSum { typ }, opos), collection) ->
     let collection = rec_helper collection in
     let default_lit =
       let i0 = Runtime.integer_of_int 0 in
@@ -888,7 +897,8 @@ let rec translate_expr
       | S.Money -> LMoney (Runtime.money_of_cents_integer i0)
       | S.Duration -> LDuration (Runtime.duration_of_numbers 0 0 0)
       | t ->
-        Message.error ~pos "It is impossible to sum values of type %a together"
+        Message.error ~pos:opos
+          "It is impossible to sum values of type %a together"
           SurfacePrint.format_primitive_typ t
     in
     let op_f =
@@ -899,28 +909,28 @@ let rec translate_expr
       let x1 = Expr.make_var v1 emark in
       let x2 = Expr.make_var v2 emark in
       Expr.make_abs [| v1; v2 |]
-        (translate_binop (S.Add KPoly, pos) pos x1 x2)
+        (translate_binop (S.Add KPoly, opos) pos x1 x2)
         [TAny, pos; TAny, pos]
         pos
     in
-    Expr.eappop ~op:Reduce
+    Expr.eappop ~op:(Reduce, opos)
       ~tys:[TAny, pos; TAny, pos; TAny, pos]
       ~args:[op_f; Expr.elit default_lit emark; collection]
       emark
-  | MemCollection (member, collection) ->
+  | CollectionOp ((Member { element = member }, opos), collection) ->
     let param_var = Var.make "collection_member" in
     let param = Expr.make_var param_var emark in
-    let collection = detuplify_list ["collection_member"] collection in
+    let collection = detuplify_list opos ["collection_member"] collection in
     let init = Expr.elit (LBool false) emark in
     let acc_var = Var.make "acc" in
     let acc = Expr.make_var acc_var emark in
     let f_body =
       let member = rec_helper member in
-      Expr.eappop ~op:Or
+      Expr.eappop ~op:(Or, opos)
         ~tys:[TLit TBool, pos; TLit TBool, pos]
         ~args:
           [
-            Expr.eappop ~op:Eq
+            Expr.eappop ~op:(Eq, opos)
               ~tys:[TAny, pos; TAny, pos]
               ~args:[member; param] emark;
             acc;
@@ -933,7 +943,7 @@ let rec translate_expr
         [TLit TBool, pos; TAny, pos]
         emark
     in
-    Expr.eappop ~op:Fold
+    Expr.eappop ~op:(Fold, opos)
       ~tys:[TAny, pos; TAny, pos; TAny, pos]
       ~args:[f; init; collection] emark
 
@@ -959,7 +969,7 @@ and disambiguate_match_and_build_expression
     Expr.eabs e_binder
       [
         EnumConstructor.Map.find c_uid
-          (EnumName.Map.find e_uid ctxt.Name_resolution.enums);
+          (fst (EnumName.Map.find e_uid ctxt.Name_resolution.enums));
       ]
       (Mark.get case_body)
   in
@@ -1026,6 +1036,7 @@ and disambiguate_match_and_build_expression
         if curr_index < nb_cases - 1 then raise_wildcard_not_last_case_err ();
         let missing_constructors =
           EnumName.Map.find e_uid ctxt.Name_resolution.enums
+          |> fst
           |> EnumConstructor.Map.filter_map (fun c_uid _ ->
                  match EnumConstructor.Map.find_opt c_uid cases_d with
                  | Some _ -> None
@@ -1084,7 +1095,7 @@ let merge_conditions
     (default_pos : Pos.t) : Ast.expr boxed =
   match precond, cond with
   | Some precond, Some cond ->
-    Expr.eappop ~op:And
+    Expr.eappop ~op:(And, default_pos)
       ~tys:[TLit TBool, default_pos; TLit TBool, default_pos]
       ~args:[precond; cond] (Mark.get cond)
   | Some precond, None -> Mark.remove precond, Untyped { pos = default_pos }
@@ -1440,6 +1451,7 @@ let process_scope_use
 let process_topdef
     (ctxt : Name_resolution.context)
     (prgm : Ast.program)
+    (is_public : bool)
     (def : S.top_def) : Ast.program =
   let id =
     Ident.Map.find
@@ -1482,12 +1494,14 @@ let process_topdef
       in
       Some (Expr.unbox_closed e)
   in
+  let topdef_visibility = if is_public then Public else Private in
   let module_topdefs =
     TopdefName.Map.update id
       (fun def0 ->
         match def0, expr_opt with
-        | None, eopt -> Some (eopt, typ)
-        | Some (eopt0, ty0), eopt -> (
+        | None, eopt ->
+          Some { Ast.topdef_expr = eopt; topdef_visibility; topdef_type = typ }
+        | Some def0, eopt -> (
           let err msg =
             Message.error
               ~extra_pos:
@@ -1497,13 +1511,16 @@ let process_topdef
                 ]
               (msg ^^ " for %a") TopdefName.format id
           in
-          if not (Type.equal ty0 typ) then err "Conflicting type definitions"
+          if not (Type.equal def0.Ast.topdef_type typ) then
+            err "Conflicting type definitions"
           else
-            match eopt0, eopt with
+            match def0.Ast.topdef_expr, eopt with
             | None, None -> err "Multiple declarations"
             | Some _, Some _ -> err "Multiple definitions"
-            | Some e, None -> Some (Some e, typ)
-            | None, Some e -> Some (Some e, ty0)))
+            | (Some _ as topdef_expr), None ->
+              Some { Ast.topdef_expr; topdef_visibility; topdef_type = typ }
+            | None, (Some _ as topdef_expr) ->
+              Some { def0 with Ast.topdef_expr }))
       prgm.Ast.program_root.module_topdefs
   in
   { prgm with program_root = { prgm.program_root with module_topdefs } }
@@ -1669,6 +1686,7 @@ let translate_program (ctxt : Name_resolution.context) (surface : S.program) :
       scope_meta_assertions = [];
       scope_options = [];
       scope_uid = s_uid;
+      scope_visibility = s_context.Name_resolution.scope_visibility;
     }
   in
   let get_scopes mctx =
@@ -1681,21 +1699,31 @@ let translate_program (ctxt : Name_resolution.context) (surface : S.program) :
       mctx.Name_resolution.typedefs ScopeName.Map.empty
   in
   let program_modules =
-    ModuleName.Map.map
-      (fun mctx ->
-        {
-          Ast.module_scopes = get_scopes mctx;
-          Ast.module_topdefs =
-            Ident.Map.fold
-              (fun _ name acc ->
-                TopdefName.Map.add name
-                  ( None,
-                    TopdefName.Map.find name ctxt.Name_resolution.topdef_types
-                  )
-                  acc)
-              mctx.topdefs TopdefName.Map.empty;
-        })
+    ModuleName.Map.mapi
+      (fun mname mctx ->
+        let m =
+          {
+            Ast.module_scopes = get_scopes mctx;
+            Ast.module_topdefs =
+              Ident.Map.fold
+                (fun _ name acc ->
+                  let topdef_type, topdef_visibility =
+                    TopdefName.Map.find name ctxt.Name_resolution.topdefs
+                  in
+                  TopdefName.Map.add name
+                    { Ast.topdef_expr = None; topdef_visibility; topdef_type }
+                    acc)
+                mctx.topdefs TopdefName.Map.empty;
+          }
+        in
+        m, Ast.Hash.module_binding mname m)
       ctxt.modules
+  in
+  let program_root =
+    {
+      Ast.module_scopes = get_scopes ctxt.Name_resolution.local;
+      Ast.module_topdefs = TopdefName.Map.empty;
+    }
   in
   let program_ctx =
     let open Name_resolution in
@@ -1709,23 +1737,30 @@ let translate_program (ctxt : Name_resolution.context) (surface : S.program) :
     in
     let ctx_modules =
       let rec aux mctx =
-        Ident.Map.fold
-          (fun _ m (M acc) ->
-            let sub = aux (ModuleName.Map.find m ctxt.modules) in
-            M (ModuleName.Map.add m sub acc))
-          mctx.used_modules (M ModuleName.Map.empty)
+        let subs =
+          Ident.Map.fold
+            (fun _ m acc ->
+              let mctx = ModuleName.Map.find m ctxt.Name_resolution.modules in
+              let deps = aux mctx in
+              let hash = snd (ModuleName.Map.find m program_modules) in
+              ModuleName.Map.add m
+                { deps; intf_id = { hash; is_external = mctx.is_external } }
+                acc)
+            mctx.used_modules ModuleName.Map.empty
+        in
+        subs
       in
       aux ctxt.local
     in
     {
-      ctx_structs = ctxt.structs;
-      ctx_enums = ctxt.enums;
+      ctx_structs = StructName.Map.map fst ctxt.structs;
+      ctx_enums = EnumName.Map.map fst ctxt.enums;
       ctx_scopes =
         ModuleName.Map.fold
           (fun _ -> ctx_scopes)
           ctxt.modules
           (ctx_scopes ctxt.local ScopeName.Map.empty);
-      ctx_topdefs = ctxt.topdef_types;
+      ctx_topdefs = TopdefName.Map.map fst ctxt.topdefs;
       ctx_struct_fields = ctxt.local.field_idmap;
       ctx_enum_constrs = ctxt.local.constructor_idmap;
       ctx_scope_index =
@@ -1737,25 +1772,29 @@ let translate_program (ctxt : Name_resolution.context) (surface : S.program) :
       ctx_modules;
     }
   in
+  let program_module_name =
+    surface.Surface.Ast.program_module
+    |> Option.map
+       @@ fun { Surface.Ast.module_name; module_external } ->
+       let mname = ModuleName.fresh module_name in
+       let hash_placeholder = Hash.raw 0 in
+       mname, { hash = hash_placeholder; is_external = module_external }
+  in
   let desugared =
     {
       Ast.program_lang = surface.program_lang;
-      Ast.program_module_name = surface.Surface.Ast.program_module_name;
-      Ast.program_modules;
+      Ast.program_module_name;
+      Ast.program_modules = ModuleName.Map.map fst program_modules;
       Ast.program_ctx;
-      Ast.program_root =
-        {
-          Ast.module_scopes = get_scopes ctxt.Name_resolution.local;
-          Ast.module_topdefs = TopdefName.Map.empty;
-        };
+      Ast.program_root;
     }
   in
-  let process_code_block ctxt prgm block =
+  let process_code_block ctxt prgm is_meta block =
     List.fold_left
       (fun prgm item ->
         match Mark.remove item with
         | S.ScopeUse use -> process_scope_use ctxt prgm use
-        | S.Topdef def -> process_topdef ctxt prgm def
+        | S.Topdef def -> process_topdef ctxt prgm is_meta def
         | S.ScopeDecl _ | S.StructDecl _ | S.EnumDecl _ -> prgm)
       prgm block
   in
@@ -1766,7 +1805,22 @@ let translate_program (ctxt : Name_resolution.context) (surface : S.program) :
       List.fold_left
         (fun prgm child -> process_structure prgm child)
         prgm children
-    | S.CodeBlock (block, _, _) -> process_code_block ctxt prgm block
+    | S.CodeBlock (block, _, is_meta) ->
+      process_code_block ctxt prgm is_meta block
     | S.ModuleDef _ | S.LawInclude _ | S.LawText _ | S.ModuleUse _ -> prgm
   in
-  List.fold_left process_structure desugared surface.S.program_items
+  let desugared =
+    List.fold_left process_structure desugared surface.S.program_items
+  in
+  {
+    desugared with
+    Ast.program_module_name =
+      (desugared.Ast.program_module_name
+      |> Option.map
+         @@ fun (mname, intf_id) ->
+         ( mname,
+           {
+             intf_id with
+             hash = Ast.Hash.module_binding mname desugared.Ast.program_root;
+           } ));
+  }

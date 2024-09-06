@@ -33,10 +33,6 @@ module VarName =
     end)
     ()
 
-let dead_value = VarName.fresh ("dead_value", Pos.no_pos)
-let handle_default = FuncName.fresh ("handle_default", Pos.no_pos)
-let handle_default_opt = FuncName.fresh ("handle_default_opt", Pos.no_pos)
-
 type operator = Shared_ast.lcalc Shared_ast.operator
 
 type expr = naked_expr Mark.pos
@@ -61,7 +57,7 @@ and naked_expr =
   | EArray of expr list
   | ELit of lit
   | EApp of { f : expr; args : expr list }
-  | EAppOp of { op : operator; args : expr list }
+  | EAppOp of { op : operator Mark.pos; args : expr list }
   | EExternal of { modname : VarName.t Mark.pos; name : string Mark.pos }
 
 type stmt =
@@ -69,12 +65,13 @@ type stmt =
   | SLocalDecl of { name : VarName.t Mark.pos; typ : typ }
   | SLocalInit of { name : VarName.t Mark.pos; typ : typ; expr : expr }
   | SLocalDef of { name : VarName.t Mark.pos; expr : expr; typ : typ }
-  | STryExcept of { try_block : block; except : except; with_block : block }
-  | SRaise of except
+  | STryWEmpty of { try_block : block; with_block : block }
+  | SRaiseEmpty
+  | SFatalError of Runtime.error
   | SIfThenElse of { if_expr : expr; then_block : block; else_block : block }
   | SSwitch of {
-      switch_expr : expr;
-      switch_expr_typ : typ;
+      switch_var : VarName.t;
+      switch_var_typ : typ;
       enum_name : EnumName.t;
       switch_cases : switch_case list;
     }
@@ -120,5 +117,5 @@ type ctx = { decl_ctx : decl_ctx; modules : VarName.t ModuleName.Map.t }
 type program = {
   ctx : ctx;
   code_items : code_item list;
-  module_name : ModuleName.t option;
+  module_name : (ModuleName.t * module_intf_id) option;
 }

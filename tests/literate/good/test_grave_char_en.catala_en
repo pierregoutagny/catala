@@ -1,6 +1,6 @@
 > Module Test_grave_char_en
 
-## Law text should be able to contain grave accent '`'.
+## Law text should be able to contain backquote chars `` ` ``.
 
 This is a block of law text containing `.
 This allows to:
@@ -33,20 +33,26 @@ int main(void) { return 0; }
 
 ```catala-test-inline
 $ catala Typecheck --check-invariants
-[RESULT] All invariant checks passed
-[RESULT] Typechecking successful!
+┌─[RESULT]─
+│ All invariant checks passed
+└─
+┌─[RESULT]─
+│ Typechecking successful!
+└─
 ```
 
 ```catala-test-inline
 $ catala test-scope A
-[RESULT] Computation successful! Results:
-[RESULT] literate_parsing_is_ok = true
+┌─[RESULT]─
+│ literate_parsing_is_ok = true
+└─
 ```
 
 ```catala-test-inline
 $ catala test-scope A
-[RESULT] Computation successful! Results:
-[RESULT] literate_parsing_is_ok = true
+┌─[RESULT]─
+│ literate_parsing_is_ok = true
+└─
 ```
 
 ```catala-test-inline
@@ -54,7 +60,8 @@ $ catala latex
 
 \textbf{This defines the catala module \texttt{Test\_grave\_char\_en}}
 
-\subsection{Law text should be able to contain grave accent ``'.}
+\subsection{Law text should be able to contain backquote chars
+\texttt{\textasciigrave{}}.}
 
 This is a block of law text containing `. This allows to:
 
@@ -91,19 +98,25 @@ int main(void) { return 0; }
 
 \begin{verbatim}
 $ catala Typecheck --check-invariants
-[RESULT] All invariant checks passed
-[RESULT] Typechecking successful!
+┌─[RESULT]─
+│ All invariant checks passed
+└─
+┌─[RESULT]─
+│ Typechecking successful!
+└─
 \end{verbatim}
 
 \begin{verbatim}
 $ catala test-scope A
-[RESULT] Computation successful! Results:
-[RESULT] literate_parsing_is_ok = true
+┌─[RESULT]─
+│ literate_parsing_is_ok = true
+└─
 \end{verbatim}
 
 \begin{verbatim}
 $ catala test-scope A
-[RESULT] Computation successful! Results:
-[RESULT] literate_parsing_is_ok = true
+┌─[RESULT]─
+│ literate_parsing_is_ok = true
+└─
 \end{verbatim}
 ```

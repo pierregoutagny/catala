@@ -23,29 +23,28 @@ scope R:
 
 ```catala-test-inline
 $ catala test-scope R
-[RESULT] Computation successful! Results:
-[RESULT] r = 30
+┌─[RESULT]─
+│ r = 30
+└─
 ```
 
-Note: ideally this could use test-scope but some positions are lost during translation to lcalc
-
 ```catala-test-inline
-$ catala interpret -s S
-[ERROR] There is a conflict between multiple valid consequences for assigning
-  the same variable.
-
-This consequence has a valid justification:
-┌─⯈ tests/func/bad/bad_func.catala_en:14.65-14.70:
-└──┐
-14 │   definition f of x under condition (x >= x) consequence equals x + x
-   │                                                                 ‾‾‾‾‾
-   └─ Article
-
-This consequence has a valid justification:
-┌─⯈ tests/func/bad/bad_func.catala_en:15.62-15.67:
-└──┐
-15 │   definition f of x under condition not b consequence equals x * x
-   │                                                              ‾‾‾‾‾
-   └─ Article
+$ catala test-scope S
+┌─[ERROR]─
+│
+│  During evaluation: conflict between multiple valid consequences for
+│  assigning the same variable.
+│
+├─➤ tests/func/bad/bad_func.catala_en:14.65-14.70:
+│    │
+│ 14 │   definition f of x under condition (x >= x) consequence equals x + x
+│    │                                                                 ‾‾‾‾‾
+├─ Article
+│
+├─➤ tests/func/bad/bad_func.catala_en:15.62-15.67:
+│    │
+│ 15 │   definition f of x under condition not b consequence equals x * x
+│    │                                                              ‾‾‾‾‾
+└─ Article
 #return code 123#
 ```

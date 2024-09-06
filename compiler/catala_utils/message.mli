@@ -54,15 +54,28 @@ module Content : sig
 
   (** {2 Content emission}*)
 
-  val emit : t -> level -> unit
+  val emit_n : ?ppf:Format.formatter -> level -> t list -> unit
+  val emit : ?ppf:Format.formatter -> t -> level -> unit
 end
 
 (** This functions emits the message according to the emission type defined by
     [Cli.message_format_flag]. *)
 
-(** {1 Error exception} *)
+(** {1 Error exceptions} *)
 
 exception CompilerError of Content.t
+exception CompilerErrors of Content.t list
+
+type lsp_error_kind = Lexing | Parsing | Typing | Generic
+
+type lsp_error = {
+  kind : lsp_error_kind;
+  message : Content.message;
+  pos : Pos.t option;
+  suggestion : string list option;
+}
+
+val register_lsp_error_notifier : (lsp_error -> unit) -> unit
 
 (** {1 Some formatting helpers}*)
 
@@ -71,10 +84,16 @@ val unformat : (Format.formatter -> unit) -> string
     indents *)
 
 val has_color : out_channel -> bool
+val set_terminal_width_function : (unit -> int) -> unit
+val terminal_columns : unit -> int
+
+val pad : int -> string -> Format.formatter -> unit
+(** Prints the given character the given number of times (assuming it is of
+    width 1) *)
 
 (* {1 More general color-enabled formatting helpers}*)
 
-val formatter_of_out_channel : out_channel -> Format.formatter
+val formatter_of_out_channel : out_channel -> unit -> Format.formatter
 (** Creates a new formatter from the given out channel, with correct handling of
     the ocolor tags. Actual use of escape codes in the output depends on
     [Cli.style_flag] -- and wether the channel is a tty if that is set to auto. *)
@@ -88,6 +107,7 @@ type ('a, 'b) emitter =
   ?pos_msg:Content.message ->
   ?extra_pos:(string * Pos.t) list ->
   ?fmt_pos:(Content.message * Pos.t) list ->
+  ?outcome:Content.message list ->
   ?suggestion:string list ->
   ('a, Format.formatter, unit, 'b) format4 ->
   'a
@@ -96,4 +116,18 @@ val log : ('a, unit) emitter
 val debug : ('a, unit) emitter
 val result : ('a, unit) emitter
 val warning : ('a, unit) emitter
-val error : ('a, 'b) emitter
+val error : ?kind:lsp_error_kind -> ('a, 'exn) emitter
+val results : Content.message list -> unit
+
+(** Multiple errors *)
+
+val with_delayed_errors : ?stop_on_error:bool -> (unit -> 'a) -> 'a
+(** [with_delayed_errors ?stop_on_error f] calls [f] and registers each error
+    triggered using [delayed_error]. [stop_on_error] defaults to
+    [Global.options.stop_on_error].
+
+    @raise CompilerErrors when delayed errors were registered.
+    @raise CompilerError
+      on the first error encountered when the [stop_on_error] flag is set. *)
+
+val delayed_error : ?kind:lsp_error_kind -> 'b -> ('a, 'b) emitter

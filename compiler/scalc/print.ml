@@ -21,10 +21,10 @@ open Ast
 let needs_parens (_e : expr) : bool = false
 
 let format_var_name (fmt : Format.formatter) (v : VarName.t) : unit =
-  Format.fprintf fmt "%a_%d" VarName.format v (VarName.hash v)
+  VarName.format fmt v
 
 let format_func_name (fmt : Format.formatter) (v : FuncName.t) : unit =
-  Format.fprintf fmt "@{<green>%a_%d@}" FuncName.format v (FuncName.hash v)
+  FuncName.format fmt v
 
 let rec format_expr
     (decl_ctx : decl_ctx)
@@ -53,7 +53,7 @@ let rec format_expr
       (StructField.Map.bindings es)
       Print.punctuation "}"
   | ETuple es ->
-    Format.fprintf fmt "@[<hov 2>%a%a%a@]" Print.punctuation "()"
+    Format.fprintf fmt "@[<hov 2>%a%a%a@]" Print.punctuation "("
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ")
          (fun fmt e -> Format.fprintf fmt "%a" format_expr e))
@@ -74,15 +74,15 @@ let rec format_expr
     Format.fprintf fmt "@[<hov 2>%a@ %a@]" EnumConstructor.format cons
       format_expr e
   | ELit l -> Print.lit fmt l
-  | EAppOp { op = (Map | Filter) as op; args = [arg1; arg2] } ->
+  | EAppOp { op = ((Map | Filter) as op), _; args = [arg1; arg2] } ->
     Format.fprintf fmt "@[<hov 2>%a@ %a@ %a@]" (Print.operator ~debug) op
       format_with_parens arg1 format_with_parens arg2
-  | EAppOp { op; args = [arg1; arg2] } ->
+  | EAppOp { op = op, _; args = [arg1; arg2] } ->
     Format.fprintf fmt "@[<hov 2>%a@ %a@ %a@]" format_with_parens arg1
       (Print.operator ~debug) op format_with_parens arg2
-  | EAppOp { op = Log _; args = [arg1] } when not debug ->
+  | EAppOp { op = Log _, _; args = [arg1] } when not debug ->
     Format.fprintf fmt "%a" format_with_parens arg1
-  | EAppOp { op; args = [arg1] } ->
+  | EAppOp { op = op, _; args = [arg1] } ->
     Format.fprintf fmt "@[<hov 2>%a@ %a@]" (Print.operator ~debug) op
       format_with_parens arg1
   | EApp { f; args = [] } ->
@@ -93,7 +93,7 @@ let rec format_expr
          ~pp_sep:(fun fmt () -> Format.fprintf fmt "@ ")
          format_with_parens)
       args
-  | EAppOp { op; args } ->
+  | EAppOp { op = op, _; args } ->
     Format.fprintf fmt "@[<hov 2>%a@ %a@]" (Print.operator ~debug) op
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.fprintf fmt "@ ")
@@ -137,16 +137,19 @@ let rec format_statement
       Print.punctuation "="
       (format_expr decl_ctx ~debug)
       naked_expr
-  | STryExcept { try_block = b_try; except; with_block = b_with } ->
+  | STryWEmpty { try_block = b_try; with_block = b_with } ->
     Format.fprintf fmt "@[<v 2>%a%a@ %a@]@\n@[<v 2>%a %a%a@ %a@]" Print.keyword
       "try" Print.punctuation ":"
       (format_block decl_ctx ~debug)
-      b_try Print.keyword "with" Print.except except Print.punctuation ":"
+      b_try Print.keyword "with" Print.op_style "Empty" Print.punctuation ":"
       (format_block decl_ctx ~debug)
       b_with
-  | SRaise except ->
-    Format.fprintf fmt "@[<hov 2>%a %a@]" Print.keyword "raise" Print.except
-      except
+  | SRaiseEmpty ->
+    Format.fprintf fmt "@[<hov 2>%a %a@]" Print.keyword "raise" Print.op_style
+      "Empty"
+  | SFatalError err ->
+    Format.fprintf fmt "@[<hov 2>%a %a@]" Print.keyword "fatal"
+      Print.runtime_error err
   | SIfThenElse { if_expr = e_if; then_block = b_true; else_block = b_false } ->
     Format.fprintf fmt "@[<v 2>%a @[<hov 2>%a@]%a@ %a@ @]@[<v 2>%a%a@ %a@]"
       Print.keyword "if"
@@ -164,12 +167,11 @@ let rec format_statement
     Format.fprintf fmt "@[<hov 2>%a %a@]" Print.keyword "assert"
       (format_expr decl_ctx ~debug)
       (naked_expr, Mark.get stmt)
-  | SSwitch { switch_expr = e_switch; enum_name = enum; switch_cases = arms; _ }
+  | SSwitch { switch_var = v_switch; enum_name = enum; switch_cases = arms; _ }
     ->
     let cons = EnumName.Map.find enum decl_ctx.ctx_enums in
     Format.fprintf fmt "@[<v 0>%a @[<hov 2>%a@]%a@,@]%a" Print.keyword "switch"
-      (format_expr decl_ctx ~debug)
-      e_switch Print.punctuation ":"
+      format_var_name v_switch Print.punctuation ":"
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.fprintf fmt "@\n")
          (fun fmt ((case, _), switch_case_data) ->
@@ -230,21 +232,11 @@ let format_item decl_ctx ?debug ppf def =
   Format.pp_print_cut ppf ()
 
 let format_program ?debug ppf prg =
-  let decl_ctx =
-    (* TODO: this is redundant with From_dcalc.add_option_type (which is already
-       applied in avoid_exceptions mode) *)
-    {
-      prg.ctx.decl_ctx with
-      ctx_enums =
-        EnumName.Map.add Expr.option_enum Expr.option_enum_config
-          prg.ctx.decl_ctx.ctx_enums;
-    }
-  in
   Format.pp_open_vbox ppf 0;
   ModuleName.Map.iter
     (fun m var ->
       Format.fprintf ppf "%a %a = %a@," Print.keyword "module" format_var_name
         var ModuleName.format m)
     prg.ctx.modules;
-  Format.pp_print_list (format_item decl_ctx ?debug) ppf prg.code_items;
+  Format.pp_print_list (format_item prg.ctx.decl_ctx ?debug) ppf prg.code_items;
   Format.pp_close_box ppf ()

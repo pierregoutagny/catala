@@ -73,14 +73,14 @@ let all_match_cases_take_unit_and_map_to_boolean_literals cases =
 
 let binder_vars_used_at_most_once
     (binder :
-      ( (('a, 'b) dcalc_lcalc, ('a, 'b) dcalc_lcalc, 'm) base_gexpr,
-        (('a, 'b) dcalc_lcalc, 'm) gexpr )
+      ( ('a dcalc_lcalc, 'a dcalc_lcalc, 'm) base_gexpr,
+        ('a dcalc_lcalc, 'm) gexpr )
       Bindlib.mbinder) : bool =
   (* fast path: variables not used at all *)
   (not (Array.exists Fun.id (Bindlib.mbinder_occurs binder)))
   ||
   let vars, body = Bindlib.unmbind binder in
-  let rec vars_count (e : (('a, 'b) dcalc_lcalc, 'm) gexpr) : int array =
+  let rec vars_count (e : ('a dcalc_lcalc, 'm) gexpr) : int array =
     match e with
     | EVar v, _ ->
       Array.map
@@ -94,11 +94,118 @@ let binder_vars_used_at_most_once
   in
   not (Array.exists (fun c -> c > 1) (vars_count body))
 
+(* beta reduction when variables not used, and for variable aliases and
+   literal *)
+let simplified_apply f args tys =
+  match f with
+  | EAbs { binder; _ }, _
+    when binder_vars_used_at_most_once binder
+         || List.for_all
+              (function (EVar _ | ELit _), _ -> true | _ -> false)
+              args ->
+    Mark.remove (Bindlib.msubst binder (List.map fst args |> Array.of_list))
+  | _ -> EApp { f; args; tys }
+
+let literal_bool = function
+  | ELit (LBool b), _
+  | EAppOp { op = Log _, _; args = [(ELit (LBool b), _)]; _ }, _ ->
+    Some b
+  | _ -> None
+
+let simplified_ifthenelse cond etrue efalse m =
+  if Expr.equal etrue efalse then Mark.remove etrue
+  else
+    match literal_bool etrue, literal_bool efalse with
+    | Some true, Some false -> Mark.remove cond
+    | Some false, Some true ->
+      EAppOp
+        {
+          op = Not, Expr.mark_pos m;
+          tys = [TLit TBool, Expr.mark_pos m];
+          args = [cond];
+        }
+    | Some true, Some true | Some false, Some false -> Mark.remove etrue
+    | _ -> (
+      match literal_bool cond with
+      | Some true -> Mark.remove etrue
+      | Some false -> Mark.remove efalse
+      | None -> EIfThenElse { cond; etrue; efalse })
+
+(* builds a [EMatch] term, flattening nested matches/if-then-else: the matching
+   arg branching are explored, and if they all lead to enum constructor
+   literals, the surrounding match cases are inlined. Code duplication is
+   detected and aborts the inlining. *)
+let simplified_match enum_name match_arg cases mark =
+  let max_duplicate_inlining_size = 3 in
+  let allow_duplicate_inlining_cases =
+    EnumConstructor.Map.fold
+      (fun cons f acc ->
+        if Expr.size f <= max_duplicate_inlining_size then
+          EnumConstructor.Set.add cons acc
+        else acc)
+      cases EnumConstructor.Set.empty
+  in
+  let app_cases cons e =
+    simplified_apply
+      (EnumConstructor.Map.find cons cases)
+      [e]
+      [Expr.maybe_ty (Mark.get e)]
+  in
+  let ret_ty = Expr.maybe_ty mark in
+  let rec aux seen_constrs = function
+    | EInj { cons; e; _ }, m ->
+      if EnumConstructor.Set.mem cons seen_constrs then raise Exit;
+      (* Abort inlining to avoid code duplication *)
+      let seen_constrs =
+        if EnumConstructor.Set.mem cons allow_duplicate_inlining_cases then
+          seen_constrs
+        else EnumConstructor.Set.add cons seen_constrs
+      in
+      seen_constrs, (app_cases cons e, Expr.with_ty m ret_ty)
+    | EMatch ({ cases; _ } as ematch), m ->
+      let seen_constrs, cases =
+        EnumConstructor.Map.fold
+          (fun cons case (seen_constrs, acc) ->
+            match case with
+            | EAbs ({ binder; _ } as eabs), m ->
+              let vars, body = Bindlib.unmbind binder in
+              let seen_constrs, body = aux seen_constrs body in
+              let binder = Bindlib.unbox (Expr.bind vars (Expr.rebox body)) in
+              let m =
+                Expr.map_ty
+                  (function
+                    | TArrow (args, _), pos -> TArrow (args, ret_ty), pos
+                    | (TAny, _) as t -> t
+                    | _ -> assert false)
+                  m
+              in
+              ( seen_constrs,
+                EnumConstructor.Map.add cons (EAbs { eabs with binder }, m) acc
+              )
+            | _ -> assert false)
+          cases
+          (seen_constrs, EnumConstructor.Map.empty)
+      in
+      seen_constrs, (EMatch { ematch with cases }, Expr.with_ty m ret_ty)
+    | EIfThenElse { cond; etrue; efalse }, m ->
+      let seen_constrs, etrue = aux seen_constrs etrue in
+      let seen_constrs, efalse = aux seen_constrs efalse in
+      let mark = Expr.with_ty m ret_ty in
+      seen_constrs, (simplified_ifthenelse cond etrue efalse mark, mark)
+    | _ -> raise Exit
+  in
+  try
+    let _seen_contrs, e = aux EnumConstructor.Set.empty match_arg in
+    Mark.remove e
+  with Exit ->
+    (* Optimisation was aborted due a non-terminal or code duplication *)
+    EMatch { e = match_arg; cases; name = enum_name }
+
 let rec optimize_expr :
     type a b.
     (a, b, 'm) optimizations_ctx ->
-    ((a, b) dcalc_lcalc, 'm) gexpr ->
-    ((a, b) dcalc_lcalc, 'm) boxed_gexpr =
+    (a dcalc_lcalc, 'm) gexpr ->
+    (a dcalc_lcalc, 'm) boxed_gexpr =
  fun ctx e ->
   (* We proceed bottom-up, first apply on the subterms *)
   let e = Expr.map ~f:(optimize_expr ctx) ~op:Fun.id e in
@@ -107,20 +214,20 @@ let rec optimize_expr :
      able to keep the inner position (see the division_by_zero test) *)
   (* Then reduce the parent node (this is applied through Box.apply, therefore
      delayed to unbinding time: no need to be concerned about reboxing) *)
-  let reduce (e : ((a, b) dcalc_lcalc, 'm) gexpr) =
+  let reduce (e : (a dcalc_lcalc, 'm) gexpr) =
     (* Todo: improve the handling of eapp(log,elit) cases here, it obfuscates
        the matches and the log calls are not preserved, which would be a good
        property *)
     match Mark.remove e with
-    | EAppOp { op = Not; args = [(ELit (LBool b), _)]; _ } ->
+    | EAppOp { op = Not, _; args = [(ELit (LBool b), _)]; _ } ->
       (* reduction of logical not *)
       ELit (LBool (not b))
-    | EAppOp { op = Or; args = [(ELit (LBool b), _); (e, _)]; _ }
-    | EAppOp { op = Or; args = [(e, _); (ELit (LBool b), _)]; _ } ->
+    | EAppOp { op = Or, _; args = [(ELit (LBool b), _); (e, _)]; _ }
+    | EAppOp { op = Or, _; args = [(e, _); (ELit (LBool b), _)]; _ } ->
       (* reduction of logical or *)
       if b then ELit (LBool true) else e
-    | EAppOp { op = And; args = [(ELit (LBool b), _); (e, _)]; _ }
-    | EAppOp { op = And; args = [(e, _); (ELit (LBool b), _)]; _ } ->
+    | EAppOp { op = And, _; args = [(ELit (LBool b), _); (e, _)]; _ }
+    | EAppOp { op = And, _; args = [(e, _); (ELit (LBool b), _)]; _ } ->
       (* reduction of logical and *)
       if b then e else ELit (LBool false)
     | EMatch { e = EInj { e = e'; cons; name = n' }, _; cases; name = n }
@@ -217,6 +324,8 @@ let rec optimize_expr :
       (* beta reduction when variables not used, and for variable aliases and
          literal *)
       Mark.remove (Bindlib.msubst binder (List.map fst args |> Array.of_list))
+    | EMatch { name; e; cases } -> simplified_match name e cases mark
+    | EApp { f; args; tys } -> simplified_apply f args tys
     | EStructAccess { name; field; e = EStruct { name = name1; fields }, _ }
       when StructName.equal name name1 ->
       Mark.remove (StructField.Map.find field fields)
@@ -224,7 +333,7 @@ let rec optimize_expr :
     | EDefault { excepts; just; cons } -> (
       (* TODO: mechanically prove each of these optimizations correct *)
       let excepts =
-        List.filter (fun except -> Mark.remove except <> EEmptyError) excepts
+        List.filter (fun except -> Mark.remove except <> EEmpty) excepts
         (* we can discard the exceptions that are always empty error *)
       in
       let value_except_count =
@@ -249,69 +358,28 @@ let rec optimize_expr :
           ->
           (* No exceptions with condition [true] *)
           Mark.remove cons
-        | ( [],
-            ( ( ELit (LBool false)
-              | EAppOp { op = Log _; args = [(ELit (LBool false), _)]; _ } ),
-              _ ) ) ->
-          (* No exceptions and condition false *)
-          EEmptyError
+        | [], cond -> simplified_ifthenelse cond cons (EEmpty, mark) mark
         | ( [except],
             ( ( ELit (LBool false)
-              | EAppOp { op = Log _; args = [(ELit (LBool false), _)]; _ } ),
+              | EAppOp { op = Log _, _; args = [(ELit (LBool false), _)]; _ } ),
               _ ) ) ->
           (* Single exception and condition false *)
           Mark.remove except
         | excepts, just -> EDefault { excepts; just; cons })
-    | EIfThenElse
-        {
-          cond =
-            ( ELit (LBool true), _
-            | EAppOp { op = Log _; args = [(ELit (LBool true), _)]; _ }, _ );
-          etrue;
-          _;
-        } ->
-      Mark.remove etrue
-    | EIfThenElse
-        {
-          cond =
-            ( ( ELit (LBool false)
-              | EAppOp { op = Log _; args = [(ELit (LBool false), _)]; _ } ),
-              _ );
-          efalse;
-          _;
-        } ->
-      Mark.remove efalse
-    | EIfThenElse
-        {
-          cond;
-          etrue =
-            ( ( ELit (LBool btrue)
-              | EAppOp { op = Log _; args = [(ELit (LBool btrue), _)]; _ } ),
-              _ );
-          efalse =
-            ( ( ELit (LBool bfalse)
-              | EAppOp { op = Log _; args = [(ELit (LBool bfalse), _)]; _ } ),
-              _ );
-        } ->
-      if btrue && not bfalse then Mark.remove cond
-      else if (not btrue) && bfalse then
-        EAppOp
-          { op = Not; tys = [TLit TBool, Expr.mark_pos mark]; args = [cond] }
-        (* note: this last call eliminates the condition & might skip log calls
-           as well *)
-      else (* btrue = bfalse *) ELit (LBool btrue)
-    | EAppOp { op = Op.Fold; args = [_f; init; (EArray [], _)]; _ } ->
+    | EIfThenElse { cond; etrue; efalse } ->
+      simplified_ifthenelse cond etrue efalse mark
+    | EAppOp { op = Op.Fold, _; args = [_f; init; (EArray [], _)]; _ } ->
       (*reduces a fold with an empty list *)
       Mark.remove init
     | EAppOp
         {
-          op = Map;
+          op = (Map, _) as op;
           args =
             [
               f1;
               ( EAppOp
                   {
-                    op = Map;
+                    op = Map, _;
                     args = [f2; ls];
                     tys = [_; ((TArray xty, _) as lsty)];
                   },
@@ -339,7 +407,7 @@ let rec optimize_expr :
       in
       let fg = optimize_expr ctx (Expr.unbox fg) in
       let mapl =
-        Expr.eappop ~op:Map
+        Expr.eappop ~op
           ~args:[fg; Expr.box ls]
           ~tys:[Expr.maybe_ty (Mark.get fg); lsty]
           mark
@@ -347,13 +415,13 @@ let rec optimize_expr :
       Mark.remove (Expr.unbox mapl)
     | EAppOp
         {
-          op = Map;
+          op = Map, _;
           args =
             [
               f1;
               ( EAppOp
                   {
-                    op = Map2;
+                    op = (Map2, _) as op;
                     args = [f2; ls1; ls2];
                     tys =
                       [
@@ -392,7 +460,7 @@ let rec optimize_expr :
       in
       let fg = optimize_expr ctx (Expr.unbox fg) in
       let mapl =
-        Expr.eappop ~op:Map2
+        Expr.eappop ~op
           ~args:[fg; Expr.box ls1; Expr.box ls2]
           ~tys:[Expr.maybe_ty (Mark.get fg); ls1ty; ls2ty]
           mark
@@ -400,7 +468,7 @@ let rec optimize_expr :
       Mark.remove (Expr.unbox mapl)
     | EAppOp
         {
-          op = Op.Fold;
+          op = Op.Fold, _;
           args = [f; init; (EArray [e'], _)];
           tys = [_; tinit; (TArray tx, _)];
         } ->
@@ -416,23 +484,15 @@ let rec optimize_expr :
                 el) ->
       (* identity tuple reconstruction *)
       Mark.remove e
-    | ECatch { body; exn; handler } -> (
-      (* peephole exception catching reductions *)
-      match Mark.remove body, Mark.remove handler with
-      | ERaise exn', ERaise exn'' when exn' = exn && exn = exn'' -> ERaise exn
-      | ERaise exn', _ when exn' = exn -> Mark.remove handler
-      | _, ERaise exn' when exn' = exn -> Mark.remove body
-      | _ -> ECatch { body; exn; handler })
     | e -> e
   in
   Expr.Box.app1 e reduce mark
 
 let optimize_expr :
       'm.
-      decl_ctx ->
-      (('a, 'b) dcalc_lcalc, 'm) gexpr ->
-      (('a, 'b) dcalc_lcalc, 'm) boxed_gexpr =
- fun (decl_ctx : decl_ctx) (e : (('a, 'b) dcalc_lcalc, 'm) gexpr) ->
+      decl_ctx -> ('a dcalc_lcalc, 'm) gexpr -> ('a dcalc_lcalc, 'm) boxed_gexpr
+    =
+ fun (decl_ctx : decl_ctx) (e : ('a dcalc_lcalc, 'm) gexpr) ->
   optimize_expr { decl_ctx } e
 
 let optimize_program (p : 'm program) : 'm program =

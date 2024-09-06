@@ -142,7 +142,7 @@ let rec lazy_eval :
         log "@]}";
         e, env
       | e, _ -> error e "Invalid apply on %a" Expr.format e)
-  | (EAbs _ | ELit _ | EEmptyError), _ -> e0, env (* these are values *)
+  | (EAbs _ | ELit _ | EEmpty), _ -> e0, env (* these are values *)
   | (EStruct _ | ETuple _ | EInj _ | EArray _), _ ->
     if not llevel.eval_struct then e0, env
     else
@@ -183,7 +183,7 @@ let rec lazy_eval :
       List.filter_map
         (fun e ->
           match eval_to_value env e ~eval_default:false with
-          | (EEmptyError, _), _ -> None
+          | (EEmpty, _), _ -> None
           | e -> Some e)
         excepts
     in
@@ -191,7 +191,7 @@ let rec lazy_eval :
     | [] -> (
       match eval_to_value env just with
       | (ELit (LBool true), _), _ -> lazy_eval ctx env llevel cons
-      | (ELit (LBool false), _), _ -> (EEmptyError, m), env
+      | (ELit (LBool false), _), _ -> (EEmpty, m), env
       | e, _ -> error e "Invalid exception justification %a" Expr.format e)
     | [(e, env)] ->
       log "@[<hov 5>EVAL %a@]" Expr.format e;
@@ -208,7 +208,7 @@ let rec lazy_eval :
     | e, _ -> error e "Invalid condition %a" Expr.format e)
   | EErrorOnEmpty e, _ -> (
     match eval_to_value env e ~eval_default:false with
-    | ((EEmptyError, _) as e'), _ ->
+    | ((EEmpty, _) as e'), _ ->
       (* This does _not_ match the eager semantics ! *)
       error e' "This value is undefined %a" Expr.format e
     | e, env -> lazy_eval ctx env llevel e)
@@ -220,13 +220,15 @@ let rec lazy_eval :
       | (ELit (LBool false), _), _ ->
         error e "Assert failure (%a)" Expr.format e
       | _ -> error e "Invalid assertion condition %a" Expr.format e)
+  | EFatalError err, m ->
+    error e0 "%a" Format.pp_print_text (Runtime.error_message err)
   | EExternal _, _ -> assert false (* todo *)
   | _ -> .
 
 let interpret_program (prg : ('dcalc, 'm) gexpr program) (scope : ScopeName.t) :
     ('t, 'm) gexpr * 'm Env.t =
   let ctx = prg.decl_ctx in
-  let (all_env, scopes), () =
+  let (all_env, scopes), _ =
     BoundList.fold_left prg.code_items ~init:(Env.empty, ScopeName.Map.empty)
       ~f:(fun (env, scopes) item v ->
         match item with
@@ -251,7 +253,7 @@ let interpret_program (prg : ('dcalc, 'm) gexpr program) (scope : ScopeName.t) :
              | TArrow (ty_in, ty_out), _ ->
                Expr.make_abs
                  [| Var.make "_" |]
-                 (Bindlib.box EEmptyError, Expr.with_ty m ty_out)
+                 (Bindlib.box EEmpty, Expr.with_ty m ty_out)
                  ty_in (Expr.mark_pos m)
              | ty -> Expr.evar (Var.make "undefined_input") (Expr.with_ty m ty))
            (StructName.Map.find scope_arg_struct ctx.ctx_structs))
@@ -269,7 +271,8 @@ let run includes optimize check_invariants ex_scope options =
     Driver.Passes.dcalc options ~includes ~optimize ~check_invariants
       ~typed:Expr.typed
   in
-  Interpreter.load_runtime_modules prg;
+  Interpreter.load_runtime_modules prg
+    ~hashf:(Hash.finalise ~closure_conversion:false ~monomorphize_types:false);
   let scope = Driver.Commands.get_scope_uid prg.decl_ctx ex_scope in
   let result_expr, _env = interpret_program prg scope in
   let fmt = Format.std_formatter in

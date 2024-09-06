@@ -19,25 +19,39 @@ declaration scope S:
 declaration half content decimal
   depends on x content integer
   equals x / 2
+
+declaration maybe content Enum1
+  depends on x content Enum1
 ```
 
 ```catala
 scope S:
   definition sr equals $1,000
   definition e1 equals Maybe
+
+
+declaration maybe content Enum1
+  depends on x content Enum1
+  equals Maybe
 ```
 
 
 
 ```catala-test-inline
 $ catala Typecheck --check-invariants
-[RESULT] All invariant checks passed
-[RESULT] Typechecking successful!
+┌─[RESULT]─
+│ All invariant checks passed
+└─
+┌─[RESULT]─
+│ Typechecking successful!
+└─
 ```
 
 ```catala-test-inline
 $ catala typecheck --disable-warnings
-[RESULT] Typechecking successful!
+┌─[RESULT]─
+│ Typechecking successful!
+└─
 ```
 
 ```catala-test { id="ml" }

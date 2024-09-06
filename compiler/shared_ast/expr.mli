@@ -82,8 +82,10 @@ val eassert :
   'm mark ->
   ((< assertions : yes ; .. > as 'a), 'm) boxed_gexpr
 
+val efatalerror : Runtime.error -> 'm mark -> (< .. >, 'm) boxed_gexpr
+
 val eappop :
-  op:'a operator ->
+  op:'a operator Mark.pos ->
   args:('a, 'm) boxed_gexpr list ->
   tys:typ list ->
   'm mark ->
@@ -108,8 +110,7 @@ val eifthenelse :
   'm mark ->
   ('a any, 'm) boxed_gexpr
 
-val eemptyerror :
-  'm mark -> ((< defaultTerms : yes ; .. > as 'a), 'm) boxed_gexpr
+val eempty : 'm mark -> ((< defaultTerms : yes ; .. > as 'a), 'm) boxed_gexpr
 
 val eerroronempty :
   ('a, 'm) boxed_gexpr ->
@@ -119,14 +120,6 @@ val eerroronempty :
 val egenericerror :
   'm mark -> ((< genericErrors : yes ; .. > as 'a), 'm) boxed_gexpr
 
-val ecatch :
-  ('a, 'm) boxed_gexpr ->
-  except ->
-  ('a, 'm) boxed_gexpr ->
-  'm mark ->
-  ((< exceptions : yes ; .. > as 'a), 'm) boxed_gexpr
-
-val eraise : except -> 'm mark -> (< exceptions : yes ; .. >, 'm) boxed_gexpr
 val elocation : 'a glocation -> 'm mark -> ((< .. > as 'a), 'm) boxed_gexpr
 
 val estruct :
@@ -232,6 +225,8 @@ val option_enum : EnumName.t
 val none_constr : EnumConstructor.t
 val some_constr : EnumConstructor.t
 val option_enum_config : typ EnumConstructor.Map.t
+val pos_to_runtime : Pos.t -> Runtime.source_position
+val runtime_to_pos : Runtime.source_position -> Pos.t
 
 (** Manipulation of marked expressions *)
 
@@ -244,7 +239,7 @@ val untype : ('a, 'm) gexpr -> ('a, untyped) boxed_gexpr
 
 val map :
   ?typ:(typ -> typ) ->
-  ?op:('a operator -> 'b operator) ->
+  ?op:('a operator Mark.pos -> 'b operator Mark.pos) ->
   f:(('a, 'm1) gexpr -> ('b, 'm2) boxed_gexpr) ->
   (('a, 'b, 'm1) base_gexpr, 'm2) marked ->
   ('b, 'm2) boxed_gexpr
@@ -362,7 +357,10 @@ val empty_thunked_term :
   'm mark -> (< defaultTerms : yes ; .. >, 'm) boxed_gexpr
 
 val thunk_term : ('a any, 'b) boxed_gexpr -> ('a, 'b) boxed_gexpr
-val unthunk_term_nobox : ('a any, 'm) gexpr -> 'm mark -> ('a, 'm) gexpr
+
+val unthunk_term_nobox : ('a any, 'm) gexpr -> ('a, 'm) gexpr
+(** Remove thunking around an expression (this assumes it's the right form,
+    raises Invalid_argument otherwise) *)
 
 val make_let_in :
   ('a, 'm) gexpr Var.t ->
@@ -398,16 +396,7 @@ val remove_logging_calls :
 (** Removes all calls to [Log] unary operators in the AST, replacing them by
     their argument. *)
 
-val rename_vars :
-  ?exclude:string list ->
-  ?reset_context_for_closed_terms:bool ->
-  ?skip_constant_binders:bool ->
-  ?constant_binder_name:string option ->
-  ('a, 'm) gexpr ->
-  ('a, 'm) boxed_gexpr
-(** Disambiguates all variable names in [e]. [exclude] will blacklist the given
-    names (useful for keywords or built-in names) ; the other flags behave as
-    defined in the bindlib documentation for module type [Rename] *)
+(** {2 Formatting} *)
 
 val format : Format.formatter -> ('a, 'm) gexpr -> unit
 (** Simple printing without debug, use [Print.expr ()] instead to follow the
@@ -419,8 +408,6 @@ val equal_lit : lit -> lit -> bool
 val compare_lit : lit -> lit -> int
 val equal_location : 'a glocation Mark.pos -> 'a glocation Mark.pos -> bool
 val compare_location : 'a glocation Mark.pos -> 'a glocation Mark.pos -> int
-val equal_except : except -> except -> bool
-val compare_except : except -> except -> int
 
 val equal : ('a, 'm) gexpr -> ('a, 'm) gexpr -> bool
 (** Determines if two expressions are equal, omitting their position information *)
@@ -502,9 +489,6 @@ module Box : sig
     ('a, 'm) naked_gexpr) ->
     'm mark ->
     ('a, 'm) boxed_gexpr
-
-  val fv : 'b Bindlib.box -> string list
-  (** [fv] return the list of free variables from a boxed term. *)
 
   val assert_closed : 'b Bindlib.box -> unit
   (** [assert_closed b] check there is no free variables in then [b] boxed term.

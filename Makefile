@@ -99,14 +99,13 @@ prepare-install:
 	dune build @install --promote-install-files
 
 install: prepare-install
-	if [ x$$($(OPAM) --version) = "x2.1.5" ]; then \
-	  $(OPAM) install . --working-dir; \
-	else \
-	  $(OPAM) install . --working-dir --assume-built; \
-	fi
+	case x$$($(OPAM) --version) in \
+	  x2.1.5|x2.1.6) $(OPAM) install . --working-dir;; \
+	  *) $(OPAM) install . --working-dir --assume-built;; \
+	esac
 # `dune install` would work, but does a dirty install to the opam prefix without
 # registering with opam.
-# --assume-built is broken in 2.1.5
+# --assume-built is broken in 2.1.5 and 2.1.6
 
 inst: prepare-install
 	@opam custom-install \
@@ -194,14 +193,14 @@ syntax:
 # High-level test and benchmarks commands
 ##########################################
 
-CATALA_OPTS ?=
+CATALAOPTS ?=
 CLERK_OPTS ?=
 
 CATALA_BIN=_build/default/$(COMPILER_DIR)/catala.exe
 CLERK_BIN=_build/default/$(BUILD_SYSTEM_DIR)/clerk.exe
 
 CLERK_TEST=$(CLERK_BIN) test --exe $(CATALA_BIN) \
-	$(CLERK_OPTS) $(if $(CATALA_OPTS),--catala-opts=$(CATALA_OPTS),)
+	$(CLERK_OPTS) $(if $(CATALAOPTS),--catala-opts=$(CATALAOPTS),)
 
 
 .FORCE:
@@ -218,23 +217,24 @@ tests: test
 TEST_FLAGS_LIST = ""\
 -O \
 --lcalc \
---lcalc,--avoid-exceptions,-O
+--lcalc,--closure-conversion,-O
 
 # Does not include running dune (to avoid duplication when run among bigger rules)
 testsuite-base: .FORCE
 	@for F in $(TEST_FLAGS_LIST); do \
 	  echo >&2; \
 	  [ -z "$$F" ] || echo ">> RE-RUNNING TESTS WITH FLAGS: $$F" >&2; \
-	  $(CLERK_TEST) tests --test-flags="$$F" || break; \
+	  $(CLERK_TEST) tests --test-flags="$$F" || exit 1; \
 	done
 
 #> testsuite				: Run interpreter tests over a selection of configurations
 testsuite: unit-tests
+	$(CLERK_TEST) doc
 	$(MAKE) testsuite-base
 
 #> reset-tests				: Update the expected test results from current run
 reset-tests: .FORCE $(CLERK_BIN)
-	$(CLERK_TEST) tests --reset
+	$(CLERK_TEST) tests doc --reset
 
 tests/%: .FORCE
 	$(CLERK_TEST) test $@
@@ -245,9 +245,11 @@ tests/%: .FORCE
 
 # Note: these are already built by the @doc dune alias
 # (and therefore the doc target here)
-WEBSITE_ASSETS = grammar.html catala.html clerk.html
+WEBSITE_ASSETS_LOCAL_BASE = grammar.html catala.html clerk.html
 
-WEBSITE_ASSETS_EXAMPLES = \
+WEBSITE_ASSETS_LOCAL = $(addprefix _build/default/,$(WEBSITE_ASSETS_BASE))
+
+WEBSITE_ASSETS_EXAMPLES_BASE = \
   tutorial_en/tutorial_en.html \
   tutoriel_fr/tutoriel_fr.html \
   us_tax_code/us_tax_code.html \
@@ -256,19 +258,22 @@ WEBSITE_ASSETS_EXAMPLES = \
   aides_logement/Aides_logement.html \
   aides_logement/Aides_logement_schema.json
 
-WEBSITE_ASSETS_ALL = $(WEBSITE_ASSETS) $(addprefix catala-examples.tmp/,$(WEBSITE_ASSETS_EXAMPLES))
+WEBSITE_ASSETS_EXAMPLES = \
+  $(addprefix _build/default/,$(WEBSITE_ASSETS_EXAMPLES_BASE))
 
-website-assets-base: build
+$(WEBSITE_ASSETS_LOCAL): build
+	dune build $(WEBSITE_ASSETS)
+
+$(WEBSITE_ASSETS_EXAMPLES):
 	$(call local_tmp_clone,catala-examples) && \
 	$(MAKE) -C catala-examples.tmp \
 	  CATALA=../$(CATALA_BIN) \
 	  CLERK=../$(CLERK_BIN) \
 	  BUILD=../_build/default \
-	  $(addprefix ../_build/default/,$(WEBSITE_ASSETS_EXAMPLES))
-	dune build $(addprefix _build/default/,$(WEBSITE_ASSETS_ALL)) $(WEBSITE_ASSETS)
+	  $(addprefix ../,$(WEBSITE_ASSETS_EXAMPLES))
 
-website-assets.tar: website-assets-base
-	tar cf $@ $(foreach file,$(WEBSITE_ASSETS_ALL),-C $(CURDIR)/$(dir _build/default/$(file)) $(notdir $(file)))
+website-assets.tar: $(WEBSITE_ASSETS_LOCAL) $(WEBSITE_ASSETS_EXAMPLES)
+	tar cf $@ $(foreach file,$^,-C $(CURDIR)/$(dir $(file)) $(notdir $(file)))
 
 #> website-assets				: Builds all the assets necessary for the Catala website
 website-assets: website-assets.tar
@@ -294,7 +299,8 @@ BRANCH = $(shell git branch --show-current 2>/dev/null || echo master)
 # its usage.
 local_tmp_clone = { \
   rm -rf $1.tmp && \
-  trap "rm -rf $1.tmp" EXIT && \
+  CLEANUP_TMP_GIT_CLONES="$${CLEANUP_TMP_GIT_CLONES}rm -rf $1.tmp; " && \
+  trap "$$CLEANUP_TMP_GIT_CLONES" EXIT && \
   git clone https://github.com/CatalaLang/$1 \
     --depth 1 --reference-if-able ../$1 \
     $1.tmp -b $(BRANCH) || \
@@ -331,8 +337,12 @@ alltest: dependencies-python
 	  bench_ocaml \
 	  bench_js \
 	  bench_python && \
-	printf "\n#             \e[42;30m[ ALL TESTS PASSED ]\e[m             \e[32m☺\e[m\n" || \
-	{ printf "\n#             \e[41;30m[   TESTS FAILED   ]\e[m             \e[31m☹\e[m\n" ; exit 1; }
+	printf "\n# Full Catala testsuite:\t\t\e[42;30m ALL TESTS PASSED \e[m\t\t\e[32m☺\e[m\n" || \
+	{ printf "\n# Full Catala testsuite:\t\t\e[41;30m   TESTS FAILED   \e[m\t\t\e[31m☹\e[m\n" ; exit 1; }
+
+#> alltest-					: Like 'alltest', but skips doc building and is much faster
+alltest-:
+	@$(MAKE) alltest NODOC=1
 
 #> clean					: Clean build artifacts
 clean:

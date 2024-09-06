@@ -18,10 +18,12 @@
 \usepackage[a4paper,landscape,margin=1cm,includehead,headsep=2ex,nofoot]{geometry}
 \usepackage{fancyhdr}
 \usepackage{array}
-\usepackage[none]{hyphenat}
 \usepackage[document]{ragged2e}
 
 \usemintedstyle{tango}
+
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
 
 \setsansfont{DejaVu Sans}[Scale=0.9]
 \setmonofont{DejaVu Sans Mono}[Scale=0.9]
@@ -378,8 +380,8 @@
   \\
   \begin{catala}
     ```catala
-    get_day of ...    get_month of ...
-    get_year of ...
+    get_month of ...
+    first_day_of_month of ...
     ```
   \end{catala}
   & Date parts
@@ -674,7 +676,7 @@
   \\
   \begin{catala}
     ```catala
-    x + 2 for x among lst
+    (x + 2) for x among lst
     ```
   \end{catala}
   & Mapping
@@ -688,7 +690,7 @@
   \\
   \begin{catala}
     ```catala
-    x - 2 for x among lst
+    (x - 2) for x among lst
       such that x > 2
     ```
   \end{catala}
@@ -696,7 +698,7 @@
   \\
   \begin{catala}
     ```catala
-    x + y for (x, y) among (lst1, lst2)
+    (x + y) for (x, y) among (lst1, lst2)
     ```
   \end{catala}
   & Multiple mapping

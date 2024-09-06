@@ -108,8 +108,7 @@ let name : type a. a t -> string = function
   | Eq_dur_dur -> "o_eq_dur_dur"
   | Eq_dat_dat -> "o_eq_dat_dat"
   | Fold -> "o_fold"
-  | HandleDefault -> "o_handledefault"
-  | HandleDefaultOpt -> "o_handledefaultopt"
+  | HandleExceptions -> "handle_exceptions"
   | ToClosureEnv -> "o_toclosureenv"
   | FromClosureEnv -> "o_fromclosureenv"
 
@@ -232,8 +231,7 @@ let compare (type a1 a2) (t1 : a1 t) (t2 : a2 t) =
   | Eq_dat_dat, Eq_dat_dat
   | Eq_dur_dur, Eq_dur_dur
   | Fold, Fold
-  | HandleDefault, HandleDefault
-  | HandleDefaultOpt, HandleDefaultOpt
+  | HandleExceptions, HandleExceptions
   | FromClosureEnv, FromClosureEnv | ToClosureEnv, ToClosureEnv -> 0
   | Not, _ -> -1 | _, Not -> 1
   | Length, _ -> -1 | _, Length -> 1
@@ -318,8 +316,7 @@ let compare (type a1 a2) (t1 : a1 t) (t2 : a2 t) =
   | Eq_mon_mon, _ -> -1 | _, Eq_mon_mon -> 1
   | Eq_dat_dat, _ -> -1 | _, Eq_dat_dat -> 1
   | Eq_dur_dur, _ -> -1 | _, Eq_dur_dur -> 1
-  | HandleDefault, _ -> -1 | _, HandleDefault -> 1
-  | HandleDefaultOpt, _ -> -1 | _, HandleDefaultOpt -> 1
+  | HandleExceptions, _ -> -1 | _, HandleExceptions -> 1
   | FromClosureEnv, _ -> -1 | _, FromClosureEnv -> 1
   | ToClosureEnv, _ -> -1 | _, ToClosureEnv -> 1
   | Fold, _  | _, Fold -> .
@@ -330,36 +327,39 @@ let equal t1 t2 = compare t1 t2 = 0
 
 let kind_dispatch :
     type a.
-    polymorphic:(< polymorphic : yes ; .. > t -> 'b) ->
-    monomorphic:(< monomorphic : yes ; .. > t -> 'b) ->
-    ?overloaded:(< overloaded : yes ; .. > t -> 'b) ->
-    ?resolved:(< resolved : yes ; .. > t -> 'b) ->
-    a t ->
+    polymorphic:(< polymorphic : yes ; .. > t Mark.pos -> 'b) ->
+    monomorphic:(< monomorphic : yes ; .. > t Mark.pos -> 'b) ->
+    ?overloaded:(< overloaded : yes ; .. > t Mark.pos -> 'b) ->
+    ?resolved:(< resolved : yes ; .. > t Mark.pos -> 'b) ->
+    a t Mark.pos ->
     'b =
  fun ~polymorphic ~monomorphic ?(overloaded = fun _ -> assert false)
      ?(resolved = fun _ -> assert false) op ->
   match op with
-  | ( Not | GetDay | GetMonth | GetYear | FirstDayOfMonth | LastDayOfMonth | And
-    | Or | Xor ) as op ->
+  | ( ( Not | GetDay | GetMonth | GetYear | FirstDayOfMonth | LastDayOfMonth
+      | And | Or | Xor ),
+      _ ) as op ->
     monomorphic op
-  | ( Log _ | Length | Eq | Map | Map2 | Concat | Filter | Reduce | Fold
-    | HandleDefault | HandleDefaultOpt | FromClosureEnv | ToClosureEnv ) as op
-    ->
+  | ( ( Log _ | Length | Eq | Map | Map2 | Concat | Filter | Reduce | Fold
+      | HandleExceptions | FromClosureEnv | ToClosureEnv ),
+      _ ) as op ->
     polymorphic op
-  | ( Minus | ToRat | ToMoney | Round | Add | Sub | Mult | Div | Lt | Lte | Gt
-    | Gte ) as op ->
+  | ( ( Minus | ToRat | ToMoney | Round | Add | Sub | Mult | Div | Lt | Lte | Gt
+      | Gte ),
+      _ ) as op ->
     overloaded op
-  | ( Minus_int | Minus_rat | Minus_mon | Minus_dur | ToRat_int | ToRat_mon
-    | ToMoney_rat | Round_rat | Round_mon | Add_int_int | Add_rat_rat
-    | Add_mon_mon | Add_dat_dur _ | Add_dur_dur | Sub_int_int | Sub_rat_rat
-    | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur | Sub_dur_dur | Mult_int_int
-    | Mult_rat_rat | Mult_mon_rat | Mult_dur_int | Div_int_int | Div_rat_rat
-    | Div_mon_mon | Div_mon_rat | Div_dur_dur | Lt_int_int | Lt_rat_rat
-    | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur | Lte_int_int | Lte_rat_rat
-    | Lte_mon_mon | Lte_dat_dat | Lte_dur_dur | Gt_int_int | Gt_rat_rat
-    | Gt_mon_mon | Gt_dat_dat | Gt_dur_dur | Gte_int_int | Gte_rat_rat
-    | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur | Eq_int_int | Eq_rat_rat
-    | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur ) as op ->
+  | ( ( Minus_int | Minus_rat | Minus_mon | Minus_dur | ToRat_int | ToRat_mon
+      | ToMoney_rat | Round_rat | Round_mon | Add_int_int | Add_rat_rat
+      | Add_mon_mon | Add_dat_dur _ | Add_dur_dur | Sub_int_int | Sub_rat_rat
+      | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur | Sub_dur_dur | Mult_int_int
+      | Mult_rat_rat | Mult_mon_rat | Mult_dur_int | Div_int_int | Div_rat_rat
+      | Div_mon_mon | Div_mon_rat | Div_dur_dur | Lt_int_int | Lt_rat_rat
+      | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur | Lte_int_int | Lte_rat_rat
+      | Lte_mon_mon | Lte_dat_dat | Lte_dur_dur | Gt_int_int | Gt_rat_rat
+      | Gt_mon_mon | Gt_dat_dat | Gt_dur_dur | Gte_int_int | Gte_rat_rat
+      | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur | Eq_int_int | Eq_rat_rat
+      | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur ),
+      _ ) as op ->
     resolved op
 
 type 'a no_overloads =
@@ -371,22 +371,23 @@ type 'a no_overloads =
   as
   'a
 
-let translate (t : 'a no_overloads t) : 'b no_overloads t =
+let translate (t : 'a no_overloads t Mark.pos) : 'b no_overloads t Mark.pos =
   match t with
-  | ( Not | GetDay | GetMonth | GetYear | FirstDayOfMonth | LastDayOfMonth | And
-    | Or | Xor | HandleDefault | HandleDefaultOpt | Log _ | Length | Eq | Map
-    | Map2 | Concat | Filter | Reduce | Fold | Minus_int | Minus_rat | Minus_mon
-    | Minus_dur | ToRat_int | ToRat_mon | ToMoney_rat | Round_rat | Round_mon
-    | Add_int_int | Add_rat_rat | Add_mon_mon | Add_dat_dur _ | Add_dur_dur
-    | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur
-    | Sub_dur_dur | Mult_int_int | Mult_rat_rat | Mult_mon_rat | Mult_dur_int
-    | Div_int_int | Div_rat_rat | Div_mon_mon | Div_mon_rat | Div_dur_dur
-    | Lt_int_int | Lt_rat_rat | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur
-    | Lte_int_int | Lte_rat_rat | Lte_mon_mon | Lte_dat_dat | Lte_dur_dur
-    | Gt_int_int | Gt_rat_rat | Gt_mon_mon | Gt_dat_dat | Gt_dur_dur
-    | Gte_int_int | Gte_rat_rat | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur
-    | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur
-    | FromClosureEnv | ToClosureEnv ) as op ->
+  | ( ( Not | GetDay | GetMonth | GetYear | FirstDayOfMonth | LastDayOfMonth
+      | And | Or | Xor | HandleExceptions | Log _ | Length | Eq | Map | Map2
+      | Concat | Filter | Reduce | Fold | Minus_int | Minus_rat | Minus_mon
+      | Minus_dur | ToRat_int | ToRat_mon | ToMoney_rat | Round_rat | Round_mon
+      | Add_int_int | Add_rat_rat | Add_mon_mon | Add_dat_dur _ | Add_dur_dur
+      | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur
+      | Sub_dur_dur | Mult_int_int | Mult_rat_rat | Mult_mon_rat | Mult_dur_int
+      | Div_int_int | Div_rat_rat | Div_mon_mon | Div_mon_rat | Div_dur_dur
+      | Lt_int_int | Lt_rat_rat | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur
+      | Lte_int_int | Lte_rat_rat | Lte_mon_mon | Lte_dat_dat | Lte_dur_dur
+      | Gt_int_int | Gt_rat_rat | Gt_mon_mon | Gt_dat_dat | Gt_dur_dur
+      | Gte_int_int | Gte_rat_rat | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur
+      | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur
+      | FromClosureEnv | ToClosureEnv ),
+      _ ) as op ->
     op
 
 let monomorphic_type ((op : monomorphic t), pos) =
@@ -537,8 +538,11 @@ let resolve_overload_aux (op : overloaded t) (operands : typ_lit list) :
       _ ) ->
     raise Not_found
 
-let resolve_overload ctx (op : overloaded t Mark.pos) (operands : typ list) :
-    < resolved : yes ; .. > t * [ `Straight | `Reversed ] =
+let resolve_overload
+    ctx
+    ((op, pos) : overloaded t Mark.pos)
+    (operands : typ list) :
+    < resolved : yes ; .. > t Mark.pos * [ `Straight | `Reversed ] =
   try
     let operands =
       List.map
@@ -546,11 +550,12 @@ let resolve_overload ctx (op : overloaded t Mark.pos) (operands : typ list) :
           match Mark.remove t with TLit tl -> tl | _ -> raise Not_found)
         operands
     in
-    resolve_overload_aux (Mark.remove op) operands
+    let op, direction = resolve_overload_aux op operands in
+    (op, pos), direction
   with Not_found ->
     Message.error
       ~extra_pos:
-        (("", Mark.get op)
+        (("", pos)
         :: List.map
              (fun ty ->
                ( Format.asprintf "Type %a coming from expression:"
@@ -559,7 +564,7 @@ let resolve_overload ctx (op : overloaded t Mark.pos) (operands : typ list) :
              operands)
       "I don't know how to apply operator %a on types %a"
       (Print.operator ~debug:true)
-      (Mark.remove op)
+      op
       (Format.pp_print_list
          ~pp_sep:(fun ppf () -> Format.fprintf ppf " and@ ")
          (Print.typ ctx))
@@ -567,4 +572,4 @@ let resolve_overload ctx (op : overloaded t Mark.pos) (operands : typ list) :
 
 let overload_type ctx (op : overloaded t Mark.pos) (operands : typ list) : typ =
   let rop = fst (resolve_overload ctx op operands) in
-  resolved_type (Mark.copy op rop)
+  resolved_type rop

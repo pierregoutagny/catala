@@ -12,20 +12,21 @@ scope Foo:
 
 ```catala-test-inline
 $ catala Typecheck --check-invariants
-[RESULT] All invariant checks passed
-[RESULT] Typechecking successful!
+┌─[RESULT]─
+│ All invariant checks passed
+└─
+┌─[RESULT]─
+│ Typechecking successful!
+└─
 ```
 
 ```catala-test-inline
 $ catala Lcalc -s Foo
 let scope Foo (Foo_in: Foo_in): Foo {bar: integer} =
   let set bar : integer =
-    try
-      handle_default
-        [λ () → handle_default [] (λ () → true) (λ () → 0)]
-        (λ () → false)
-        (λ () → raise EmptyError)
-    with EmptyError -> raise NoValueProvided
+    match (ESome 0) with
+    | ENone → error NoValue
+    | ESome arg → arg
   in
   return { Foo bar = bar; }
 ```

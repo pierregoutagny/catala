@@ -145,6 +145,7 @@ and literal =
   | LDate of literal_date
 
 and collection_op =
+  | Member of { element : expression }
   | Exists of { predicate : lident Mark.pos list * expression }
   | Forall of { predicate : lident Mark.pos list * expression }
   | Map of { f : lident Mark.pos list * expression }
@@ -175,8 +176,7 @@ and naked_expression =
   | IfThenElse of expression * expression * expression
   | Binop of binop Mark.pos * expression * expression
   | Unop of unop Mark.pos * expression
-  | CollectionOp of collection_op * expression
-  | MemCollection of expression * expression
+  | CollectionOp of collection_op Mark.pos * expression
   | TestMatchCase of expression * match_case_pattern Mark.pos
   | FunCall of expression * expression list
   | ScopeCall of
@@ -318,7 +318,7 @@ and law_structure =
   | CodeBlock of code_block * source_repr * bool (* Metadata if true *)
 
 and interface = {
-  intf_modname : uident Mark.pos;
+  intf_modname : program_module;
   intf_code : code_block;
       (** Invariant: an interface shall only contain [*Decl] elements, or
           [Topdef] elements with [topdef_expr = None] *)
@@ -330,8 +330,10 @@ and module_use = {
   mod_use_alias : uident Mark.pos;
 }
 
+and program_module = { module_name : uident Mark.pos; module_external : bool }
+
 and program = {
-  program_module_name : uident Mark.pos option;
+  program_module : program_module option;
   program_items : law_structure list;
   program_source_files : (string[@opaque]) list;
   program_used_modules : module_use list;

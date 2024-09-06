@@ -39,7 +39,7 @@ let tag_with_log_entry
     (markings : Uid.MarkedString.info list) : untyped Ast.expr boxed =
   if Global.options.trace then
     Expr.eappop
-      ~op:(Log (l, markings))
+      ~op:(Log (l, markings), Expr.pos e)
       ~tys:[TAny, Expr.pos e]
       ~args:[e] (Mark.get e)
   else e
@@ -200,15 +200,13 @@ let rec translate_expr (ctx : ctx) (e : D.expr) : untyped Ast.expr boxed =
       ~monomorphic:(fun op -> Expr.eappop ~op ~tys ~args m)
       ~polymorphic:(fun op -> Expr.eappop ~op ~tys ~args m)
       ~overloaded:(fun op ->
-        match
-          Operator.resolve_overload ctx.decl_ctx (Mark.add (Expr.pos e) op) tys
-        with
+        match Operator.resolve_overload ctx.decl_ctx op tys with
         | op, `Straight -> Expr.eappop ~op ~tys ~args m
         | op, `Reversed ->
           Expr.eappop ~op ~tys:(List.rev tys) ~args:(List.rev args) m)
   | ( EStruct _ | EStructAccess _ | ETuple _ | ETupleAccess _ | EInj _
-    | EMatch _ | ELit _ | EDefault _ | EPureDefault _ | EIfThenElse _ | EArray _
-    | EEmptyError | EErrorOnEmpty _ ) as e ->
+    | EMatch _ | ELit _ | EDefault _ | EPureDefault _ | EFatalError _
+    | EIfThenElse _ | EArray _ | EEmpty | EErrorOnEmpty _ ) as e ->
     Expr.map ~f:(translate_expr ctx) (e, m)
 
 (** {1 Rule tree construction} *)
@@ -450,19 +448,19 @@ let rec rule_tree_to_expr
              match Expr.unbox base_just with
              | ELit (LBool false), _ -> acc
              | _ ->
+               let cons = Expr.make_puredefault base_cons in
                Expr.edefault
                  ~excepts:[]
                    (* Here we insert the logging command that records when a
                       decision is taken for the value of a variable. *)
                  ~just:(tag_with_log_entry base_just PosRecordIfTrueBool [])
-                 ~cons:(Expr.epuredefault base_cons emark)
-                 emark
+                 ~cons (Mark.get cons)
                :: acc)
            (translate_and_unbox_list base_just_list)
            (translate_and_unbox_list base_cons_list)
            [])
       ~just:(Expr.elit (LBool false) emark)
-      ~cons:(Expr.eemptyerror emark) emark
+      ~cons:(Expr.eempty emark) emark
   in
   let exceptions =
     List.map
@@ -561,15 +559,15 @@ let translate_def
        caller. *)
   then
     let m = Untyped { pos = D.ScopeDef.get_position def_info } in
-    let empty_error = Expr.eemptyerror m in
+    let empty = Expr.eempty m in
     match params with
     | Some (ps, _) ->
       let labels, tys = List.split ps in
       Expr.make_abs
         (Array.of_list
            (List.map (fun lbl -> Var.make (Mark.remove lbl)) labels))
-        empty_error tys (Expr.mark_pos m)
-    | _ -> empty_error
+        empty tys (Expr.mark_pos m)
+    | _ -> empty
   else
     rule_tree_to_expr ~toplevel:true ~is_reentrant_var:is_reentrant
       ~subscope:is_subscope_var ctx
@@ -600,12 +598,16 @@ let translate_rule
     (exc_graphs :
       Desugared.Dependency.ExceptionsDependencies.t D.ScopeDef.Map.t) = function
   | Desugared.Dependency.Vertex.Var (var, state) -> (
-    let pos = Mark.get (ScopeVar.get_info var) in
-    (* TODO: this may point to the place where the variable was declared instead
-       of the binding in the definition being explored. Needs double-checking
-       and maybe adding more position information *)
+    let decl_pos = Mark.get (ScopeVar.get_info var) in
     let scope_def =
-      D.ScopeDef.Map.find ((var, pos), D.ScopeDef.Var state) scope.scope_defs
+      D.ScopeDef.Map.find
+        ((var, Pos.no_pos), D.ScopeDef.Var state)
+        scope.scope_defs
+    in
+    let all_def_pos =
+      List.map
+        (fun r -> Mark.get (RuleName.get_info r))
+        (RuleName.Map.keys scope_def.scope_def_rules)
     in
     match ScopeVar.Map.find_opt var scope.scope_sub_scopes with
     | None -> (
@@ -619,7 +621,7 @@ let translate_rule
       | OnlyInput -> []
       (* we do not provide any definition for an input-only variable *)
       | _ ->
-        let scope_def_key = (var, pos), D.ScopeDef.Var state in
+        let scope_def_key = (var, decl_pos), D.ScopeDef.Var state in
         let expr_def =
           translate_def ctx scope_def_key var_def var_params var_typ
             scope_def.D.scope_def_io
@@ -635,7 +637,7 @@ let translate_rule
         [
           Ast.ScopeVarDefinition
             {
-              var = scope_var, pos;
+              var = Mark.add all_def_pos scope_var;
               typ = var_typ;
               io = scope_def.D.scope_def_io;
               e = Expr.unbox expr_def;
@@ -701,7 +703,7 @@ let translate_rule
       in
       let subscope_expr =
         Expr.escopecall ~scope:subscope ~args:subscope_param_map
-          (Untyped { pos })
+          (Untyped { pos = decl_pos })
       in
       assert (RuleName.Map.is_empty scope_def.D.scope_def_rules);
       (* The subscope will be defined by its inputs, it's not supposed to have
@@ -715,7 +717,7 @@ let translate_rule
       let subscope_def =
         Ast.ScopeVarDefinition
           {
-            var = subscope_var_dcalc, pos;
+            var = Mark.add all_def_pos subscope_var_dcalc;
             typ =
               ( TStruct scope_info.out_struct_name,
                 Mark.get (ScopeVar.get_info var) );
@@ -955,8 +957,9 @@ let translate_program
   let program_topdefs =
     TopdefName.Map.mapi
       (fun id -> function
-        | Some e, ty -> Expr.unbox (translate_expr ctx e), ty
-        | None, (_, pos) ->
+        | { D.topdef_expr = Some e; topdef_type = ty; topdef_visibility = _ } ->
+          Expr.unbox (translate_expr ctx e), ty
+        | { D.topdef_expr = None; topdef_type = _, pos; _ } ->
           Message.error ~pos "No definition found for %a" TopdefName.format id)
       desugared.program_root.module_topdefs
   in
@@ -966,8 +969,7 @@ let translate_program
       desugared.D.program_root.module_scopes
   in
   {
-    Ast.program_module_name =
-      Option.map ModuleName.fresh desugared.D.program_module_name;
+    Ast.program_module_name = desugared.D.program_module_name;
     Ast.program_topdefs;
     Ast.program_scopes;
     Ast.program_ctx = ctx.decl_ctx;

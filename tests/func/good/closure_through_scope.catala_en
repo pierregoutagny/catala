@@ -21,18 +21,22 @@ scope T:
 
 ```catala-test-inline
 $ catala Typecheck --check-invariants
-[RESULT] All invariant checks passed
-[RESULT] Typechecking successful!
+┌─[RESULT]─
+│ All invariant checks passed
+└─
+┌─[RESULT]─
+│ Typechecking successful!
+└─
 ```
 
 ```catala-test-inline
-$ catala Lcalc -s T --avoid-exceptions -O --closure-conversion
+$ catala Lcalc -s T -O --closure-conversion
 let scope T (T_in: T_in): T {y: integer} =
-  let set s : S {f: ((closure_env, integer) → integer * closure_env)} =
-    { S f = (closure_s, to_closure_env ()); }
+  let set s : S {f: ((closure_env, integer) → integer, closure_env)} =
+    { S f = (closure_s1, to_closure_env ()); }
   in
   let set y : integer =
-    let code_and_env : ((closure_env, integer) → integer * closure_env) =
+    let code_and_env : ((closure_env, integer) → integer, closure_env) =
       s.f
     in
     code_and_env.0 code_and_env.1 2
@@ -41,7 +45,8 @@ let scope T (T_in: T_in): T {y: integer} =
 ```
 
 ```catala-test-inline
-$ catala Interpret --lcalc -s T --avoid-exceptions -O --closure-conversion
-[RESULT] Computation successful! Results:
-[RESULT] y = -2
+$ catala Interpret --lcalc -s T -O --closure-conversion
+┌─[RESULT]─
+│ y = -2
+└─
 ```

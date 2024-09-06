@@ -35,7 +35,7 @@ let map_exprs ?typ ~f ~varf { code_items; decl_ctx; lang; module_name } =
         { code_items; decl_ctx; lang; module_name })
       (Scope.map_exprs ?typ ~f ~varf code_items)
   in
-  assert (Bindlib.is_closed boxed_prg);
+  Expr.Box.assert_closed boxed_prg;
   Bindlib.unbox boxed_prg
 
 let fold_left ~f ~init { code_items; _ } =
@@ -46,7 +46,7 @@ let fold_exprs ~f ~init prg = Scope.fold_exprs ~f ~init prg.code_items
 let fold_right ~f ~init { code_items; _ } =
   BoundList.fold_right
     ~f:(fun e _ acc -> f e acc)
-    ~init:(fun () -> init)
+    ~init:(fun _vlist -> init)
     code_items
 
 let empty_ctx =
@@ -58,7 +58,7 @@ let empty_ctx =
     ctx_struct_fields = Ident.Map.empty;
     ctx_enum_constrs = Ident.Map.empty;
     ctx_scope_index = Ident.Map.empty;
-    ctx_modules = M ModuleName.Map.empty;
+    ctx_modules = ModuleName.Map.empty;
   }
 
 let get_scope_body { code_items; _ } scope =
@@ -87,11 +87,11 @@ let to_expr p main_scope =
   res
 
 let modules_to_list (mt : module_tree) =
-  let rec aux acc (M mtree) =
+  let rec aux acc mtree =
     ModuleName.Map.fold
-      (fun mname sub acc ->
-        if List.exists (ModuleName.equal mname) acc then acc
-        else mname :: aux acc sub)
+      (fun mname mnode acc ->
+        if List.exists (fun (m, _) -> ModuleName.equal m mname) acc then acc
+        else (mname, mnode.intf_id) :: aux acc mnode.deps)
       mtree acc
   in
   List.rev (aux [] mt)

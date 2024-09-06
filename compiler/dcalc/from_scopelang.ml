@@ -139,7 +139,8 @@ let tag_with_log_entry
   let m = mark_tany (Mark.get e) (Expr.pos e) in
 
   if Global.options.trace then
-    Expr.eappop ~op:(Log (l, markings)) ~tys:[TAny, Expr.pos e] ~args:[e] m
+    let pos = Expr.pos e in
+    Expr.eappop ~op:(Log (l, markings), pos) ~tys:[TAny, pos] ~args:[e] m
   else e
 
 (* In a list of exceptions, it is normally an error if more than a single one
@@ -264,7 +265,7 @@ let rec translate_expr (ctx : 'm ctx) (e : 'm S.expr) : 'm Ast.expr boxed =
               ( var_ctx.scope_input_name,
                 Expr.make_abs
                   [| Var.make "_" |]
-                  (Expr.eemptyerror (Expr.with_ty m ty0))
+                  (Expr.eempty (Expr.with_ty m ty0))
                   [TAny, iopos]
                   pos )
           | Some var_ctx, Some e ->
@@ -565,12 +566,12 @@ let rec translate_expr (ctx : 'm ctx) (e : 'm S.expr) : 'm Ast.expr boxed =
       let v, _ = TopdefName.Map.find (Mark.remove name) ctx.toplevel_vars in
       Expr.evar v m
     else Expr.eexternal ~name:(Mark.map (fun n -> External_value n) name) m
-  | EAppOp { op = Add_dat_dur _; args; tys } ->
+  | EAppOp { op = Add_dat_dur _, opos; args; tys } ->
     let args = List.map (translate_expr ctx) args in
-    Expr.eappop ~op:(Add_dat_dur ctx.date_rounding) ~args ~tys m
+    Expr.eappop ~op:(Add_dat_dur ctx.date_rounding, opos) ~args ~tys m
   | ( EVar _ | EAbs _ | ELit _ | EStruct _ | EStructAccess _ | ETuple _
-    | ETupleAccess _ | EInj _ | EEmptyError | EErrorOnEmpty _ | EArray _
-    | EIfThenElse _ | EAppOp _ ) as e ->
+    | ETupleAccess _ | EInj _ | EFatalError _ | EEmpty | EErrorOnEmpty _
+    | EArray _ | EIfThenElse _ | EAppOp _ ) as e ->
     Expr.map ~f:(translate_expr ctx) ~op:Operator.translate (e, m)
 
 (** The result of a rule translation is a list of assignments, with variables
@@ -588,20 +589,21 @@ let translate_rule
   match rule with
   | S.ScopeVarDefinition { var; typ; e; _ }
   | S.SubScopeVarDefinition { var; typ; e; _ } ->
+    let scope_var = Mark.remove var in
+    let decl_pos = Mark.get (ScopeVar.get_info scope_var) in
     let pos_mark, _ = pos_mark_mk e in
     let scope_let_kind, io =
       match rule with
       | S.ScopeVarDefinition { io; _ } -> ScopeVarDefinition, io
       | S.SubScopeVarDefinition _ ->
-        let pos = Mark.get var in
         ( SubScopeVarDefinition,
-          { io_input = NoInput, pos; io_output = false, pos } )
+          { io_input = NoInput, decl_pos; io_output = false, decl_pos } )
       | S.Assertion _ -> assert false
     in
     let a_name = ScopeVar.get_info (Mark.remove var) in
     let a_var = Var.make (Mark.remove a_name) in
     let new_e = translate_expr ctx e in
-    let a_expr = Expr.make_var a_var (pos_mark (Mark.get var)) in
+    let a_expr = Expr.make_var a_var (pos_mark decl_pos) in
     let is_func = match Mark.remove typ with TArrow _ -> true | _ -> false in
     let merged_expr =
       match Mark.remove io.io_input with
@@ -628,7 +630,7 @@ let translate_rule
                   scope_let_typ = typ;
                   scope_let_expr = merged_expr;
                   scope_let_kind;
-                  scope_let_pos = Mark.get var;
+                  scope_let_pos = decl_pos;
                 },
                 next ))
           (Bindlib.bind_var a_var next)
@@ -939,8 +941,11 @@ let translate_program (prgm : 'm S.program) : 'm Ast.program =
   (* the resulting expression is the list of definitions of all the scopes,
      ending with the top-level scope. The decl_ctx is filled in left-to-right
      order, then the chained scopes aggregated from the right. *)
-  let rec translate_defs = function
-    | [] -> Bindlib.box (Last ())
+  let rec translate_defs vlist = function
+    | [] ->
+      Bindlib.box_apply
+        (fun vl -> Last vl)
+        (Bindlib.box_rev_list (List.map Bindlib.box_var vlist))
     | def :: next ->
       let dvar, def =
         match def with
@@ -969,13 +974,13 @@ let translate_program (prgm : 'm S.program) : 'm Ast.program =
               (fun body -> ScopeDef (scope_name, body))
               scope_body )
       in
-      let scope_next = translate_defs next in
+      let scope_next = translate_defs (dvar :: vlist) next in
       let next_bind = Bindlib.bind_var dvar scope_next in
       Bindlib.box_apply2
         (fun item next_bind -> Cons (item, next_bind))
         def next_bind
   in
-  let items = translate_defs defs_ordering in
+  let items = translate_defs [] defs_ordering in
   Expr.Box.assert_closed items;
   {
     code_items = Bindlib.unbox items;
