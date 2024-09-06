@@ -209,8 +209,11 @@ let del_genericerror e =
        nodes. *)
     Expr.unbox (f e)
   else
-    (* TODO QU RAPHAEL: turns out del_genericerror is pretty costly (~2x), so I decided to remove it because I think it is a safety/debugging check now *)
-
+    (* TODO QU RAPHAEL: turns out del_genericerror is pretty costly (~2x), so I
+       decided to remove it because I think it is a safety/debugging check now
+       =>> OUI c'est un runtime check qui sert à vérifier le type d'expression
+       (erreur ou pas), a priori tout doit passer sans ! Peut-être à garder
+       comme option pour le debugging/les unit tests *)
     let open struct
       external id :
         (conc_dest_kind, 'm) gexpr -> (conc_src_kind, 'm) gexpr = "%identity"
@@ -821,8 +824,8 @@ let propagate_generic_error_list l other_constraints f =
   in
   aux [] other_constraints l
 
-(* TODO QU RAPHAEL: these empty errors have been removed from the standard
-   interpreter *)
+(* TODO QU RAPHAEL: these empty errors have been removed from the standard interpreter
+   =>> OK *)
 (* (\* NOTE We have to rewrite EmptyError propagation functions from
    [Concrete] *)
 (* because they don't allow for [f] have a different input and output type
@@ -977,7 +980,8 @@ let rec evaluate_operator
     try f x y
     with
     (* TODO QU RAPHAEL: the standard interpreter also has a case for division by
-       zero, is it absent here because it is handled somewhere else? *)
+       zero, is it absent here because it is handled somewhere else?
+       =>> OUI *)
     | Runtime.UncomparableDurations ->
       Message.error ~extra_pos:(get_binop_args_pos args)
         "Cannot compare together durations that cannot be converted to a \
@@ -1473,11 +1477,12 @@ let rec evaluate_expr :
        *   arguments *)
       let constraints = r_constraints @ args_constraints in
       add_conc_info_e r_symb ~constraints result |> make_ok
-    | EAbs { binder; tys } ->
+    | EAbs _ ->
       if Global.options.debug then Message.debug "... it's an EAbs";
-      Expr.unbox (Expr.eabs (Bindlib.box binder) tys m) |> make_ok
-      (* TODO simplify this once issue #540 is resolved *)
-      (* TODO QU Raphaël: 540 has been resolved? *)
+      make_ok e
+      (* DONE simplify this once issue #540 is resolved *)
+      (* TODO QU Raphaël: 540 has been resolved?
+         =>> DONE *)
     | ELit l as e ->
       if Global.options.debug then Message.debug "... it's an ELit";
       let symb_expr = symb_of_lit ctx l in
@@ -1929,7 +1934,8 @@ and handle_default ctx lang m pos nonempty_count excepts just cons =
     let constraints = exc_constraints in
     add_conc_info_e r_symb ~constraints r |> make_ok
   | _ ->
-    (* TODO QU Raphaël: discrepancy with standard interpreter? *)
+    (* TODO QU Raphaël: discrepancy with standard interpreter?
+       =>> NON à mon avis *)
     make_error_conflicterror m exc_constraints
       (List.map
          (fun except ->
