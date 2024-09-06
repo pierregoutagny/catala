@@ -11,13 +11,13 @@ scope A:
         under condition d<=|1954-06-07|
         consequence equals 0
     exception definition o
-        under condition d>|1954-06-07| and d<|1970-01-01|
+        under condition d>|1954-06-07| and d<|2010-01-01|
         consequence equals 1
     exception definition o
-        under condition d=|1970-01-01|
+        under condition d=|2010-01-01|
         consequence equals 2
     exception definition o
-        under condition d>|1970-01-01| and d<|2024-01-15|
+        under condition d>|2010-01-01| and d<|2024-01-15|
         consequence equals 3
     exception definition o
         under condition d>=|2024-01-15|
@@ -30,8 +30,8 @@ let scope A (A_in: A_in {d_in: date}): A {o: integer} =
   let get d : date = A_in.d_in in
   let set o : integer =
     error_empty
-      ⟨ ⟨ ⟨d <= 1954-06-07 ⊢ ⟨0⟩⟩, ⟨d > 1954-06-07 && d < 1970-01-01 ⊢ ⟨1⟩⟩,
-          ⟨d = 1970-01-01 ⊢ ⟨2⟩⟩, ⟨d > 1970-01-01 && d < 2024-01-15 ⊢ ⟨3⟩⟩,
+      ⟨ ⟨ ⟨d <= 1954-06-07 ⊢ ⟨0⟩⟩, ⟨d > 1954-06-07 && d < 2010-01-01 ⊢ ⟨1⟩⟩,
+          ⟨d = 2010-01-01 ⊢ ⟨2⟩⟩, ⟨d > 2010-01-01 && d < 2024-01-15 ⊢ ⟨3⟩⟩,
           ⟨d >= 2024-01-15 ⊢ ⟨4⟩⟩
         | false ⊢ ∅ ⟩
       | true ⊢ ⟨ ⟨true ⊢ ⟨-1⟩⟩ | false ⊢ ∅ ⟩ ⟩
@@ -43,12 +43,12 @@ let scope A (A_in: A_in {d_in: date}): A {o: integer} =
 $ catala Concolic -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . d_in = 1970-01-01
+[RESULT] . d_in = 2010-01-01
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 2
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . d_in = 1970-01-02
+[RESULT] . d_in = 2010-01-02
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 3
 [RESULT] 
@@ -58,7 +58,7 @@ $ catala Concolic -s A
 [RESULT] . o = 4
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . d_in = 1963-06-17
+[RESULT] . d_in = 1999-07-22
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 1
 [RESULT] 

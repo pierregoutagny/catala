@@ -36,7 +36,7 @@ let scope A (A_in: A_in {dur_in: duration; d_in: date}): A {o: bool} =
 $ catala Concolic -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . d_in = 1970-01-01
+[RESULT] . d_in = 2010-01-01
 [RESULT] . dur_in = [10 days]
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = false
