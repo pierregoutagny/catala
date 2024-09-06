@@ -50,7 +50,6 @@ type ('c, 'e) conc_interpr_kind =
   ; assertions : yes
   ; defaultTerms : yes
   ; genericErrors : 'e
-  ; exceptions : no
   ; custom : 'c >
 
 type conc_src_kind = (yes, no) conc_interpr_kind
@@ -141,11 +140,12 @@ let add_genericerror e =
       Expr.eappop ~tys ~args:(List.map f args) ~op:(Operator.translate op) m
     | (EDefault _, _) as e -> Expr.map ~f e
     | (EPureDefault _, _) as e -> Expr.map ~f e
-    | (EEmptyError, _) as e -> Expr.map ~f e
+    | (EEmpty, _) as e -> Expr.map ~f e
     | (EErrorOnEmpty _, _) as e -> Expr.map ~f e
     | ( ( EAssert _ | ELit _ | EApp _ | EArray _ | EVar _ | EExternal _ | EAbs _
         | EIfThenElse _ | ETuple _ | ETupleAccess _ | EInj _ | EStruct _
-        | EStructAccess _ | EMatch _ ),
+        | EStructAccess _ | EMatch _
+        | EFatalError _),
         _ ) as e ->
       Expr.map ~f e
     | _ -> .
@@ -198,8 +198,9 @@ let del_genericerror e =
         Expr.eappop ~tys ~args:(List.map f args) ~op:(Operator.translate op) m
       | ( ( EAssert _ | ELit _ | EApp _ | EArray _ | EVar _ | EExternal _ | EAbs _
           | EIfThenElse _ | ETuple _ | ETupleAccess _ | EInj _ | EStruct _
-          | EStructAccess _ | EMatch _ | EDefault _ | EPureDefault _ | EEmptyError
-          | EErrorOnEmpty _ | ECustom _ ),
+          | EStructAccess _ | EMatch _ | EDefault _ | EPureDefault _ | EEmpty
+          | EErrorOnEmpty _ | ECustom _
+          | EFatalError _),
           _ ) as e ->
         Expr.map ~f e
       | _ -> .
@@ -843,7 +844,8 @@ let propagate_generic_error_list l other_constraints f =
 (*   in *)
 (*   aux [] elist *)
 
-let handle_eq evaluate_operator pos lang e1 e2 =
+let handle_eq pos evaluate_operator m lang e1 e2 =
+  let eq_eval = evaluate_operator (Eq, pos) m lang in
   let open Runtime.Oper in
   match e1, e2 with
   | ELit LUnit, ELit LUnit -> true
@@ -851,14 +853,15 @@ let handle_eq evaluate_operator pos lang e1 e2 =
   | ELit (LInt x1), ELit (LInt x2) -> o_eq_int_int x1 x2
   | ELit (LRat x1), ELit (LRat x2) -> o_eq_rat_rat x1 x2
   | ELit (LMoney x1), ELit (LMoney x2) -> o_eq_mon_mon x1 x2
-  | ELit (LDuration x1), ELit (LDuration x2) -> o_eq_dur_dur x1 x2
+  | ELit (LDuration x1), ELit (LDuration x2) ->
+      o_eq_dur_dur (Expr.pos_to_runtime (Expr.mark_pos m)) x1 x2
   | ELit (LDate x1), ELit (LDate x2) -> o_eq_dat_dat x1 x2
   | EArray _, EArray _ -> failwith "EOp Eq EArray not implemented"
   | EStruct { fields = es1; name = s1 }, EStruct { fields = es2; name = s2 } ->
     StructName.equal s1 s2
     && StructField.Map.equal
          (fun e1 e2 ->
-           match Mark.remove (evaluate_operator Eq pos lang [e1; e2]) with
+           match Mark.remove (eq_eval [e1; e2]) with
            | ELit (LBool b) -> b
            | _ -> assert false
            (* should not happen *))
@@ -869,7 +872,7 @@ let handle_eq evaluate_operator pos lang e1 e2 =
       EnumName.equal en1 en2
       && EnumConstructor.equal i1 i2
       &&
-      match Mark.remove (evaluate_operator Eq pos lang [e1; e2]) with
+      match Mark.remove (eq_eval [e1; e2]) with
       | ELit (LBool b) -> b
       | _ -> assert false
       (* should not happen *)
@@ -963,11 +966,17 @@ let handle_division
 let rec evaluate_operator
     evaluate_expr
     ctx
-    (op : < overloaded : no ; .. > operator)
+    ((op, opos) : < overloaded : no ; .. > operator Mark.pos)
     m
     lang
     (args : conc_expr list) : conc_result =
   let pos = Expr.mark_pos m in
+  let rpos () = Expr.pos_to_runtime opos in
+  let div_pos () =
+    (* Division by 0 errors point to their 2nd operand *)
+    Expr.pos_to_runtime
+    @@ match args with _ :: denom :: _ -> Expr.pos denom | _ -> opos
+  in
   let protect f x y =
     (* TODO CONC REU For now, I crash on date ambiguities, because they should
        not happen: any duration expressed with months or years is rejected early
@@ -1023,7 +1032,7 @@ let rec evaluate_operator
     let e2' = Mark.remove e2 in
     let concrete =
       ELit
-        (LBool (handle_eq (evaluate_operator evaluate_expr ctx) m lang e1' e2'))
+        (LBool (handle_eq opos (evaluate_operator evaluate_expr ctx) m lang e1' e2'))
     in
     let s_e1 = get_symb_expr e1 in
     let s_e2 = get_symb_expr e2 in
