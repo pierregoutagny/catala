@@ -2178,6 +2178,8 @@ struct
 
   module type Z3SolverType = sig
     val solve : Z3.context -> s_expr list -> z3_solver_result
+    val push : Z3.context -> s_expr -> unit
+    val pop : Z3.context -> unit -> unit
   end
 
   module SimpleZ3Solver : Z3SolverType = struct
@@ -2190,6 +2192,9 @@ struct
       | SATISFIABLE -> Z3Sat (get_model solver)
       | UNSATISFIABLE -> Z3Unsat
       | UNKNOWN -> Z3Unknown
+
+    let push _ _ = ()
+    let pop _ () = ()
   end
 
   module IncrementalZ3Solver : Z3SolverType = struct
@@ -2206,14 +2211,30 @@ struct
       | Some s -> s
 
     let solve ctx (constraints : s_expr list) : z3_solver_result =
-      let solver = in
-      add solver constraints;
+      Message.emit_debug "Using incremental Z3 solver";
+      let solver = get_solver ctx in
+      Message.emit_debug "Get solver\n%s" (to_string solver);
+      (* add solver constraints; *)
       match check solver [] with
       | SATISFIABLE -> Z3Sat (get_model solver)
       | UNSATISFIABLE -> Z3Unsat
       | UNKNOWN -> Z3Unknown
+
+    let push ctx e =
+      let solver = get_solver ctx in
+      Message.emit_debug "before push %n %s" (get_num_scopes solver) (to_string solver);
+      Z3.Solver.push solver;
+      add solver [e];
+      Message.emit_debug "after push %n %s" (get_num_scopes solver) (to_string solver)
+
+    let pop ctx () =
+      let solver = get_solver ctx in
+      Message.emit_debug "before pop %n %s" (get_num_scopes solver) (to_string solver);
+      Z3.Solver.pop solver 1;
+      Message.emit_debug "after pop %n %s" (get_num_scopes solver) (to_string solver)
   end
 
+  (* FIXME is there a better way? *)
   module MakeZ3Solver (Incremental : sig
     val incremental : bool
   end) : Z3SolverType = struct
@@ -2221,6 +2242,8 @@ struct
 
     let solve : Z3.context -> s_expr list -> z3_solver_result =
       if incremental then IncrementalZ3Solver.solve else SimpleZ3Solver.solve
+    let pop = if incremental then IncrementalZ3Solver.pop else SimpleZ3Solver.pop
+    let push = if incremental then IncrementalZ3Solver.push else SimpleZ3Solver.push
   end
 
   module Z3Solver = MakeZ3Solver (struct
@@ -2271,6 +2294,9 @@ struct
     | Z3Sat None -> Sat None
     | Z3Unsat -> Unsat
     | Z3Unknown -> Unknown
+
+  let push ctx (pc : pc_expr) = match pc with Pc_z3 pc -> Z3Solver.push ctx.ctx_z3 pc | Pc_reentrant _ -> ()
+  let pop ctx (pc : pc_expr) = match pc with Pc_z3 pc -> Z3Solver.pop ctx.ctx_z3 () | Pc_reentrant _ -> ()
 
   (** Create a dummy concolic mark with a position and a type. It has no
       symbolic expression or constraints, and is used for subexpressions inside
@@ -2533,6 +2559,14 @@ let pc_expr_equal e e' : bool =
 let path_constraint_equal c c' : bool =
   pc_expr_equal c.expr c'.expr && c.branch = c'.branch
 
+
+type 'a incremental_action =
+  | IncrPush of 'a
+  | IncrPop of 'a
+
+type incremental_annotated_pc = annotated_path_constraint incremental_action
+type incremental_pc_expr = pc_expr incremental_action
+
 (** Compare the path of the previous evaluation and the path of the current
     evaluation. If a constraint was previously marked as Done or Normal, then
     check that it stayed the same. If it was previously marked as Negated, thus
@@ -2541,14 +2575,17 @@ let path_constraint_equal c c' : bool =
     after the last one, add them as Normal. Crash in other cases. *)
 let rec compare_paths
     (path_prev : annotated_path_constraint list)
-    (path_new : path_constraint list) : annotated_path_constraint list =
+    (path_new : path_constraint list) : annotated_path_constraint list * incremental_annotated_pc list =
   match path_prev, path_new with
-  | [], [] -> []
+  | [], [] -> [], []
   | [], c' :: p' ->
-    Normal c' :: compare_paths [] p' (* the new path can be longer *)
+      let res, diff = compare_paths [] p' in
+      Normal c' :: res, (* the new path can be longer *)
+      (IncrPush (Normal c')) :: diff
   | _ :: _, [] -> failwith "[compare_paths] old path is longer than new path"
   | Normal c :: p, c' :: p' ->
-    if path_constraint_equal c c' then Normal c :: compare_paths p p'
+    if path_constraint_equal c c' then let res, diff = compare_paths p p' in
+    Normal c :: res, diff
     else
       failwith "[compare_paths] a constraint that should not change has changed"
   | Negated c :: p, c' :: p' ->
@@ -2556,10 +2593,11 @@ let rec compare_paths
       (* the branch has been successfully negated and is now done *)
       (* TODO we should have a way to know if c and c' are the same except for
          their [branch] *)
-      Done c' :: compare_paths p p'
+      let res, diff = compare_paths p p' in
+      Done c' :: res, diff
     else failwith "[compare_paths] the negated condition lead to the same path"
   | Done c :: p, c' :: p' ->
-    if c = c' then Done c :: compare_paths p p'
+    if c = c' then let res, diff = compare_paths p p' in Done c :: res, diff
     else
       failwith
         "[compare_paths] a done constraint that should not change has changed"
@@ -2568,11 +2606,11 @@ let rec compare_paths
     mark this branch as Negated. This function shall be called on an output of
     [compare_paths], and thus no Negated constraint should appear in its input. *)
 let rec make_expected_path (path : annotated_path_constraint list) :
-    annotated_path_constraint list =
+    annotated_path_constraint list * incremental_annotated_pc list =
   match path with
-  | [] -> []
-  | Normal c :: p -> Negated c :: p
-  | Done _ :: p -> make_expected_path p
+  | [] -> [], []
+  | Normal c :: p -> Negated c :: p, IncrPop (Normal c) :: IncrPush (Negated c) :: []
+  | Done c :: p -> let res, diff = make_expected_path p in res, IncrPop (Done c)::diff
   | Negated _ :: _ ->
     failwith
       "[make_expected_path] found a negated constraint, which should not happen"
@@ -2580,9 +2618,8 @@ let rec make_expected_path (path : annotated_path_constraint list) :
 (** Remove marks from an annotated path, to get a list of path constraints to
     feed in the solver. In doing so, actually negate constraints marked as
     Negated. This function shall be called on an output of [make_expected_path]. *)
-let constraint_list_of_path ctx (path : annotated_path_constraint list) :
-    pc_expr list (* FIXME Solver.input? *) =
-  let f = function
+let pc_expr_of_apc ctx (apc : annotated_path_constraint) : pc_expr =
+  match apc with
     | Normal c -> c.expr
     | Done c -> c.expr
     | Negated c -> begin
@@ -2590,8 +2627,17 @@ let constraint_list_of_path ctx (path : annotated_path_constraint list) :
       | Pc_z3 e -> Pc_z3 (Z3.Boolean.mk_not ctx.ctx_z3 e)
       | Pc_reentrant e -> Pc_reentrant { e with is_empty = not e.is_empty }
     end
+let constraint_list_of_path ctx (path : annotated_path_constraint list) :
+    pc_expr list (* FIXME Solver.input? *) =
+  List.map (pc_expr_of_apc ctx) path
+
+let apply_diff ctx f_push f_pop (diff : incremental_annotated_pc list) : unit =
+  Message.emit_debug "apply_diff";
+  let f = function
+    | IncrPush apc -> let expr = pc_expr_of_apc ctx apc in f_push ctx expr
+    | IncrPop apc -> let expr = pc_expr_of_apc ctx apc in f_pop ctx expr
   in
-  List.map f path
+  List.iter f diff
 
 (* TODO use formatter for those *)
 let string_of_pc_expr (e : pc_expr) : string =
@@ -2630,6 +2676,22 @@ let print_annotated_path_constraints constraints : unit =
       (List.map aux constraints)
   end
 
+let print_diff (diff : incremental_annotated_pc list) : unit =
+  if diff = [] then Message.emit_debug "No diff"
+  else begin
+    let pp_sep fmt () = Format.fprintf fmt "\n" in
+    let aux ipc =
+      match ipc with
+      | IncrPush (Normal pc) -> "IncrPush   " ^ string_of_path_constraint pc
+      | IncrPush (Done pc) -> "IncrPush d " ^ string_of_path_constraint pc
+      | IncrPush (Negated pc) -> "IncrPush n " ^ string_of_path_constraint pc
+      | IncrPop _ -> "IncrPop    "
+    in
+    Message.emit_debug "Diff:\n%a"
+      (Format.pp_print_list ~pp_sep Format.pp_print_string)
+      (List.map aux diff)
+  end
+
 let print_fields language (prefix : string) fields =
   let ordered_fields =
     List.sort (fun ((v1, _), _) ((v2, _), _) -> String.compare v1 v2) fields
@@ -2648,7 +2710,6 @@ let print_fields language (prefix : string) fields =
 module Stats = struct
   (* TODO: quel temps manque ? compter le nombre d'evals *)
   (* GC: pic mémoire alloué ? Z3 incrémental le dit ? *)
-  démo weekly meeting 12 mars
   type time = float
   type period = { start : time; stop : time }
   type step = string * period
@@ -2855,12 +2916,14 @@ let interpret_program_concolic
                struct corresponding to the scope variables"
         end;
 
-        (* TODO find a better way *)
-        let new_path_constraints =
-          compare_paths (List.rev previous_path) (List.rev res_path_constraints)
-          |> List.rev
-          |> make_expected_path
-        in
+        (* TODO find a better way than all those revs *)
+        let new_path_constraints, diff_compare = compare_paths (List.rev previous_path) (List.rev res_path_constraints) in
+        let new_path_constraints, diff_expected = make_expected_path (List.rev new_path_constraints) in
+        print_diff diff_compare;
+        print_diff diff_expected;
+        let diff = diff_compare @ diff_expected in
+        apply_diff ctx Solver.push Solver.pop diff;
+
         let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
         let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
         if new_path_constraints = [] then stats
@@ -2869,7 +2932,7 @@ let interpret_program_concolic
         Message.emit_debug "Solver returned Unsat";
         match previous_path with
         | [] -> failwith "[CONC] Failed to solve without constraints"
-        | _ :: new_path_constraints ->
+        | apc :: new_path_constraints ->
           (* add empty step for stats *)
           let exec =
             Stats.start_step "eval"
@@ -2877,7 +2940,11 @@ let interpret_program_concolic
             |> Stats.add_exec_step exec
           in
           let s_new_pc = Stats.start_step "choose new path constraints" in
-          let new_expected_path = make_expected_path new_path_constraints in
+          let new_expected_path, diff = make_expected_path new_path_constraints in
+          let diff = (IncrPop apc :: diff) in
+          Message.emit_debug "Diff for removing head";
+          print_diff diff;
+          apply_diff ctx Solver.push Solver.pop diff;
           let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
           let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
           if new_expected_path = [] then stats
