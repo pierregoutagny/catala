@@ -2026,6 +2026,8 @@ struct
 
   module type Z3SolverType = sig
     val solve : Z3.context -> s_expr list -> z3_solver_result
+    val push : Z3.context -> s_expr -> unit
+    val pop : Z3.context -> unit -> unit
   end
 
   module SimpleZ3Solver : Z3SolverType = struct
@@ -2044,6 +2046,9 @@ struct
             z3solver_string = to_string solver;
             z3assertions = get_assertions solver;
           }
+
+    let push _ _ = ()
+    let pop _ () = ()
   end
 
   module IncrementalZ3Solver : Z3SolverType = struct
@@ -2060,14 +2065,36 @@ struct
       | Some s -> s
 
     let solve ctx (constraints : s_expr list) : z3_solver_result =
-      let solver = in
-      add solver constraints;
+      if Global.options.debug then Message.debug "Using incremental Z3 solver";
+      let solver = get_solver ctx in
+      if Global.options.debug then Message.debug "Get solver\n%s" (to_string solver);
+      (* add solver constraints; *)
       match check solver [] with
       | SATISFIABLE -> Z3Sat (get_model solver)
       | UNSATISFIABLE -> Z3Unsat
       | UNKNOWN -> Z3Unknown
+          {
+            z3reason = get_reason_unknown solver;
+            z3stats = get_statistics solver;
+            z3solver_string = to_string solver;
+            z3assertions = get_assertions solver;
+          }
+
+    let push ctx e =
+      let solver = get_solver ctx in
+      if Global.options.debug then Message.debug "before push %n %s" (get_num_scopes solver) (to_string solver);
+      Z3.Solver.push solver;
+      add solver [e];
+      if Global.options.debug then Message.debug "after push %n %s" (get_num_scopes solver) (to_string solver)
+
+    let pop ctx () =
+      let solver = get_solver ctx in
+      if Global.options.debug then Message.debug "before pop %n %s" (get_num_scopes solver) (to_string solver);
+      Z3.Solver.pop solver 1;
+      if Global.options.debug then Message.debug "after pop %n %s" (get_num_scopes solver) (to_string solver)
   end
 
+  (* FIXME is there a better way? *)
   module MakeZ3Solver (Incremental : sig
     val incremental : bool
   end) : Z3SolverType = struct
@@ -2075,6 +2102,8 @@ struct
 
     let solve : Z3.context -> s_expr list -> z3_solver_result =
       if incremental then IncrementalZ3Solver.solve else SimpleZ3Solver.solve
+    let pop = if incremental then IncrementalZ3Solver.pop else SimpleZ3Solver.pop
+    let push = if incremental then IncrementalZ3Solver.push else SimpleZ3Solver.push
   end
 
   module Z3Solver = MakeZ3Solver (struct
@@ -2138,6 +2167,9 @@ struct
     | Z3Sat None -> Sat None
     | Z3Unsat -> Unsat
     | Z3Unknown info -> Unknown info
+
+  let push ctx (pc : PathConstraint.pc_expr) = match pc with Pc_z3 pc -> Z3Solver.push ctx.ctx_z3 pc | Pc_reentrant _ -> ()
+  let pop ctx (pc : PathConstraint.pc_expr) = match pc with Pc_z3 pc -> Z3Solver.pop ctx.ctx_z3 () | Pc_reentrant _ -> ()
 
   (** Create a dummy concolic mark with a position and a type. It has no
       symbolic expression or constraints, and is used for subexpressions inside
@@ -2386,10 +2418,10 @@ end
     feed in the solver. In doing so, actually negate constraints marked as
     Negated. This function shall be called on an output of
     [PathConstraint.make_expected_path]. *)
-let constraint_list_of_path ctx (path : PathConstraint.annotated_path) :
-    PathConstraint.pc_expr list (* FIXME Solver.input *) =
+let pc_expr_of_apc ctx (apc : PathConstraint.annotated_pc) :
+  PathConstraint.pc_expr (* FIXME Solver.input *) =
   let open PathConstraint in
-  let f = function
+  match apc with
     | Normal c -> c.expr
     | Done c -> c.expr
     | Negated c -> begin
@@ -2397,8 +2429,17 @@ let constraint_list_of_path ctx (path : PathConstraint.annotated_path) :
       | Pc_z3 e -> Pc_z3 (Z3.Boolean.mk_not ctx.ctx_z3 e)
       | Pc_reentrant e -> Pc_reentrant { e with is_empty = not e.is_empty }
     end
+let constraint_list_of_path ctx (path : PathConstraint.annotated_path) :
+    PathConstraint.pc_expr list (* FIXME Solver.input? *) =
+  List.map (pc_expr_of_apc ctx) path
+
+let apply_diff ctx f_push f_pop (diff : PathConstraint.incremental_annotated_pc list) : unit =
+  if Global.options.debug then Message.debug "apply_diff";
+  let f = function
+    | PathConstraint.IncrPush apc -> let expr = pc_expr_of_apc ctx apc in f_push ctx expr
+    | PathConstraint.IncrPop apc -> let expr = pc_expr_of_apc ctx apc in f_pop ctx expr
   in
-  List.map f path
+  List.iter f diff
 
 let print_fields language (prefix : string) fields =
   let ordered_fields =
@@ -2438,7 +2479,6 @@ let print_fields language (prefix : string) fields =
 module Stats = struct
   (* TODO: quel temps manque ? compter le nombre d'evals *)
   (* GC: pic mémoire alloué ? Z3 incrémental le dit ? *)
-  démo weekly meeting 12 mars
   type time = float
   type period = { start : time; stop : time }
   type step = string * period
@@ -2596,9 +2636,7 @@ let interpret_program_concolic
     let module Solver = Solver (struct
       let optims = optims
     end) in
-    Solver.init ctx;
 
-    let s_loop = Stats.start_step "total loop time" in
     let rec concolic_loop (previous_path : PathConstraint.annotated_path) stats
         : Stats.t =
       let exec = Stats.start_exec (List.length previous_path) in
@@ -2765,13 +2803,12 @@ let interpret_program_concolic
         end;
         incr total_tests;
 
-        (* TODO find a better way *)
-        let new_path_constraints =
-          PathConstraint.compare_paths (List.rev previous_path)
-            (List.rev res_path_constraints)
-          |> List.rev
-          |> PathConstraint.make_expected_path
-        in
+        (* TODO find a better way than all those revs *)
+        let new_path_constraints, diff_compare = PathConstraint.compare_paths (List.rev previous_path) (List.rev res_path_constraints) in
+        let new_path_constraints, diff_expected = PathConstraint.make_expected_path (List.rev new_path_constraints) in
+        let diff = diff_compare @ diff_expected in
+        apply_diff ctx Solver.push Solver.pop diff;
+
         let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
         let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
         if new_path_constraints = [] then stats
@@ -2780,7 +2817,7 @@ let interpret_program_concolic
         if Global.options.debug then Message.debug "Solver returned Unsat";
         match previous_path with
         | [] -> failwith "[CONC] Failed to solve without constraints"
-        | _ :: new_path_constraints ->
+        | apc :: new_path_constraints ->
           (* add empty step for stats *)
           let exec =
             Stats.start_step "eval"
@@ -2788,9 +2825,10 @@ let interpret_program_concolic
             |> Stats.add_exec_step exec
           in
           let s_new_pc = Stats.start_step "choose new path constraints" in
-          let new_expected_path =
-            PathConstraint.make_expected_path new_path_constraints
-          in
+          let new_expected_path, diff = PathConstraint.make_expected_path new_path_constraints in
+          let diff = (PathConstraint.IncrPop apc :: diff) in
+          apply_diff ctx Solver.push Solver.pop diff;
+
           let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
           let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
           if new_expected_path = [] then stats

@@ -71,34 +71,44 @@ module PathConstraint = struct
   let path_constraint_equal c c' : bool =
     pc_expr_equal c.expr c'.expr && c.branch = c'.branch
 
+  type 'a incremental_action =
+    | IncrPush of 'a
+    | IncrPop of 'a
+
+  type incremental_annotated_pc = annotated_pc incremental_action
+  type incremental_pc_expr = pc_expr incremental_action
+
   (** Compare the path of the previous evaluation and the path of the current
       evaluation. If a constraint was previously marked as Done or Normal, then
-      check that it stayed the same. If it was previously marked as Negated,
-      thus if it was negated before the two evaluations, then check that the
-      concrete value was indeed negated and mark it Done. If there are new
-      constraints after the last one, add them as Normal. Crash in other cases. *)
-  let rec compare_paths (path_prev : annotated_path) (path_new : naked_path) :
-      annotated_path =
+      check that it stayed the same. If it was previously marked as Negated, thus
+      if it was negated before the two evaluations, then check that the concrete
+      value was indeed negated and mark it Done. If there are new constraints
+      after the last one, add them as Normal. Crash in other cases. *)
+  let rec compare_paths
+      (path_prev : annotated_path)
+      (path_new : naked_path) : annotated_path * incremental_annotated_pc list =
     match path_prev, path_new with
-    | [], [] -> []
+    | [], [] -> [], []
     | [], c' :: p' ->
-      Normal c' :: compare_paths [] p' (* the new path can be longer *)
+        let res, diff = compare_paths [] p' in
+        Normal c' :: res, (* the new path can be longer *)
+        (IncrPush (Normal c')) :: diff
     | _ :: _, [] -> failwith "[compare_paths] old path is longer than new path"
     | Normal c :: p, c' :: p' ->
-      if path_constraint_equal c c' then Normal c :: compare_paths p p'
+      if path_constraint_equal c c' then let res, diff = compare_paths p p' in
+      Normal c :: res, diff
       else
-        failwith
-          "[compare_paths] a constraint that should not change has changed"
+        failwith "[compare_paths] a constraint that should not change has changed"
     | Negated c :: p, c' :: p' ->
       if c.branch <> c'.branch then
         (* the branch has been successfully negated and is now done *)
         (* TODO we should have a way to know if c and c' are the same except for
            their [branch] *)
-        Done c' :: compare_paths p p'
-      else
-        failwith "[compare_paths] the negated condition lead to the same path"
+        let res, diff = compare_paths p p' in
+        Done c' :: res, diff
+      else failwith "[compare_paths] the negated condition lead to the same path"
     | Done c :: p, c' :: p' ->
-      if c = c' then Done c :: compare_paths p p'
+      if c = c' then let res, diff = compare_paths p p' in Done c :: res, diff
       else
         failwith
           "[compare_paths] a done constraint that should not change has changed"
@@ -107,15 +117,15 @@ module PathConstraint = struct
       then mark this branch as Negated. This function shall be called on an
       output of [compare_paths], and thus no Negated constraint should appear in
       its input. *)
-  let rec make_expected_path (path : annotated_path) : annotated_path =
+  let rec make_expected_path (path : annotated_path) :
+      annotated_path * incremental_annotated_pc list =
     match path with
-    | [] -> []
-    | Normal c :: p -> Negated c :: p
-    | Done _ :: p -> make_expected_path p
+    | [] -> [], []
+    | Normal c :: p -> Negated c :: p, IncrPop (Normal c) :: IncrPush (Negated c) :: []
+    | Done c :: p -> let res, diff = make_expected_path p in res, IncrPop (Done c)::diff
     | Negated _ :: _ ->
       failwith
-        "[make_expected_path] found a negated constraint, which should not \
-         happen"
+        "[make_expected_path] found a negated constraint, which should not happen"
 
   module Print = struct
     open Format
