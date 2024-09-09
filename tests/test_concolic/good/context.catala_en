@@ -17,7 +17,7 @@ value, output `3` is found twice: once when `x = λ(). 30` and once when `x =
 λ(). ∅` but its default value is `30`.
 
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = <function>

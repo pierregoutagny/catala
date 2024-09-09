@@ -37,7 +37,7 @@ For now the concolic interpreter refuses to handle durations that are not just
 a number of days.
 
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . dur_in = [10 days]

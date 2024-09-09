@@ -13,7 +13,7 @@ scope A:
 ```
 
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . d_in = 42.0
@@ -24,8 +24,8 @@ $ catala Concolic -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . d_in = 0.562,5
-[RESULT] . x_in = 0.281,25
-[RESULT] . y_in = 0.5
+[RESULT] . x_in = -0.562,5
+[RESULT] . y_in = -1.0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 1
 [RESULT] 

@@ -44,7 +44,7 @@ let scope A (A_in: A_in {d_in: duration}): A {o: integer} =
 ```
 
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . d_in = [10 days]
@@ -62,7 +62,7 @@ $ catala Concolic -s A
 [RESULT] . o = 2
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . d_in = [-14 days]
+[RESULT] . d_in = [-1 day]
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 1
 [RESULT] 

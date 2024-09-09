@@ -18,7 +18,7 @@ For now it is not very clear what is happening because we can't see the value
 of `<function>`.
 
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = <function>

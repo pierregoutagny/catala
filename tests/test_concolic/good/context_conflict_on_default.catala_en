@@ -17,7 +17,7 @@ including the special "default" value. This allows for the detection of a
 conflict when trying to compute the value in this case.
 
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = <function>

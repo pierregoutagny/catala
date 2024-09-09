@@ -33,7 +33,7 @@ let scope A (A_in: A_in {dur_in: duration; d_in: date}): A {o: bool} =
 ```
 
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . d_in = 1970-01-01
