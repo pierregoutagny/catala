@@ -102,7 +102,7 @@ let scope A
 ```
 
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . e_in = E1 ()
@@ -155,7 +155,7 @@ Found error ↯Conflict(tests/test_concolic/good/ugly_pattern.catala_en:30.24-30
 ```
 
 ```catala-test-inline
-$ catala Concolic -s A --optimize
+$ catala Concolic --conc-optim=incremental -s A --optimize
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . e_in = E1 ()

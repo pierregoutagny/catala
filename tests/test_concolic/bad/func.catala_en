@@ -97,7 +97,7 @@ For now, the concolic interpreter detects functions that do not encode context
 variables, and refuses to procede:
 
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [ERROR] This input of the scope is a function. This case is not handled by the concolic interpreter for now. You may want to call this scope from an other scope and provide a specific function as argument.
 
 ┌─⯈ tests/test_concolic/bad/func.catala_en:9.11-9.12:
@@ -121,7 +121,7 @@ constraint from it and negate it!
 Note that there are a few too many warnings for now.
 
 ```catala-test-inline
-$ catala Concolic -s B
+$ catala Concolic --conc-optim=incremental -s B
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = 42
@@ -129,7 +129,7 @@ $ catala Concolic -s B
 [RESULT] . o = 1
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = 1
+[RESULT] . x_in = 10
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 2
 [RESULT] 

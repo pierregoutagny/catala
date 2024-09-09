@@ -37,7 +37,7 @@ let scope A (A_in: A_in {x_in: E[E1: integer | E2: unit]}): A {o: integer} =
   return { A o = o; }
 ```
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = E1 42

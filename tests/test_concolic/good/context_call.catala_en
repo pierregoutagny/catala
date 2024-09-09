@@ -42,7 +42,7 @@ let scope A
 ```
 
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = <function>
@@ -88,7 +88,7 @@ let scope B (B_in: B_in {x_in: integer}): B {o: integer} =
 ```
 
 ```catala-test-inline
-$ catala Concolic -s B
+$ catala Concolic --conc-optim=incremental -s B
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = 42

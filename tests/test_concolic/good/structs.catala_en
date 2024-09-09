@@ -39,7 +39,7 @@ let scope A (A_in: A_in {n_in: integer; m_in: integer}): A {x: integer} =
 ```
 
 ```catala-test-inline
-$ catala Concolic -s A
+$ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . m_in = 42
@@ -48,8 +48,8 @@ $ catala Concolic -s A
 [RESULT] . x = 0
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . m_in = 1
-[RESULT] . n_in = 0
+[RESULT] . m_in = 3
+[RESULT] . n_in = 2
 [RESULT] Output of scope after evaluation:
 [RESULT] . x = 42
 [RESULT] 
