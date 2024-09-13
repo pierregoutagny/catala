@@ -2081,18 +2081,18 @@ struct
           }
 
     let push ctx e =
+      let t = Sys.time () in
       let solver = get_solver ctx in
-      if Global.options.debug then Message.debug "before push %n %s" (get_num_scopes solver) (to_string solver);
       Z3.Solver.push solver;
       add solver [e];
-      if Global.options.debug then Message.debug "after push %n %s" (get_num_scopes solver) (to_string solver)
+      if Global.options.debug then Message.debug "after_push %n %f" (get_num_scopes solver) (Sys.time () -. t)
 
     let pop ctx () =
+      let t = Sys.time () in
       let solver = get_solver ctx in
-      if Global.options.debug then Message.debug "before pop %n %s" (get_num_scopes solver) (to_string solver);
       Z3.Solver.pop solver 1;
-      if Global.options.debug then Message.debug "after pop %n %s" (get_num_scopes solver) (to_string solver)
-  end
+      if Global.options.debug then Message.debug "after_pop %n %f" (get_num_scopes solver) (Sys.time () -. t)
+end
 
   (* FIXME is there a better way? *)
   module MakeZ3Solver (Incremental : sig
@@ -2806,10 +2806,14 @@ let interpret_program_concolic
         (* TODO find a better way than all those revs *)
         let new_path_constraints, diff_compare = PathConstraint.compare_paths (List.rev previous_path) (List.rev res_path_constraints) in
         let new_path_constraints, diff_expected = PathConstraint.make_expected_path (List.rev new_path_constraints) in
+
+        let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
+        let s_diff = Stats.start_step "apply diff" in
+
         let diff = diff_compare @ diff_expected in
         apply_diff ctx Solver.push Solver.pop diff;
 
-        let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
+        let exec = Stats.stop_step s_diff |> Stats.add_exec_step exec in
         let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
         if new_path_constraints = [] then stats
         else concolic_loop new_path_constraints stats
@@ -2826,10 +2830,13 @@ let interpret_program_concolic
           in
           let s_new_pc = Stats.start_step "choose new path constraints" in
           let new_expected_path, diff = PathConstraint.make_expected_path new_path_constraints in
-          let diff = (PathConstraint.IncrPop apc :: diff) in
-          apply_diff ctx Solver.push Solver.pop diff;
 
           let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
+          let s_diff = Stats.start_step "apply diff" in
+
+          let diff = (PathConstraint.IncrPop apc :: diff) in
+          apply_diff ctx Solver.push Solver.pop diff;
+          let exec = Stats.stop_step s_diff |> Stats.add_exec_step exec in
           let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
           if new_expected_path = [] then stats
           else concolic_loop new_expected_path stats
