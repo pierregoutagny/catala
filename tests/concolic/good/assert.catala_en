@@ -31,7 +31,7 @@ $ catala Concolic --conc-optim=incremental -s A
 [RESULT] . b_in = false
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯AssertionError↯ at tests/test_concolic/good/assert.catala_en:9.13-9.14
+Found error ↯AssertionError↯ at tests/concolic/good/assert.catala_en:9.13-9.14
 [RESULT] 
 [RESULT] Concolic interpreter done
 [RESULT] Computation successful!

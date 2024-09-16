@@ -108,7 +108,7 @@ $ catala Concolic --conc-optim=incremental -s A
 [RESULT] . e_in = E1 ()
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/test_concolic/good/ugly_pattern.catala_en:30.24-30.25,tests/test_concolic/good/ugly_pattern.catala_en:24.24-24.25,)↯ at tests/test_concolic/good/ugly_pattern.catala_en:15.12-15.13
+Found error ↯Conflict(tests/concolic/good/ugly_pattern.catala_en:30.24-30.25,tests/concolic/good/ugly_pattern.catala_en:24.24-24.25,)↯ at tests/concolic/good/ugly_pattern.catala_en:15.12-15.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . e_in = E2 ()
@@ -161,7 +161,7 @@ $ catala Concolic --conc-optim=incremental -s A --optimize
 [RESULT] . e_in = E1 ()
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/test_concolic/good/ugly_pattern.catala_en:30.24-30.25,tests/test_concolic/good/ugly_pattern.catala_en:24.24-24.25,)↯ at tests/test_concolic/good/ugly_pattern.catala_en:15.12-15.13
+Found error ↯Conflict(tests/concolic/good/ugly_pattern.catala_en:30.24-30.25,tests/concolic/good/ugly_pattern.catala_en:24.24-24.25,)↯ at tests/concolic/good/ugly_pattern.catala_en:15.12-15.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . e_in = E9 ()
