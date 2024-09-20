@@ -2663,7 +2663,7 @@ let interpret_program_concolic
         if Global.options.debug then Message.debug "Solver returned a model";
         if Global.options.debug then Message.debug "model:\n%s" (Solver.string_of_model m);
 
-        let s_eval = Stats.start_step "eval" in
+        let s_inputs = Stats.start_step "get inputs from model" in
         let inputs = Solver.inputs_of_model ctx m input_marks in
 
         if not Global.options.debug then Message.result "";
@@ -2675,6 +2675,8 @@ let interpret_program_concolic
         in
         print_fields p.lang ". " inputs_list;
 
+        let exec = Stats.stop_step s_inputs |> Stats.add_exec_step exec in
+        let s_eval = Stats.start_step "eval" in
         let res = eval_conc_with_input ctx p.lang s_in scope_e mark_e inputs in
 
         let exec = Stats.stop_step s_eval |> Stats.add_exec_step exec in
@@ -2823,7 +2825,12 @@ let interpret_program_concolic
         match previous_path with
         | [] -> failwith "[CONC] Failed to solve without constraints"
         | apc :: new_path_constraints ->
-          (* add empty step for stats *)
+          (* add empty steps for stats *)
+          let exec =
+            Stats.start_step "get inputs from model"
+            |> Stats.stop_step
+            |> Stats.add_exec_step exec
+          in
           let exec =
             Stats.start_step "eval"
             |> Stats.stop_step
