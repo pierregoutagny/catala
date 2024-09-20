@@ -2031,12 +2031,12 @@ struct
   end
 
   module SimpleZ3Solver : Z3SolverType = struct
-    open Z3.Solver
+    open Z3.Optimize
 
     let solve ctx (constraints : s_expr list) : z3_solver_result =
-      let solver = mk_solver ctx None in
+      let solver = mk_opt ctx in
       add solver constraints;
-      match check solver [] with
+      match check solver with
       | SATISFIABLE -> Z3Sat (get_model solver)
       | UNSATISFIABLE -> Z3Unsat
       | UNKNOWN -> Z3Unknown
@@ -2052,14 +2052,14 @@ struct
   end
 
   module IncrementalZ3Solver : Z3SolverType = struct
-    open Z3.Solver
+    open Z3.Optimize
 
     let solver = ref None
 
     let get_solver (ctx : Z3.context) =
       match !solver with
       | None ->
-        let s = mk_solver ctx None in
+        let s = mk_opt ctx in
         solver := Some s;
         s
       | Some s -> s
@@ -2069,7 +2069,7 @@ struct
       let solver = get_solver ctx in
       if Global.options.debug then Message.debug "Get solver\n%s" (to_string solver);
       (* add solver constraints; *)
-      match check solver [] with
+      match check solver with
       | SATISFIABLE -> Z3Sat (get_model solver)
       | UNSATISFIABLE -> Z3Unsat
       | UNKNOWN -> Z3Unknown
@@ -2083,15 +2083,16 @@ struct
     let push ctx e =
       let t = Sys.time () in
       let solver = get_solver ctx in
-      Z3.Solver.push solver;
+      Z3.Optimize.push solver;
       add solver [e];
-      if Global.options.debug then Message.debug "after_push %n %f" (get_num_scopes solver) (Sys.time () -. t)
+      if Global.options.debug then Message.debug "after_push %f" (Sys.time () -. t)
 
     let pop ctx () =
       let t = Sys.time () in
       let solver = get_solver ctx in
-      Z3.Solver.pop solver 1;
-      if Global.options.debug then Message.debug "after_pop %n %f" (get_num_scopes solver) (Sys.time () -. t)
+      Z3.Optimize.pop solver;
+      if Global.options.debug then Message.debug "after_pop %f" (Sys.time () -. t)
+
 end
 
   (* FIXME is there a better way? *)
