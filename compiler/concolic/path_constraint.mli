@@ -4,7 +4,7 @@ open Symb_expr
 module PathConstraint : sig
   type s_expr = SymbExpr.z3_expr
   type reentrant = { symb : SymbExpr.reentrant; is_empty : bool }
-  type pc_expr = Pc_z3 of s_expr | Pc_reentrant of reentrant
+  type pc_expr = Pc_z3 of s_expr | Pc_soft of s_expr | Pc_reentrant of reentrant
 
   (* path constraint cannot be empty (this looks like a GADT but it would be
      overkill I think) *)
