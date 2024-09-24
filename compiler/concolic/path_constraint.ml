@@ -4,8 +4,10 @@ open Symb_expr
 
 module PathConstraint = struct
   type s_expr = SymbExpr.z3_expr
+  type soft_id = string
+  type soft = { symb : s_expr ; weight : int ; id : soft_id }
   type reentrant = { symb : SymbExpr.reentrant; is_empty : bool }
-  type pc_expr = Pc_z3 of s_expr | Pc_soft of s_expr | Pc_reentrant of reentrant
+  type pc_expr = Pc_z3 of s_expr | Pc_soft of soft | Pc_reentrant of reentrant
 
   (* path constraint cannot be empty (this looks like a GADT but it would be
      overkill I think) *)
@@ -21,10 +23,16 @@ module PathConstraint = struct
     in
     { expr; pos; branch }
 
-  let mk_soft (expr : SymbExpr.t) (pos : Pos.t) (branch : bool) : naked_pc =
+  let default_id = ref 0
+  let fresh_id () = incr default_id; !default_id
+  let id_of_string (id: string option) =
+    match id with
+    | Some s -> s
+    | None -> "id!" ^ string_of_int (fresh_id ())
+  let mk_soft (expr : SymbExpr.t) (weight : int) (id : soft_id option) (pos : Pos.t) (branch : bool) : naked_pc =
     let expr =
       match expr with
-      | Symb_z3 e -> Pc_soft e
+      | Symb_z3 e -> Pc_soft { symb=e ; weight; id=id_of_string id }
       | _ ->
         invalid_arg "[PathConstraint.mk_soft] expects a z3 symbolic expression"
     in
@@ -142,7 +150,7 @@ module PathConstraint = struct
     let pc_expr (fmt : formatter) (e : pc_expr) : unit =
       match e with
       | Pc_z3 e -> pp_print_string fmt (Z3.Expr.to_string e)
-      | Pc_soft e -> fprintf fmt "Soft(%s)" (Z3.Expr.to_string e)
+      | Pc_soft { symb ; weight ; id } -> fprintf fmt "Soft(%s, %d, %s)" (Z3.Expr.to_string symb) weight id
       | Pc_reentrant { symb = { name; _ }; is_empty } ->
         fprintf fmt "%s(%s)"
           (if is_empty then "Empty" else "NotEmpty")

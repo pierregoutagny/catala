@@ -43,6 +43,7 @@ end
 
 module SymbExpr = struct
   type z3_expr = Z3.Expr.expr
+  type z3_symbol = Z3.Symbol.symbol
   type reentrant = { name : StructField.t; symbol : z3_expr }
 
   type t =

@@ -3,8 +3,10 @@ open Symb_expr
 
 module PathConstraint : sig
   type s_expr = SymbExpr.z3_expr
+  type soft_id = string
+  type soft = { symb : s_expr ; weight : int ; id : soft_id }
   type reentrant = { symb : SymbExpr.reentrant; is_empty : bool }
-  type pc_expr = Pc_z3 of s_expr | Pc_soft of s_expr | Pc_reentrant of reentrant
+  type pc_expr = Pc_z3 of s_expr | Pc_soft of soft | Pc_reentrant of reentrant
 
   (* path constraint cannot be empty (this looks like a GADT but it would be
      overkill I think) *)
@@ -31,6 +33,7 @@ module PathConstraint : sig
   (** {2 Builders} *)
 
   val mk_z3 : SymbExpr.t -> Pos.t -> bool -> naked_pc
+  val mk_soft : SymbExpr.t -> int -> soft_id option -> Pos.t -> bool -> naked_pc
   val mk_reentrant : SymbExpr.t -> s_expr -> Pos.t -> bool -> naked_pc option
 
   (** {2 Path operations} *)

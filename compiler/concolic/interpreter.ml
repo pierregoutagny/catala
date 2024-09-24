@@ -1983,16 +1983,18 @@ let soft_constraints_of_input_mark ctx (m: conc_info mark) : PathConstraint.pc_e
   let (Custom { custom={ty; symb_expr; _}; _ }) = m in
   let ty = Option.get ty in (* by construction ty is not None *)
   let naked_ty = Mark.remove ty in
+  let pos = Mark.get ty in
   let ctx = ctx.ctx_z3 in
   match naked_ty, symb_expr with
     | TLit TMoney, Symb_z3 var ->
         let zero = Z3.Arithmetic.Integer.mk_numeral_i ctx 0 in
         let money_unit = Z3.Arithmetic.Integer.mk_numeral_i ctx 1_00 in
         let money_hundred = Z3.Arithmetic.Integer.mk_numeral_i ctx 100_00 in
+        let non_negative = Z3.Arithmetic.mk_ge ctx var zero in
         let round_unit = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_unit) zero in
         let round_hundred = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_hundred) zero in
-        List.map (fun x -> PathConstraint.Pc_soft x)
-        [round_unit ; round_hundred]
+        List.map (fun x -> let x = SymbExpr.mk_z3 x in (PathConstraint.mk_soft x 1 None pos false).expr)
+        [non_negative ; round_unit ; round_hundred]
     | _ -> []
 
 let make_soft_constraints ctx (input_marks : conc_info mark StructField.Map.t) : PathConstraint.pc_expr list =
@@ -2048,7 +2050,8 @@ struct
 
     val make : Z3.context -> t
 
-    val add : Z3.context -> ?soft:bool -> t -> s_expr list -> unit
+    val add : t -> s_expr list -> unit
+    val add_soft : Z3.context -> t -> PathConstraint.soft list -> unit
     val push : t -> unit
     val pop : t -> unit
 
@@ -2066,9 +2069,8 @@ struct
 
     let make ctx = Z3.Solver.mk_solver ctx None
 
-    let add _ ?(soft=false) s l =
-      if soft && l <> [] then Message.error ~internal:true "Tried to add a soft constraint on an incompatible solver. Try activating the soft constraint option."
-      else Z3.Solver.add s l
+    let add s l = Z3.Solver.add s l
+    let add_soft _ _ l = if l <> [] then Message.error ~internal:true "Tried to add a soft constraint on an incompatible solver. Try activating the soft constraint option."
     let push = Z3.Solver.push
     let pop s = Z3.Solver.pop s 1
 
@@ -2086,11 +2088,9 @@ struct
 
     let make = Z3.Optimize.mk_opt
 
-    let add_soft ctx (s: t) =
-      List.iter (fun sc -> let _ = Z3.Optimize.add_soft s sc "" (Z3.Symbol.mk_string ctx "") in ())
-    let add ctx ?(soft=false) =
-      if soft then add_soft ctx
-      else Z3.Optimize.add
+    let add_soft ctx (s : t) (l : PathConstraint.soft list) =
+      List.iter (fun (sc : PathConstraint.soft) -> let _ = Z3.Optimize.add_soft s sc.symb (string_of_int sc.weight) (Z3.Symbol.mk_string ctx sc.id) in ()) l
+    let add = Z3.Optimize.add
     let push = Z3.Optimize.push
     let pop = Z3.Optimize.pop
 
@@ -2104,16 +2104,17 @@ struct
   end
 
   module type Z3SolverType = sig
-    val solve : Z3.context -> s_expr list -> s_expr list -> z3_solver_result
-    val push : Z3.context -> ?soft:bool -> s_expr -> unit
+    val solve : Z3.context -> s_expr list -> PathConstraint.soft list -> z3_solver_result
+    val push : Z3.context -> s_expr -> unit
+    val push_soft : Z3.context -> PathConstraint.soft -> unit
     val pop : Z3.context -> unit -> unit
   end
 
   module SimpleZ3Solver (S : Z3SolverModuleType) : Z3SolverType = struct
-    let solve ctx (constraints : s_expr list) (softs : s_expr list) : z3_solver_result =
+    let solve ctx (constraints : s_expr list) (softs : PathConstraint.soft list) : z3_solver_result =
       let solver = S.make ctx in
-      S.add ctx solver constraints;
-      S.add ctx ~soft:true solver softs;
+      S.add solver constraints;
+      S.add_soft ctx solver softs;
       if Global.options.debug then Message.debug "Solver is\n%s" (S.to_string solver);
       match S.check solver with
       | SATISFIABLE -> Z3Sat (S.get_model solver)
@@ -2126,7 +2127,8 @@ struct
             z3assertions = S.get_assertions solver;
           }
 
-    let push _ ?soft _ = ()
+    let push _ _ = ()
+    let push_soft _ _ = ()
     let pop _ () = ()
   end
 
@@ -2156,12 +2158,19 @@ struct
             z3assertions = S.get_assertions solver;
           }
 
-    let push ctx ?(soft=false) e =
+    let push ctx e =
       let t = Sys.time () in
       let solver = get_solver ctx in
       S.push solver;
-      S.add ctx ~soft solver [e];
+      S.add solver [e];
       if Global.options.debug then Message.debug "after_push %f" (Sys.time () -. t)
+
+    let push_soft ctx e =
+      let t = Sys.time () in
+      let solver = get_solver ctx in
+      S.push solver;
+      S.add_soft ctx solver [e];
+      if Global.options.debug then Message.debug "after_push_soft %f" (Sys.time () -. t)
 
     let pop ctx () =
       let t = Sys.time () in
@@ -2220,13 +2229,13 @@ struct
 
   type solver_result = Sat of model option | Unsat | Unknown of unknown_info
 
-  let split_input (l : input) : s_expr list * s_expr list * StructField.Set.t =
-    let rec aux l (acc_z3 : s_expr list) (acc_soft : s_expr list) (acc_reentrant : StructField.Set.t) =
+  let split_input (l : input) : s_expr list * PathConstraint.soft list * StructField.Set.t =
+    let rec aux l (acc_z3 : s_expr list) (acc_soft : PathConstraint.soft list) (acc_reentrant : StructField.Set.t) =
       let open PathConstraint in
       match l with
       | [] -> acc_z3, acc_soft, acc_reentrant
       | Pc_z3 e :: l' -> aux l' (e :: acc_z3) acc_soft acc_reentrant
-      | Pc_soft e :: l' -> aux l' acc_z3 (e :: acc_soft) acc_reentrant
+      | Pc_soft s :: l' -> aux l' acc_z3 (s :: acc_soft) acc_reentrant
       | Pc_reentrant e :: l' ->
         aux l' acc_z3 acc_soft
           (if e.is_empty then StructField.Set.add e.symb.name acc_reentrant
@@ -2245,7 +2254,7 @@ struct
   let push ctx (pc : PathConstraint.pc_expr) =
     match pc with
     | Pc_z3 pc -> Z3Solver.push ctx.ctx_z3 pc
-    | Pc_soft sc -> Z3Solver.push ctx.ctx_z3 ~soft:true sc
+    | Pc_soft sc -> Z3Solver.push_soft ctx.ctx_z3 sc
     | Pc_reentrant _ -> ()
   let pop ctx (pc : PathConstraint.pc_expr) =
     match pc with
@@ -2508,7 +2517,7 @@ let pc_expr_of_apc ctx (apc : PathConstraint.annotated_pc) :
     | Negated c -> begin
       match c.expr with
       | Pc_z3 e -> Pc_z3 (Z3.Boolean.mk_not ctx.ctx_z3 e)
-      | Pc_soft e -> Pc_soft (Z3.Boolean.mk_not ctx.ctx_z3 e)
+      | Pc_soft _ -> failwith "[pc_expr_of_apc] negation of soft constraint should not happen"
       | Pc_reentrant e -> Pc_reentrant { e with is_empty = not e.is_empty }
     end
 let constraint_list_of_path ctx (path : PathConstraint.annotated_path) :
