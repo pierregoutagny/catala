@@ -24,3 +24,4 @@ let remove_trivial_constraints opt (pcs : naked_path) : naked_path =
     in
     List.filter f pcs
   end
+

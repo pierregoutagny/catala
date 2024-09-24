@@ -54,6 +54,8 @@ module PathConstraint : sig
   module Print : sig
     open Format
 
+    val pc_expr : formatter -> pc_expr -> unit
+
     val naked_path : formatter -> naked_path -> unit
     val annotated_path : formatter -> annotated_path -> unit
   end

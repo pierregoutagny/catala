@@ -1979,6 +1979,25 @@ let make_input_mark ctx m field (ty : typ) : conc_info mark =
   let pos = Expr.mark_pos m in
   Custom { pos; custom = { symb_expr; constraints = []; ty = Some ty } }
 
+let soft_constraints_of_input_mark ctx (m: conc_info mark) : PathConstraint.pc_expr list =
+  let (Custom { custom={ty; symb_expr; _}; _ }) = m in
+  let ty = Option.get ty in (* by construction ty is not None *)
+  let naked_ty = Mark.remove ty in
+  let ctx = ctx.ctx_z3 in
+  match naked_ty, symb_expr with
+    | TLit TMoney, Symb_z3 var ->
+        let zero = Z3.Arithmetic.Integer.mk_numeral_i ctx 0 in
+        let money_unit = Z3.Arithmetic.Integer.mk_numeral_i ctx 1_00 in
+        let money_hundred = Z3.Arithmetic.Integer.mk_numeral_i ctx 100_00 in
+        let round_unit = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_unit) zero in
+        let round_hundred = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_hundred) zero in
+        List.map (fun x -> PathConstraint.Pc_soft x)
+        [round_unit ; round_hundred]
+    | _ -> []
+
+let make_soft_constraints ctx (input_marks : conc_info mark StructField.Map.t) : PathConstraint.pc_expr list =
+  StructField.Map.fold (fun _ m acc -> soft_constraints_of_input_mark ctx m @ acc) input_marks []
+
 (** Evaluation *)
 
 (** Do a "pre-evaluation" of the program. It compiles the target scope to a
@@ -2047,7 +2066,7 @@ struct
 
     let make ctx = Z3.Solver.mk_solver ctx None
 
-    let add ctx ?(soft=false) s l =
+    let add _ ?(soft=false) s l =
       if soft && l <> [] then Message.error ~internal:true "Tried to add a soft constraint on an incompatible solver. Try activating the soft constraint option."
       else Z3.Solver.add s l
     let push = Z3.Solver.push
@@ -2075,7 +2094,7 @@ struct
     let push = Z3.Optimize.push
     let pop = Z3.Optimize.pop
 
-    let check = Z3.Optimize.check
+    let check = if Global.options.debug then Message.debug "Using Optimize\n" ; Z3.Optimize.check
     let get_model = Z3.Optimize.get_model
 
     let get_reason_unknown = Z3.Optimize.get_reason_unknown
@@ -2095,6 +2114,7 @@ struct
       let solver = S.make ctx in
       S.add ctx solver constraints;
       S.add ctx ~soft:true solver softs;
+      if Global.options.debug then Message.debug "Solver is\n%s" (S.to_string solver);
       match S.check solver with
       | SATISFIABLE -> Z3Sat (S.get_model solver)
       | UNSATISFIABLE -> Z3Unsat
@@ -2678,6 +2698,14 @@ let interpret_program_concolic
 
     (* TODO CONC should it be [mark_e] or something else? *)
     let input_marks = StructField.Map.mapi (make_input_mark ctx mark_e) taus in
+    let soft_constraints =
+      if Optimizations.soft_constraints optims then
+      make_soft_constraints ctx input_marks
+      else [] in
+    if Global.options.debug then Message.debug "Initial soft constraints: %a\n"
+    (Format.pp_print_list
+       ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ")
+       (PathConstraint.Print.pc_expr)) soft_constraints;
 
     let total_tests = ref 0 in
 
@@ -2699,6 +2727,9 @@ let interpret_program_concolic
       let optims = optims
     end) in
 
+    (* add soft constraints to solver if it is incremental *)
+    List.iter (Solver.push ctx) soft_constraints;
+
     let rec concolic_loop (previous_path : PathConstraint.annotated_path) stats
         : Stats.t =
       let exec = Stats.start_exec (List.length previous_path) in
@@ -2711,6 +2742,7 @@ let interpret_program_concolic
         Stats.start_step "extract solver constraints"
       in
       let solver_constraints = constraint_list_of_path ctx previous_path in
+      let solver_constraints = soft_constraints @ solver_constraints in
       let exec =
         Stats.stop_step s_extract_constraints |> Stats.add_exec_step exec
       in
