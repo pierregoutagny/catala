@@ -2070,7 +2070,8 @@ struct
     let make ctx = Z3.Solver.mk_solver ctx None
 
     let add s l = Z3.Solver.add s l
-    let add_soft _ _ l = if l <> [] then Message.error ~internal:true "Tried to add a soft constraint on an incompatible solver. Try activating the soft constraint option."
+(*     let add_soft _ _ l = if l <> [] then Message.error ~internal:true "Tried to add a soft constraint on an incompatible solver. Try activating the soft constraint option." *)
+    let add_soft _ _ l = if l <> [] then Message.warning "adding soft constraints to Solver"
     let push = Z3.Solver.push
     let pop s = Z3.Solver.pop s 1
 
@@ -2143,13 +2144,31 @@ struct
         s
       | Some s -> s
 
-    let solve ctx _ _ : z3_solver_result =
+    let solve ctx _ (softs : PathConstraint.soft list) : z3_solver_result =
       if Global.options.debug then Message.debug "Using incremental Z3 solver";
       let solver = get_solver ctx in
-      if Global.options.debug then Message.debug "Get solver\n%s" (S.to_string solver);
+      if Global.options.debug then Message.debug "Trying with soft constraints";
+      S.push solver;
+      S.add solver (List.map (fun (s: PathConstraint.soft) -> s.symb) softs);
+      if Global.options.debug then Message.debug "Using solver with softs:\n%s" (S.to_string solver);
       match S.check solver with
-      | SATISFIABLE -> Z3Sat (S.get_model solver)
-      | UNSATISFIABLE -> Z3Unsat
+      | SATISFIABLE -> let m = S.get_model solver in S.pop solver; Z3Sat m
+      | UNSATISFIABLE ->
+        begin
+          if Global.options.debug then Message.debug "Soft constraints not satisfiable, trying without";
+          S.pop solver;
+          if Global.options.debug then Message.debug "Using solver without soft:\n%s" (S.to_string solver);
+          match S.check solver with
+          | SATISFIABLE -> Z3Sat (S.get_model solver)
+          | UNSATISFIABLE -> Z3Unsat
+          | UNKNOWN -> Z3Unknown
+              {
+                z3reason = S.get_reason_unknown solver;
+                z3stats = S.get_statistics solver;
+                z3solver_string = S.to_string solver;
+                z3assertions = S.get_assertions solver;
+              }
+        end
       | UNKNOWN -> Z3Unknown
           {
             z3reason = S.get_reason_unknown solver;
@@ -2181,7 +2200,9 @@ struct
 
   let z3Solver =
     let sm : (module Z3SolverModuleType) =
-      if Optimizations.soft_constraints Settings.optims
+      (* FIXME make a distinct option for Z3.Optimize and for soft constraints? *)
+(*       if Optimizations.soft_constraints Settings.optims *)
+      if false
       then (module Z3SolverModule_Optimize : Z3SolverModuleType)
       else (module Z3SolverModule_Solver : Z3SolverModuleType)
     in
