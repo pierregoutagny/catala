@@ -1979,6 +1979,27 @@ let make_input_mark ctx m field (ty : typ) : conc_info mark =
   let pos = Expr.mark_pos m in
   Custom { pos; custom = { symb_expr; constraints = []; ty = Some ty } }
 
+let soft_constraints_of_input_mark ctx (m: conc_info mark) : PathConstraint.pc_expr list =
+  let (Custom { custom={ty; symb_expr; _}; _ }) = m in
+  let ty = Option.get ty in (* by construction ty is not None *)
+  let naked_ty = Mark.remove ty in
+  let pos = Mark.get ty in
+  let ctx = ctx.ctx_z3 in
+  match naked_ty, symb_expr with
+    | TLit TMoney, Symb_z3 var ->
+        let zero = Z3.Arithmetic.Integer.mk_numeral_i ctx 0 in
+        let money_unit = Z3.Arithmetic.Integer.mk_numeral_i ctx 1_00 in
+        let money_hundred = Z3.Arithmetic.Integer.mk_numeral_i ctx 100_00 in
+        let non_negative = Z3.Arithmetic.mk_ge ctx var zero in
+        let round_unit = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_unit) zero in
+        let round_hundred = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_hundred) zero in
+        List.map (fun x -> let x = SymbExpr.mk_z3 x in (PathConstraint.mk_soft x 1 None pos false).expr)
+        [non_negative ; round_unit ; round_hundred]
+    | _ -> []
+
+let make_soft_constraints ctx (input_marks : conc_info mark StructField.Map.t) : PathConstraint.pc_expr list =
+  StructField.Map.fold (fun _ m acc -> soft_constraints_of_input_mark ctx m @ acc) input_marks []
+
 (** Evaluation *)
 
 (** Do a "pre-evaluation" of the program. It compiles the target scope to a
@@ -2024,91 +2045,152 @@ struct
   }
   type z3_solver_result = Z3Sat of Z3.Model.model option | Z3Unsat | Z3Unknown of unknown_info
 
+  module type Z3SolverModuleType = sig
+    type t
+
+    val make : Z3.context -> t
+
+    val add : t -> s_expr list -> unit
+    val add_soft : Z3.context -> t -> PathConstraint.soft list -> unit
+    val push : t -> unit
+    val pop : t -> unit
+
+    val check : t -> Z3.Solver.status
+    val get_model : t -> Z3.Model.model option
+
+    val get_reason_unknown : t -> string
+    val get_statistics : t -> Z3.Statistics.statistics
+    val to_string : t -> string
+    val get_assertions : t -> s_expr list
+  end
+
+  module Z3SolverModule_Solver : Z3SolverModuleType = struct
+    type t = Z3.Solver.solver
+
+    let make ctx = Z3.Solver.mk_solver ctx None
+
+    let add s l = Z3.Solver.add s l
+    let add_soft _ _ l = if l <> [] then Message.error ~internal:true "Tried to add a soft constraint on an incompatible solver. Try activating the soft constraint option."
+    let push = Z3.Solver.push
+    let pop s = Z3.Solver.pop s 1
+
+    let check s = Z3.Solver.check s []
+    let get_model = Z3.Solver.get_model
+
+    let get_reason_unknown = Z3.Solver.get_reason_unknown
+    let get_statistics = Z3.Solver.get_statistics
+    let to_string = Z3.Solver.to_string
+    let get_assertions = Z3.Solver.get_assertions
+  end
+
+  module Z3SolverModule_Optimize : Z3SolverModuleType = struct
+    type t = Z3.Optimize.optimize
+
+    let make = Z3.Optimize.mk_opt
+
+    let add_soft ctx (s : t) (l : PathConstraint.soft list) =
+      List.iter (fun (sc : PathConstraint.soft) -> let _ = Z3.Optimize.add_soft s sc.symb (string_of_int sc.weight) (Z3.Symbol.mk_string ctx sc.id) in ()) l
+    let add = Z3.Optimize.add
+    let push = Z3.Optimize.push
+    let pop = Z3.Optimize.pop
+
+    let check = if Global.options.debug then Message.debug "Using Optimize\n" ; Z3.Optimize.check
+    let get_model = Z3.Optimize.get_model
+
+    let get_reason_unknown = Z3.Optimize.get_reason_unknown
+    let get_statistics = Z3.Optimize.get_statistics
+    let to_string = Z3.Optimize.to_string
+    let get_assertions = Z3.Optimize.get_assertions
+  end
+
   module type Z3SolverType = sig
-    val solve : Z3.context -> s_expr list -> z3_solver_result
+    val solve : Z3.context -> s_expr list -> PathConstraint.soft list -> z3_solver_result
     val push : Z3.context -> s_expr -> unit
+    val push_soft : Z3.context -> PathConstraint.soft -> unit
     val pop : Z3.context -> unit -> unit
   end
 
-  module SimpleZ3Solver : Z3SolverType = struct
-    open Z3.Solver
-
-    let solve ctx (constraints : s_expr list) : z3_solver_result =
-      let solver = mk_solver ctx None in
-      add solver constraints;
-      match check solver [] with
-      | SATISFIABLE -> Z3Sat (get_model solver)
+  module SimpleZ3Solver (S : Z3SolverModuleType) : Z3SolverType = struct
+    let solve ctx (constraints : s_expr list) (softs : PathConstraint.soft list) : z3_solver_result =
+      let solver = S.make ctx in
+      S.add solver constraints;
+      S.add_soft ctx solver softs;
+      if Global.options.debug then Message.debug "Solver is\n%s" (S.to_string solver);
+      match S.check solver with
+      | SATISFIABLE -> Z3Sat (S.get_model solver)
       | UNSATISFIABLE -> Z3Unsat
       | UNKNOWN -> Z3Unknown
           {
-            z3reason = get_reason_unknown solver;
-            z3stats = get_statistics solver;
-            z3solver_string = to_string solver;
-            z3assertions = get_assertions solver;
+            z3reason = S.get_reason_unknown solver;
+            z3stats = S.get_statistics solver;
+            z3solver_string = S.to_string solver;
+            z3assertions = S.get_assertions solver;
           }
 
     let push _ _ = ()
+    let push_soft _ _ = ()
     let pop _ () = ()
   end
 
-  module IncrementalZ3Solver : Z3SolverType = struct
-    open Z3.Solver
-
+  module IncrementalZ3Solver (S : Z3SolverModuleType) : Z3SolverType = struct
     let solver = ref None
 
     let get_solver (ctx : Z3.context) =
       match !solver with
       | None ->
-        let s = mk_solver ctx None in
+        let s = S.make ctx in
         solver := Some s;
         s
       | Some s -> s
 
-    let solve ctx (constraints : s_expr list) : z3_solver_result =
+    let solve ctx _ _ : z3_solver_result =
       if Global.options.debug then Message.debug "Using incremental Z3 solver";
       let solver = get_solver ctx in
-      if Global.options.debug then Message.debug "Get solver\n%s" (to_string solver);
-      (* add solver constraints; *)
-      match check solver [] with
-      | SATISFIABLE -> Z3Sat (get_model solver)
+      if Global.options.debug then Message.debug "Get solver\n%s" (S.to_string solver);
+      match S.check solver with
+      | SATISFIABLE -> Z3Sat (S.get_model solver)
       | UNSATISFIABLE -> Z3Unsat
       | UNKNOWN -> Z3Unknown
           {
-            z3reason = get_reason_unknown solver;
-            z3stats = get_statistics solver;
-            z3solver_string = to_string solver;
-            z3assertions = get_assertions solver;
+            z3reason = S.get_reason_unknown solver;
+            z3stats = S.get_statistics solver;
+            z3solver_string = S.to_string solver;
+            z3assertions = S.get_assertions solver;
           }
 
     let push ctx e =
       let t = Sys.time () in
       let solver = get_solver ctx in
-      Z3.Solver.push solver;
-      add solver [e];
-      if Global.options.debug then Message.debug "after_push %n %f" (get_num_scopes solver) (Sys.time () -. t)
+      S.push solver;
+      S.add solver [e];
+      if Global.options.debug then Message.debug "after_push %f" (Sys.time () -. t)
+
+    let push_soft ctx e =
+      let t = Sys.time () in
+      let solver = get_solver ctx in
+      S.push solver;
+      S.add_soft ctx solver [e];
+      if Global.options.debug then Message.debug "after_push_soft %f" (Sys.time () -. t)
 
     let pop ctx () =
       let t = Sys.time () in
       let solver = get_solver ctx in
-      Z3.Solver.pop solver 1;
-      if Global.options.debug then Message.debug "after_pop %n %f" (get_num_scopes solver) (Sys.time () -. t)
-end
-
-  (* FIXME is there a better way? *)
-  module MakeZ3Solver (Incremental : sig
-    val incremental : bool
-  end) : Z3SolverType = struct
-    let incremental = Incremental.incremental
-
-    let solve : Z3.context -> s_expr list -> z3_solver_result =
-      if incremental then IncrementalZ3Solver.solve else SimpleZ3Solver.solve
-    let pop = if incremental then IncrementalZ3Solver.pop else SimpleZ3Solver.pop
-    let push = if incremental then IncrementalZ3Solver.push else SimpleZ3Solver.push
+      S.pop solver;
+      if Global.options.debug then Message.debug "after_pop %f" (Sys.time () -. t)
   end
 
-  module Z3Solver = MakeZ3Solver (struct
-    let incremental = Optimizations.incremental_solver Settings.optims
-  end)
+  let z3Solver =
+    let sm : (module Z3SolverModuleType) =
+      if Optimizations.soft_constraints Settings.optims
+      then (module Z3SolverModule_Optimize : Z3SolverModuleType)
+      else (module Z3SolverModule_Solver : Z3SolverModuleType)
+    in
+    let module SM = (val sm) in
+    if Optimizations.incremental_solver Settings.optims
+    then (module IncrementalZ3Solver(SM) : Z3SolverType)
+    else (module SimpleZ3Solver(SM) : Z3SolverType)
+
+  module Z3Solver = (val z3Solver)
 
   type input = PathConstraint.pc_expr list
 
@@ -2147,29 +2229,37 @@ end
 
   type solver_result = Sat of model option | Unsat | Unknown of unknown_info
 
-  let split_input (l : input) : s_expr list * StructField.Set.t =
-    let rec aux l (acc_z3 : s_expr list) (acc_reentrant : StructField.Set.t) =
+  let split_input (l : input) : s_expr list * PathConstraint.soft list * StructField.Set.t =
+    let rec aux l (acc_z3 : s_expr list) (acc_soft : PathConstraint.soft list) (acc_reentrant : StructField.Set.t) =
       let open PathConstraint in
       match l with
-      | [] -> acc_z3, acc_reentrant
-      | Pc_z3 e :: l' -> aux l' (e :: acc_z3) acc_reentrant
+      | [] -> acc_z3, acc_soft, acc_reentrant
+      | Pc_z3 e :: l' -> aux l' (e :: acc_z3) acc_soft acc_reentrant
+      | Pc_soft s :: l' -> aux l' acc_z3 (s :: acc_soft) acc_reentrant
       | Pc_reentrant e :: l' ->
-        aux l' acc_z3
+        aux l' acc_z3 acc_soft
           (if e.is_empty then StructField.Set.add e.symb.name acc_reentrant
            else acc_reentrant)
     in
-    aux l [] StructField.Set.empty
+    aux l [] [] StructField.Set.empty
 
   let solve (ctx : context) (constraints : input) =
-    let z3_constraints, model_empty_reentrants = split_input constraints in
-    match Z3Solver.solve ctx.ctx_z3 z3_constraints with
+    let z3_constraints, z3_soft_constraints, model_empty_reentrants = split_input constraints in
+    match Z3Solver.solve ctx.ctx_z3 z3_constraints z3_soft_constraints with
     | Z3Sat (Some model_z3) -> Sat (Some { model_z3; model_empty_reentrants })
     | Z3Sat None -> Sat None
     | Z3Unsat -> Unsat
     | Z3Unknown info -> Unknown info
 
-  let push ctx (pc : PathConstraint.pc_expr) = match pc with Pc_z3 pc -> Z3Solver.push ctx.ctx_z3 pc | Pc_reentrant _ -> ()
-  let pop ctx (pc : PathConstraint.pc_expr) = match pc with Pc_z3 pc -> Z3Solver.pop ctx.ctx_z3 () | Pc_reentrant _ -> ()
+  let push ctx (pc : PathConstraint.pc_expr) =
+    match pc with
+    | Pc_z3 pc -> Z3Solver.push ctx.ctx_z3 pc
+    | Pc_soft sc -> Z3Solver.push_soft ctx.ctx_z3 sc
+    | Pc_reentrant _ -> ()
+  let pop ctx (pc : PathConstraint.pc_expr) =
+    match pc with
+    | Pc_z3 _ | Pc_soft _ -> Z3Solver.pop ctx.ctx_z3 ()
+    | Pc_reentrant _ -> ()
 
   (** Create a dummy concolic mark with a position and a type. It has no
       symbolic expression or constraints, and is used for subexpressions inside
@@ -2427,6 +2517,7 @@ let pc_expr_of_apc ctx (apc : PathConstraint.annotated_pc) :
     | Negated c -> begin
       match c.expr with
       | Pc_z3 e -> Pc_z3 (Z3.Boolean.mk_not ctx.ctx_z3 e)
+      | Pc_soft _ -> failwith "[pc_expr_of_apc] negation of soft constraint should not happen"
       | Pc_reentrant e -> Pc_reentrant { e with is_empty = not e.is_empty }
     end
 let constraint_list_of_path ctx (path : PathConstraint.annotated_path) :
@@ -2616,6 +2707,14 @@ let interpret_program_concolic
 
     (* TODO CONC should it be [mark_e] or something else? *)
     let input_marks = StructField.Map.mapi (make_input_mark ctx mark_e) taus in
+    let soft_constraints =
+      if Optimizations.soft_constraints optims then
+      make_soft_constraints ctx input_marks
+      else [] in
+    if Global.options.debug then Message.debug "Initial soft constraints: %a\n"
+    (Format.pp_print_list
+       ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ")
+       (PathConstraint.Print.pc_expr)) soft_constraints;
 
     let total_tests = ref 0 in
 
@@ -2637,6 +2736,9 @@ let interpret_program_concolic
       let optims = optims
     end) in
 
+    (* add soft constraints to solver if it is incremental *)
+    List.iter (Solver.push ctx) soft_constraints;
+
     let rec concolic_loop (previous_path : PathConstraint.annotated_path) stats
         : Stats.t =
       let exec = Stats.start_exec (List.length previous_path) in
@@ -2649,6 +2751,7 @@ let interpret_program_concolic
         Stats.start_step "extract solver constraints"
       in
       let solver_constraints = constraint_list_of_path ctx previous_path in
+      let solver_constraints = soft_constraints @ solver_constraints in
       let exec =
         Stats.stop_step s_extract_constraints |> Stats.add_exec_step exec
       in
