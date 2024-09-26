@@ -2045,6 +2045,9 @@ struct
   }
   type z3_solver_result = Z3Sat of Z3.Model.model option | Z3Unsat | Z3Unknown of unknown_info
 
+  (* FIXME this is ugly *)
+  let num_soft_fail = ref 0
+
   module type Z3SolverModuleType = sig
     type t
 
@@ -2160,6 +2163,7 @@ struct
             | UNSATISFIABLE ->
                 if Global.options.debug then Message.debug "Solver with softs failed";
                 S.pop solver;
+                incr num_soft_fail;
                 Z3Sat m_without_soft
             | UNKNOWN -> Z3Unknown
                 {
@@ -2167,7 +2171,7 @@ struct
                   z3stats = S.get_statistics solver;
                   z3solver_string = S.to_string solver;
                   z3assertions = S.get_assertions solver;
-          }
+                }
         end
         else Z3Sat m_without_soft
       | UNSATISFIABLE -> Z3Unsat
@@ -3003,8 +3007,12 @@ let interpret_program_concolic
     let stats = Stats.stop stats in
     if print_stats then
       Message.result
-        "=== Concolic execution statistics ===\n%a\n%d tests\n======"
-        Stats.print stats !total_tests;
+        "=== Concolic execution statistics ===\n%a\n%d tests\n%s======"
+        Stats.print stats !total_tests
+        (* FIXME ugly *)
+        (if Optimizations.soft_constraints optims
+          then string_of_int !Solver.num_soft_fail ^ " soft fails\n"
+          else "");
     (* XXX BROKEN output *)
     []
   end
