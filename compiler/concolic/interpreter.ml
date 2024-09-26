@@ -2147,28 +2147,30 @@ struct
     let solve ctx _ (softs : PathConstraint.soft list) : z3_solver_result =
       if Global.options.debug then Message.debug "Using incremental Z3 solver";
       let solver = get_solver ctx in
-      if Global.options.debug then Message.debug "Trying with soft constraints";
-      S.push solver;
-      S.add solver (List.map (fun (s: PathConstraint.soft) -> s.symb) softs);
-      if Global.options.debug then Message.debug "Using solver with softs:\n%s" (S.to_string solver);
+      if Global.options.debug then Message.debug "Trying solver without softs:\n%s" (S.to_string solver);
       match S.check solver with
-      | SATISFIABLE -> let m = S.get_model solver in S.pop solver; Z3Sat m
-      | UNSATISFIABLE ->
-        begin
-          if Global.options.debug then Message.debug "Soft constraints not satisfiable, trying without";
-          S.pop solver;
-          if Global.options.debug then Message.debug "Using solver without soft:\n%s" (S.to_string solver);
-          match S.check solver with
-          | SATISFIABLE -> Z3Sat (S.get_model solver)
-          | UNSATISFIABLE -> Z3Unsat
-          | UNKNOWN -> Z3Unknown
-              {
-                z3reason = S.get_reason_unknown solver;
-                z3stats = S.get_statistics solver;
-                z3solver_string = S.to_string solver;
-                z3assertions = S.get_assertions solver;
-              }
+      | SATISFIABLE ->
+        let m_without_soft = S.get_model solver in
+        if softs <> [] then begin
+          S.push solver;
+            S.add solver (List.map (fun (s: PathConstraint.soft) -> s.symb) softs);
+            if Global.options.debug then Message.debug "Trying solver with softs:\n%s" (S.to_string solver);
+            match S.check solver with
+            | SATISFIABLE -> let m = S.get_model solver in S.pop solver; Z3Sat m
+            | UNSATISFIABLE ->
+                if Global.options.debug then Message.debug "Solver with softs failed";
+                S.pop solver;
+                Z3Sat m_without_soft
+            | UNKNOWN -> Z3Unknown
+                {
+                  z3reason = S.get_reason_unknown solver;
+                  z3stats = S.get_statistics solver;
+                  z3solver_string = S.to_string solver;
+                  z3assertions = S.get_assertions solver;
+          }
         end
+        else Z3Sat m_without_soft
+      | UNSATISFIABLE -> Z3Unsat
       | UNKNOWN -> Z3Unknown
           {
             z3reason = S.get_reason_unknown solver;
