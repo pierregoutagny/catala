@@ -105,11 +105,11 @@ $ catala Concolic --conc-optim=incremental -s A
 [RESULT] . o = -1
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . a_in = A1 3
+[RESULT] . a_in = A1 2
 [RESULT] . b_in = B2 StructS { -- a: A2 false }
 [RESULT] . s_in = StructS { -- a: A2 false }
 [RESULT]
-. t_in = StructT { -- a: A1 2 -- s: StructS { -- a: A1 3 } -- b: B1 A1 4 }
+. t_in = StructT { -- a: A1 3 -- s: StructS { -- a: A1 2 } -- b: B1 A1 4 }
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 1
 [RESULT] 

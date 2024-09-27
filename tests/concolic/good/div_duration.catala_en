@@ -21,8 +21,8 @@ $ catala Concolic --conc-optim=incremental -s A
 [RESULT] . o = 0
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = [1 day]
-[RESULT] . y_in = [2 days]
+[RESULT] . x_in = [-1 day]
+[RESULT] . y_in = [-2 days]
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 1
 [RESULT] 
