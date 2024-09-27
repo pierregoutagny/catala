@@ -2622,6 +2622,9 @@ module Stats = struct
     let total_time = stop_period stats.total_time in
     { stats with total_time }
 
+  let running_period stats : period =
+    stop_period stats.total_time
+
   let fold_execs (execs : execution list) : step list =
     let f (steps : step list) (exec : execution) =
       List.map2
@@ -2741,6 +2744,7 @@ let interpret_program_concolic
 
     let rec concolic_loop (previous_path : PathConstraint.annotated_path) stats
         : Stats.t =
+      if Optimizations.tests_vs_time optims then Message.result "time of step: %a" Stats.Print.period (Stats.running_period stats);
       let exec = Stats.start_exec (List.length previous_path) in
       let s_print_pc = Stats.start_step "print path constraints" in
       if Global.options.debug then Message.debug "";
@@ -2769,6 +2773,7 @@ let interpret_program_concolic
         let inputs = Solver.inputs_of_model ctx m input_marks in
 
         if not Global.options.debug then Message.result "";
+        if Optimizations.tests_vs_time optims then Message.result "time of test: %a" Stats.Print.period (Stats.running_period stats);
         Message.result "Evaluating with inputs:";
         let inputs_list =
           List.map
