@@ -2046,7 +2046,9 @@ struct
   type z3_solver_result = Z3Sat of Z3.Model.model option | Z3Unsat | Z3Unknown of unknown_info
 
   (* FIXME this is ugly *)
-  let num_soft_fail = ref 0
+  let num_unsat = ref 0
+  let num_soft_unsat = ref 0
+  let num_soft_sat = ref 0
 
   module type Z3SolverModuleType = sig
     type t
@@ -2154,11 +2156,11 @@ struct
             let soft_exprs = List.map (fun (s: PathConstraint.soft) -> s.symb) softs in
             let result_soft = _solve ctx soft_exprs in
             match result_soft with
-            | Z3Sat _ -> result_soft
-            | Z3Unsat -> incr num_soft_fail; result
+            | Z3Sat _ -> incr num_soft_sat; result_soft
+            | Z3Unsat -> incr num_soft_unsat; result
             | Z3Unknown _ as r -> r
           end
-      | _ -> result
+      | _ -> incr num_unsat; result
 
     let push ctx e =
       let t = Sys.time () in
@@ -2979,7 +2981,10 @@ let interpret_program_concolic
         Stats.print stats !total_tests
         (* FIXME ugly *)
         (if Optimizations.soft_constraints optims
-          then string_of_int !Solver.num_soft_fail ^ " soft fails\n"
+          then
+            string_of_int !Solver.num_unsat ^ " hard unsat\n"
+          ^ string_of_int !Solver.num_soft_unsat ^ " soft unsat\n"
+          ^ string_of_int !Solver.num_soft_sat ^ " soft sat\n"
           else "");
     (* XXX BROKEN output *)
     []
