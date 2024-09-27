@@ -2054,11 +2054,10 @@ struct
     val make : Z3.context -> t
 
     val add : t -> s_expr list -> unit
-    val add_soft : Z3.context -> t -> PathConstraint.soft list -> unit
     val push : t -> unit
     val pop : t -> unit
 
-    val check : t -> Z3.Solver.status
+    val check : t -> s_expr list -> Z3.Solver.status
     val get_model : t -> Z3.Model.model option
 
     val get_reason_unknown : t -> string
@@ -2074,11 +2073,10 @@ struct
 
     let add s l = Z3.Solver.add s l
 (*     let add_soft _ _ l = if l <> [] then Message.error ~internal:true "Tried to add a soft constraint on an incompatible solver. Try activating the soft constraint option." *)
-    let add_soft _ _ l = if l <> [] then Message.warning "adding soft constraints to Solver"
     let push = Z3.Solver.push
     let pop s = Z3.Solver.pop s 1
 
-    let check s = Z3.Solver.check s []
+    let check s cs = Z3.Solver.check s cs
     let get_model = Z3.Solver.get_model
 
     let get_reason_unknown = Z3.Solver.get_reason_unknown
@@ -2087,40 +2085,18 @@ struct
     let get_assertions = Z3.Solver.get_assertions
   end
 
-  module Z3SolverModule_Optimize : Z3SolverModuleType = struct
-    type t = Z3.Optimize.optimize
-
-    let make = Z3.Optimize.mk_opt
-
-    let add_soft ctx (s : t) (l : PathConstraint.soft list) =
-      List.iter (fun (sc : PathConstraint.soft) -> let _ = Z3.Optimize.add_soft s sc.symb (string_of_int sc.weight) (Z3.Symbol.mk_string ctx sc.id) in ()) l
-    let add = Z3.Optimize.add
-    let push = Z3.Optimize.push
-    let pop = Z3.Optimize.pop
-
-    let check = if Global.options.debug then Message.debug "Using Optimize\n" ; Z3.Optimize.check
-    let get_model = Z3.Optimize.get_model
-
-    let get_reason_unknown = Z3.Optimize.get_reason_unknown
-    let get_statistics = Z3.Optimize.get_statistics
-    let to_string = Z3.Optimize.to_string
-    let get_assertions = Z3.Optimize.get_assertions
-  end
-
   module type Z3SolverType = sig
     val solve : Z3.context -> s_expr list -> PathConstraint.soft list -> z3_solver_result
     val push : Z3.context -> s_expr -> unit
-    val push_soft : Z3.context -> PathConstraint.soft -> unit
     val pop : Z3.context -> unit -> unit
   end
 
   module SimpleZ3Solver (S : Z3SolverModuleType) : Z3SolverType = struct
-    let solve ctx (constraints : s_expr list) (softs : PathConstraint.soft list) : z3_solver_result =
+    let solve ctx (constraints : s_expr list) (_ : PathConstraint.soft list) : z3_solver_result =
       let solver = S.make ctx in
       S.add solver constraints;
-      S.add_soft ctx solver softs;
       if Global.options.debug then Message.debug "Solver is\n%s" (S.to_string solver);
-      match S.check solver with
+      match S.check solver [] with
       | SATISFIABLE -> Z3Sat (S.get_model solver)
       | UNSATISFIABLE -> Z3Unsat
       | UNKNOWN -> Z3Unknown
@@ -2132,7 +2108,6 @@ struct
           }
 
     let push _ _ = ()
-    let push_soft _ _ = ()
     let pop _ () = ()
   end
 
@@ -2147,33 +2122,15 @@ struct
         s
       | Some s -> s
 
-    let solve ctx _ (softs : PathConstraint.soft list) : z3_solver_result =
-      if Global.options.debug then Message.debug "Using incremental Z3 solver";
+    let _solve ctx (local_constraints : s_expr list) : z3_solver_result =
       let solver = get_solver ctx in
-      if Global.options.debug then Message.debug "Trying solver without softs:\n%s" (S.to_string solver);
-      match S.check solver with
-      | SATISFIABLE ->
-        let m_without_soft = S.get_model solver in
-        if softs <> [] then begin
-          S.push solver;
-            S.add solver (List.map (fun (s: PathConstraint.soft) -> s.symb) softs);
-            if Global.options.debug then Message.debug "Trying solver with softs:\n%s" (S.to_string solver);
-            match S.check solver with
-            | SATISFIABLE -> let m = S.get_model solver in S.pop solver; Z3Sat m
-            | UNSATISFIABLE ->
-                if Global.options.debug then Message.debug "Solver with softs failed";
-                S.pop solver;
-                incr num_soft_fail;
-                Z3Sat m_without_soft
-            | UNKNOWN -> Z3Unknown
-                {
-                  z3reason = S.get_reason_unknown solver;
-                  z3stats = S.get_statistics solver;
-                  z3solver_string = S.to_string solver;
-                  z3assertions = S.get_assertions solver;
-                }
-        end
-        else Z3Sat m_without_soft
+      if Global.options.debug then Message.debug "Using incremental Z3 solver";
+      S.push solver;
+      S.add solver local_constraints;
+      let status = S.check solver local_constraints in
+      if Global.options.debug then Message.debug "\n%s" (S.to_string solver);
+      let result = match status with
+      | SATISFIABLE -> Z3Sat (S.get_model solver)
       | UNSATISFIABLE -> Z3Unsat
       | UNKNOWN -> Z3Unknown
           {
@@ -2182,6 +2139,26 @@ struct
             z3solver_string = S.to_string solver;
             z3assertions = S.get_assertions solver;
           }
+      in
+      S.pop solver;
+      result
+
+    let solve ctx _ (softs : PathConstraint.soft list) : z3_solver_result =
+      if Global.options.debug then Message.debug "Trying solver without softs...";
+      let result = _solve ctx [] in
+      match result with
+      | Z3Sat _ ->
+          if softs = [] then result
+          else begin
+            if Global.options.debug then Message.debug "Sat without softs, so trying solver with softs";
+            let soft_exprs = List.map (fun (s: PathConstraint.soft) -> s.symb) softs in
+            let result_soft = _solve ctx soft_exprs in
+            match result_soft with
+            | Z3Sat _ -> result_soft
+            | Z3Unsat -> incr num_soft_fail; result
+            | Z3Unknown _ as r -> r
+          end
+      | _ -> result
 
     let push ctx e =
       let t = Sys.time () in
@@ -2189,13 +2166,6 @@ struct
       S.push solver;
       S.add solver [e];
       if Global.options.debug then Message.debug "after_push %f" (Sys.time () -. t)
-
-    let push_soft ctx e =
-      let t = Sys.time () in
-      let solver = get_solver ctx in
-      S.push solver;
-      S.add_soft ctx solver [e];
-      if Global.options.debug then Message.debug "after_push_soft %f" (Sys.time () -. t)
 
     let pop ctx () =
       let t = Sys.time () in
@@ -2205,14 +2175,7 @@ struct
   end
 
   let z3Solver =
-    let sm : (module Z3SolverModuleType) =
-      (* FIXME make a distinct option for Z3.Optimize and for soft constraints? *)
-(*       if Optimizations.soft_constraints Settings.optims *)
-      if false
-      then (module Z3SolverModule_Optimize : Z3SolverModuleType)
-      else (module Z3SolverModule_Solver : Z3SolverModuleType)
-    in
-    let module SM = (val sm) in
+    let module SM = Z3SolverModule_Solver in
     if Optimizations.incremental_solver Settings.optims
     then (module IncrementalZ3Solver(SM) : Z3SolverType)
     else (module SimpleZ3Solver(SM) : Z3SolverType)
@@ -2281,7 +2244,7 @@ struct
   let push ctx (pc : PathConstraint.pc_expr) =
     match pc with
     | Pc_z3 pc -> Z3Solver.push ctx.ctx_z3 pc
-    | Pc_soft sc -> Z3Solver.push_soft ctx.ctx_z3 sc
+    | Pc_soft _ -> () (* Z3Solver.push_soft ctx.ctx_z3 sc *)
     | Pc_reentrant _ -> ()
   let pop ctx (pc : PathConstraint.pc_expr) =
     match pc with
