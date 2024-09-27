@@ -1614,7 +1614,7 @@ let rec evaluate_expr :
         let arm_conditions = make_z3_arm_conditions ctx name cons e_symb in
         let arm_path_constraints =
           List.map
-            (fun (s, b) -> PathConstraint.mk_z3 s (Expr.pos e) b)
+            (fun (s, b) -> PathConstraint.mk_z3 (SymbExpr.simplify s) (Expr.pos e) b)
             arm_conditions
         in
 
