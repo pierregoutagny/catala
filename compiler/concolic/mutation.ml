@@ -72,9 +72,9 @@ let apply_mutations (type e c) (mutations: ((e, c, 't) mutation_type * float) li
         total_excepts_n := !total_excepts_n + List.length (excepts);
         incr total_defaults_n;
         if Global.options.debug then Message.debug "[mutation] looking at expression %a (%n)" (Print.expr ()) e (List.length excepts);
-        let excepts = List.map (Expr.map ~op ~f) excepts in
-        let just = Expr.map ~op ~f just in
-        let cons = Expr.map ~op ~f cons in
+        let excepts = List.map f excepts in
+        let just = f just in
+        let cons = f cons in
         List.fold_left (
           fun acc (mutation, p) ->
             if random p then begin
