@@ -1,13 +1,12 @@
 open Shared_ast
 
-type ('e, 'c, 't) mutation_type =
-  excepts:((yes, 'e, 'c) interpr_kind, 't) gexpr boxed list
-  -> just:((yes, 'e, 'c) interpr_kind, 't) gexpr boxed
-  -> cons:((yes, 'e, 'c) interpr_kind, 't) gexpr boxed
-  -> 't mark
-  -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed
+type ('e, 'c, 't) mutation_type = ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed
 
+val remove_excepts_n : int ref
 val remove_excepts : float -> ('e, 'c, 't) mutation_type
+
+val duplicate_excepts_n : int ref
 val duplicate_excepts : ('e, 'c, 't) mutation_type
 
-val one_mutation : float -> ('e, 'c, 't) mutation_type -> ((yes, 'e, 'c) interpr_kind, 't) gexpr -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed
+val total_excepts_n : int ref
+val apply_mutations : (('e, 'c, 't) mutation_type * float) list -> ((yes, 'e, 'c) interpr_kind, 't) gexpr -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed

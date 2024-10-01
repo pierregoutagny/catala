@@ -2695,9 +2695,12 @@ let interpret_program_concolic
   let scope_e =
     if Optimizations.mutation optims
     then begin
+      let mutations = List.filter_map (fun (o, f, p) -> if o optims then Some (f, p) else None) [
+        Optimizations.mutation_remove, Mutation.remove_excepts 0.3, 0.3;
+        Optimizations.mutation_duplicate, Mutation.duplicate_excepts, 0.3;
+      ] in
       if Global.options.debug then Message.debug "Before mutation:\n%a" (Print.expr ()) scope_e;
-      let mutated_scope_e = if Optimizations.mutation_remove optims then Mutation.one_mutation 0.5 (Mutation.remove_excepts 0.3) scope_e |> Expr.unbox else scope_e in
-      let mutated_scope_e = if Optimizations.mutation_duplicate optims then Mutation.one_mutation 0.5 (Mutation.duplicate_excepts) mutated_scope_e |> Expr.unbox else mutated_scope_e in
+      let mutated_scope_e = Mutation.apply_mutations mutations scope_e |> Expr.unbox in
       if Global.options.debug then Message.debug "\nAfter mutation:\n%a" (Print.expr ()) mutated_scope_e;
       mutated_scope_e
     end
@@ -2990,15 +2993,23 @@ let interpret_program_concolic
     let stats = Stats.stop stats in
     if print_stats then
       Message.result
-        "=== Concolic execution statistics ===\n%a\n%d tests\n%s======"
+        "=== Concolic execution statistics ===\n%a\n%d tests\n%s%s======"
         Stats.print stats !total_tests
         (* FIXME ugly *)
         (if Optimizations.soft_constraints optims
           then
-            string_of_int !Solver.num_unsat ^ " hard unsat\n"
-          ^ string_of_int !Solver.num_soft_unsat ^ " soft unsat\n"
-          ^ string_of_int !Solver.num_soft_sat ^ " soft sat\n"
-          else "");
+            "Soft constraints:\n"
+          ^ "  " ^ string_of_int !Solver.num_unsat ^ " hard unsat\n"
+          ^ "  " ^ string_of_int !Solver.num_soft_unsat ^ " soft unsat\n"
+          ^ "  " ^ string_of_int !Solver.num_soft_sat ^ " soft sat\n"
+          else "")
+        (if Optimizations.mutation optims
+          then
+            "Mutations:\n"
+          ^ "  out of " ^ string_of_int !Mutation.total_excepts_n ^ " excepts...\n"
+          ^ "  " ^ string_of_int !Mutation.remove_excepts_n ^ " excepts removed\n"
+          ^ "  " ^ string_of_int !Mutation.duplicate_excepts_n ^ " excepts duplicated\n"
+        else "");
     (* XXX BROKEN output *)
     []
   end
