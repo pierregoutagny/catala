@@ -2692,10 +2692,17 @@ let interpret_program_concolic
   let s_simplify = Stats.start_step "simplify" in
   let scope_e = simplify_program ctx p s in
 
-  Message.result "Before mutation:\n%a" (Print.expr ()) scope_e;
-  let mutated_scope_e = Mutation.one_mutation 0.5 (Mutation.remove_excepts 0.3) scope_e |> Expr.unbox in
-  Message.result "\nAfter mutation:\n%a" (Print.expr ()) mutated_scope_e;
-  let _ = failwith "stop" in
+  let scope_e =
+    if Optimizations.mutation optims
+    then begin
+      if Global.options.debug then Message.debug "Before mutation:\n%a" (Print.expr ()) scope_e;
+      let mutated_scope_e = if Optimizations.mutation_remove optims then Mutation.one_mutation 0.5 (Mutation.remove_excepts 0.3) scope_e |> Expr.unbox else scope_e in
+      let mutated_scope_e = if Optimizations.mutation_duplicate optims then Mutation.one_mutation 0.5 (Mutation.duplicate_excepts) mutated_scope_e |> Expr.unbox else mutated_scope_e in
+      if Global.options.debug then Message.debug "\nAfter mutation:\n%a" (Print.expr ()) mutated_scope_e;
+      mutated_scope_e
+    end
+    else scope_e in
+
 
   let stats = Stats.stop_step s_simplify |> Stats.add_stat_step stats in
   match scope_e with
