@@ -5,7 +5,7 @@ type flag =
   | OIncrementalSolver
   | OSoftConstraints
   | OTestsVTime
-  | OMutationRemove | OMutationDuplicate
+  | OMutationRemove | OMutationDuplicate | OMutationNegateJusts
 
 val optim_list : (string * flag) list
 (** Used for command line arguments *)
@@ -23,6 +23,8 @@ val tests_vs_time : flag list -> bool
 val mutation_remove : flag list -> bool
 
 val mutation_duplicate : flag list -> bool
+
+val mutation_negate_justs : flag list -> bool
 
 val mutation : flag list -> bool
 

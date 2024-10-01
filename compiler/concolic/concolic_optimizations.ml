@@ -7,6 +7,7 @@ type flag = | OTrivial
             | OTestsVTime
             | OMutationRemove
             | OMutationDuplicate
+            | OMutationNegateJusts
 
 let optim_list = [
   "trivial", OTrivial;
@@ -16,6 +17,7 @@ let optim_list = [
   "tests-vs-time", OTestsVTime;
   "mutation-remove", OMutationRemove;
   "mutation-duplicate", OMutationDuplicate;
+  "mutation-negate-justs", OMutationNegateJusts;
 ]
 let trivial : flag list -> bool = List.mem OTrivial
 let lazy_default : flag list -> bool = List.mem OLazyDefault
@@ -24,8 +26,9 @@ let soft_constraints : flag list -> bool = List.mem OSoftConstraints
 let tests_vs_time : flag list -> bool = List.mem OTestsVTime
 let mutation_remove : flag list -> bool = List.mem OMutationRemove
 let mutation_duplicate : flag list -> bool = List.mem OMutationDuplicate
+let mutation_negate_justs : flag list -> bool = List.mem OMutationNegateJusts
 
-let mutation flags = mutation_remove flags || mutation_duplicate flags
+let mutation flags = mutation_remove flags || mutation_duplicate flags || mutation_negate_justs flags
 
 let remove_trivial_constraints opt (pcs : naked_path) : naked_path =
   if not (trivial opt) then pcs

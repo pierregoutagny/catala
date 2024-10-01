@@ -8,5 +8,9 @@ val remove_excepts : float -> ('e, 'c, 't) mutation_type
 val duplicate_excepts_n : int ref
 val duplicate_excepts : ('e, 'c, 't) mutation_type
 
+val negate_justs_n : int ref
+val negate_justs : ('e, 'c, 't) mutation_type
+
 val total_excepts_n : int ref
+val total_defaults_n : int ref
 val apply_mutations : (('e, 'c, 't) mutation_type * float) list -> ((yes, 'e, 'c) interpr_kind, 't) gexpr -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed

@@ -48,12 +48,29 @@ let duplicate_excepts : ('e, 'c, 't) mutation_type =
       end
     | _ -> e
 
+let negate_justs_n = ref 0
+let negate_justs : ('e, 'c, 't) mutation_type =
+  fun e -> match Expr.unbox e with
+    | (EDefault {excepts ; just ; cons }, m) -> begin
+        let excepts = List.map Expr.rebox excepts in
+        let just = Expr.rebox just in
+        let not_just = Expr.eappop ~op:Operator.Not ~args:[just] ~tys:[TLit TBool, Expr.mark_pos m] m in
+        let cons = Expr.rebox cons in
+        if Global.options.debug then Message.debug "[mutation] Negating just";
+        incr negate_justs_n;
+        Expr.edefault ~excepts ~just:not_just ~cons m
+      end
+    | _ -> e
+
+
+let total_defaults_n = ref 0
 let total_excepts_n = ref 0
 let apply_mutations (type e c) (mutations: ((e, c, 't) mutation_type * float) list) expr =
   let op = Fun.id in
   let rec f : ((yes, e, c) interpr_kind, 't) gexpr -> ((yes, e, c) interpr_kind, 't) gexpr boxed = function
     | (EDefault {excepts ; just ; cons}, m) as e ->
         total_excepts_n := !total_excepts_n + List.length (excepts);
+        incr total_defaults_n;
         if Global.options.debug then Message.debug "[mutation] looking at expression %a (%n)" (Print.expr ()) e (List.length excepts);
         let excepts = List.map (Expr.map ~op ~f) excepts in
         let just = Expr.map ~op ~f just in

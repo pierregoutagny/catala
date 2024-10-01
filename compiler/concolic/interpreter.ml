@@ -2698,6 +2698,7 @@ let interpret_program_concolic
       let mutations = List.filter_map (fun (o, f, p) -> if o optims then Some (f, p) else None) [
         Optimizations.mutation_remove, Mutation.remove_excepts 0.3, 0.3;
         Optimizations.mutation_duplicate, Mutation.duplicate_excepts, 0.3;
+        Optimizations.mutation_negate_justs, Mutation.negate_justs, 0.1;
       ] in
       if Global.options.debug then Message.debug "Before mutation:\n%a" (Print.expr ()) scope_e;
       let mutated_scope_e = Mutation.apply_mutations mutations scope_e |> Expr.unbox in
@@ -3006,9 +3007,10 @@ let interpret_program_concolic
         (if Optimizations.mutation optims
           then
             "Mutations:\n"
-          ^ "  out of " ^ string_of_int !Mutation.total_excepts_n ^ " excepts...\n"
+          ^ "  out of " ^ string_of_int !Mutation.total_defaults_n ^ " defaults and " ^ string_of_int !Mutation.total_excepts_n ^ " excepts...\n"
           ^ "  " ^ string_of_int !Mutation.remove_excepts_n ^ " excepts removed\n"
           ^ "  " ^ string_of_int !Mutation.duplicate_excepts_n ^ " excepts duplicated\n"
+          ^ "  " ^ string_of_int !Mutation.negate_justs_n ^ " justs negated\n"
         else "");
     (* XXX BROKEN output *)
     []
