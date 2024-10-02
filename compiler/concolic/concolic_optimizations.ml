@@ -9,6 +9,7 @@ type flag = | OTrivial
             | OMutationRemove
             | OMutationDuplicate
             | OMutationNegateJusts
+            | OMutationOneConflict
 
 let optim_list = [
   "trivial", OTrivial;
@@ -20,6 +21,7 @@ let optim_list = [
   "mutation-remove", OMutationRemove;
   "mutation-duplicate", OMutationDuplicate;
   "mutation-negate-justs", OMutationNegateJusts;
+  "mutation-one-conflict", OMutationOneConflict;
 ]
 let trivial : flag list -> bool = List.mem OTrivial
 let lazy_default : flag list -> bool = List.mem OLazyDefault
@@ -30,8 +32,11 @@ let timeout_retry (l: flag list) : bool = not (List.mem OTimeoutRetry l) (* This
 let mutation_remove : flag list -> bool = List.mem OMutationRemove
 let mutation_duplicate : flag list -> bool = List.mem OMutationDuplicate
 let mutation_negate_justs : flag list -> bool = List.mem OMutationNegateJusts
+let mutation_one_conflict : flag list -> bool = List.mem OMutationOneConflict
 
-let mutation flags = mutation_remove flags || mutation_duplicate flags || mutation_negate_justs flags
+let random_mutations flags = mutation_remove flags || mutation_duplicate flags || mutation_negate_justs flags
+let one_mutation flags = mutation_one_conflict flags
+let mutation flags = random_mutations flags || one_mutation flags
 
 let remove_trivial_constraints opt (pcs : naked_path) : naked_path =
   if not (trivial opt) then pcs
