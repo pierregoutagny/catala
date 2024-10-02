@@ -16,7 +16,7 @@ let optim_list = [
   "incremental", OIncrementalSolver;
   "soft", OSoftConstraints;
   "tests-vs-time", OTestsVTime;
-  "timeout-retry", OTimeoutRetry;
+  "no-timeout-retry", OTimeoutRetry;
   "mutation-remove", OMutationRemove;
   "mutation-duplicate", OMutationDuplicate;
   "mutation-negate-justs", OMutationNegateJusts;
@@ -26,7 +26,7 @@ let lazy_default : flag list -> bool = List.mem OLazyDefault
 let incremental_solver : flag list -> bool = List.mem OIncrementalSolver
 let soft_constraints : flag list -> bool = List.mem OSoftConstraints
 let tests_vs_time : flag list -> bool = List.mem OTestsVTime
-let timeout_retry : flag list -> bool = List.mem OTimeoutRetry
+let timeout_retry (l: flag list) : bool = not (List.mem OTimeoutRetry l) (* This option is active by default *)
 let mutation_remove : flag list -> bool = List.mem OMutationRemove
 let mutation_duplicate : flag list -> bool = List.mem OMutationDuplicate
 let mutation_negate_justs : flag list -> bool = List.mem OMutationNegateJusts
