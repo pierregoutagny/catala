@@ -2209,7 +2209,7 @@ struct
 
   let fmt_unknown_info (fmt : Format.formatter) (info : unknown_info) =
     let open Format in
-    fprintf fmt "Reason:@.%s" info.z3reason;
+    fprintf fmt "Reason: %s" info.z3reason;
     pp_print_newline fmt ();
     fprintf fmt "Statistics:@.%s" (Z3.Statistics.to_string info.z3stats);
     pp_print_newline fmt ();
@@ -2236,12 +2236,21 @@ struct
     aux l [] [] StructField.Set.empty
 
   let solve (ctx : context) (constraints : input) =
-    let z3_constraints, z3_soft_constraints, model_empty_reentrants = split_input constraints in
-    match Z3Solver.solve ctx.ctx_z3 z3_constraints z3_soft_constraints with
-    | Z3Sat (Some model_z3) -> Sat (Some { model_z3; model_empty_reentrants })
-    | Z3Sat None -> Sat None
-    | Z3Unsat -> Unsat
-    | Z3Unknown info -> Unknown info
+    let rec aux retry ctx constraints =
+      let z3_constraints, z3_soft_constraints, model_empty_reentrants = split_input constraints in
+      match Z3Solver.solve ctx.ctx_z3 z3_constraints z3_soft_constraints with
+      | Z3Sat (Some model_z3) -> Sat (Some { model_z3; model_empty_reentrants })
+      | Z3Sat None -> Sat None
+      | Z3Unsat -> Unsat
+      | Z3Unknown info ->
+            if String.compare info.z3reason "timeout" = 0 && retry
+            then begin
+              Message.warning "Concolic execution solver timed out:\n%a" fmt_unknown_info info;
+              Message.warning "Trying to solve again...";
+              aux false ctx constraints
+            end
+            else Unknown info
+    in aux (Optimizations.timeout_retry Settings.optims) ctx constraints
 
   let push ctx (pc : PathConstraint.pc_expr) =
     match pc with

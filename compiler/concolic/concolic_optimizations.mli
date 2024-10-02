@@ -5,6 +5,7 @@ type flag =
   | OIncrementalSolver
   | OSoftConstraints
   | OTestsVTime
+  | OTimeoutRetry
   | OMutationRemove | OMutationDuplicate | OMutationNegateJusts
 
 val optim_list : (string * flag) list
@@ -18,6 +19,8 @@ val incremental_solver : flag list -> bool
 val soft_constraints : flag list -> bool
 
 val tests_vs_time : flag list -> bool
+
+val timeout_retry : flag list -> bool
 
 
 val mutation_remove : flag list -> bool
