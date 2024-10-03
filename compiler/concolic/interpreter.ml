@@ -2243,9 +2243,8 @@ struct
       | Z3Sat None -> Sat None
       | Z3Unsat -> Unsat
       | Z3Unknown info ->
-            if String.compare info.z3reason "timeout" = 0 && retry
-            then begin
-              Message.warning "Concolic execution solver timed out:\n%a" fmt_unknown_info info;
+            if retry then begin
+              Message.warning "Concolic execution solver returned unknwon once:\n%a" fmt_unknown_info info;
               Message.warning "Trying to solve again...";
               aux false ctx constraints
             end
