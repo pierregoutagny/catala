@@ -2244,7 +2244,7 @@ struct
       | Z3Unsat -> Unsat
       | Z3Unknown info ->
             if retry then begin
-              Message.warning "Concolic execution solver returned unknwon once:\n%a" fmt_unknown_info info;
+              Message.warning "Concolic execution solver returned unknown once:\n%a" fmt_unknown_info info;
               Message.warning "Trying to solve again...";
               aux false ctx constraints
             end
