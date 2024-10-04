@@ -1993,8 +1993,8 @@ let soft_constraints_of_input_mark ctx (m: conc_info mark) : PathConstraint.pc_e
         let non_negative = Z3.Arithmetic.mk_ge ctx var zero in
         let round_unit = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_unit) zero in
         let round_hundred = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_hundred) zero in
-        List.map (fun x -> let x = SymbExpr.mk_z3 x in (PathConstraint.mk_soft x 1 None pos false).expr)
-        [non_negative ; round_unit ; round_hundred]
+        List.map (fun (x, id) -> let x = SymbExpr.mk_z3 x in (PathConstraint.mk_soft x 1 (Some id) pos false).expr)
+        [non_negative, "2non_negative" ; round_unit, "1round_unit" ; round_hundred, "0round_hundred"]
     | _ -> []
 
 let make_soft_constraints ctx (input_marks : conc_info mark StructField.Map.t) : PathConstraint.pc_expr list =
@@ -2145,6 +2145,11 @@ struct
       S.pop solver;
       result
 
+    module StringMap = String.Map
+
+    let group_softs (softs : PathConstraint.soft list) : (PathConstraint.soft list) StringMap.t =
+      List.fold_left (fun acc (s: PathConstraint.soft) -> StringMap.update s.id (function None -> Some [s] | Some l -> Some (s::l)) acc) StringMap.empty softs
+
     let solve ctx _ (softs : PathConstraint.soft list) : z3_solver_result =
       if Global.options.debug then Message.debug "Trying solver without softs...";
       let result = _solve ctx [] in
@@ -2153,6 +2158,8 @@ struct
           if softs = [] then result
           else begin
             if Global.options.debug then Message.debug "Sat without softs, so trying solver with softs";
+            let groups = group_softs softs in
+            Message.result "%s" (StringMap.to_seq groups |> List.of_seq |> List.map fst |> List.hd);
             let soft_exprs = List.map (fun (s: PathConstraint.soft) -> s.symb) softs in
             let result_soft = _solve ctx soft_exprs in
             match result_soft with
