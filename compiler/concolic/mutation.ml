@@ -87,6 +87,14 @@ type ast_stats_t = {
   (* ifs, nb of except by default, asserts *)
 }
 
+let pprint_ast_stats (fmt : Format.formatter) (s: ast_stats_t) =
+  let open Format in
+  fprintf fmt "AST Stats:@\n@[<v 2>  ";
+  fprintf fmt "defaults: %n@," s.defaults;
+  fprintf fmt "defaults with excepts: %n@," s.defaults_with_excepts;
+  fprintf fmt "total excepts: %n" s.excepts;
+  fprintf fmt "@]"
+
 let get_stats expr =
   let stats = { defaults = 0 ; defaults_with_excepts = 0 ; excepts = 0 } in
   let op = Fun.id in

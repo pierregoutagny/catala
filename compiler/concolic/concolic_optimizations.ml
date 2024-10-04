@@ -11,6 +11,7 @@ type flag = | OTrivial
             | OMutationDuplicate
             | OMutationNegateJusts
             | OMutationOneConflict
+            | OASTStats
 
 let optim_list = [
   "trivial", OTrivial;
@@ -24,6 +25,7 @@ let optim_list = [
   "mutation-duplicate", OMutationDuplicate;
   "mutation-negate-justs", OMutationNegateJusts;
   "mutation-one-conflict", OMutationOneConflict;
+  "ast-stats", OASTStats;
 ]
 let trivial : flag list -> bool = List.mem OTrivial
 let lazy_default : flag list -> bool = List.mem OLazyDefault
@@ -36,6 +38,7 @@ let mutation_remove : flag list -> bool = List.mem OMutationRemove
 let mutation_duplicate : flag list -> bool = List.mem OMutationDuplicate
 let mutation_negate_justs : flag list -> bool = List.mem OMutationNegateJusts
 let mutation_one_conflict : flag list -> bool = List.mem OMutationOneConflict
+let ast_stats : flag list -> bool = List.mem OASTStats
 
 let random_mutations flags = mutation_remove flags || mutation_duplicate flags || mutation_negate_justs flags
 let one_mutation flags = mutation_one_conflict flags

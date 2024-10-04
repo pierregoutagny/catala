@@ -2730,6 +2730,11 @@ let interpret_program_concolic
     end
     else scope_e in
 
+  if Optimizations.ast_stats optims then begin
+    Message.result "%a" Mutation.pprint_ast_stats (Mutation.get_stats scope_e);
+    exit 0
+  end;
+
 
   let stats = Stats.stop_step s_simplify |> Stats.add_stat_step stats in
   match scope_e with

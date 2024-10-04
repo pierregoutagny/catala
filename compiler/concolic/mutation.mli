@@ -21,6 +21,7 @@ type ast_stats_t = {
   mutable excepts : int;
 }
 val get_stats : ((yes, 'e, 'c) interpr_kind, 't) gexpr -> ast_stats_t
+val pprint_ast_stats : Format.formatter -> ast_stats_t -> unit
 
 val create_one_conflict : ((yes, 'e, 'c) interpr_kind, 't) gexpr -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed
 
