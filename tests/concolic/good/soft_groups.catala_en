@@ -39,30 +39,21 @@ $ catala Concolic -s A
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=soft --conc-optim=incremental -s A
-[RESULT] Trying group 0round_hundred
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = $0.00
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 0
-[RESULT] Trying group 0round_hundred
-[RESULT] Trying group 1round_unit
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = $2.00
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 3
-[RESULT] Trying group 0round_hundred
-[RESULT] Trying group 1round_unit
-[RESULT] Trying group 2non_negative
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = $0.99
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 2
-[RESULT] Trying group 0round_hundred
-[RESULT] Trying group 1round_unit
-[RESULT] Trying group 2non_negative
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = -$0.01

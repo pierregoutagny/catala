@@ -2154,7 +2154,7 @@ struct
       match acc with
       | Some _ -> acc
       | None -> begin
-        Message.result "Trying group %s" name;
+        if Global.options.debug then Message.debug "Trying soft group %s" name;
         let soft_exprs = List.map (fun (s: PathConstraint.soft) -> s.symb) group in
         let result_soft = _solve ctx soft_exprs in
         match result_soft with
