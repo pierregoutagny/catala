@@ -1,0 +1,12 @@
+```catala
+declaration scope A:
+    input x content decimal
+    output o content integer
+
+scope A:
+    definition o equals 0
+    exception definition o under condition x=1./.0. consequence equals 2
+    exception definition o under condition x=1. consequence equals 1
+    exception definition o under condition x=1. consequence equals 2
+```
+

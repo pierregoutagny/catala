@@ -17,8 +17,8 @@ scope A:
 ```
 
 Without the optimization there are 24 evaluations (solve: 320ms, eval: 81ms,
-total: 424ms). Note for example that after (a,b,c,d) = (2,2,3,1), which raises
-a b/c conflict, the engine tries (0,2,3,0) where there is still a b/c conflict
+total: 424ms). Note for example that after (a,b,c,d) = (4,2,3,1), which raises
+a b/c conflict, the engine tries (4,2,3,0) where there is still a b/c conflict
 (which we already caught) but it raises a DivisionByZero error.
 See below this test block for an example with the optimization.
 

@@ -1814,7 +1814,9 @@ let rec evaluate_expr :
         add_conc_info_e SymbExpr.none ~constraints app |> make_ok)
     | EDefault { excepts; just; cons } ->
       if Global.options.debug then Message.debug "... it's an EDefault";
+
       let count_nonempty_greedy l =
+        let l = List.map (evaluate_expr ctx lang) l in
         if Global.options.debug then Message.debug "EDefault using greedy conflict finder";
         let empty_count = List.length (List.filter Concrete.is_empty_error l) in
         let nonempty_count = List.length l - empty_count in
@@ -1823,10 +1825,11 @@ let rec evaluate_expr :
 
       let count_nonempty_lazy l =
         if Global.options.debug then Message.debug "EDefault using lazy conflict finder";
+        let l = List.map (fun e -> lazy (evaluate_expr ctx lang e)) l in
         let rec aux l seen_nonempty acc =
           match l with
           | [] -> Bool.to_int seen_nonempty, List.rev acc
-          | ex :: exs ->
+          | lazy ex :: exs ->
             if not (Concrete.is_empty_error ex) then
               if seen_nonempty then 2, List.rev (ex :: acc)
               else aux exs true (ex :: acc)
@@ -1840,7 +1843,6 @@ let rec evaluate_expr :
         else count_nonempty_greedy
       in
 
-      let excepts = List.map (evaluate_expr ctx lang) excepts in
       let nonempty_count, excepts = count_nonempty excepts in
       if Global.options.debug then Message.debug "EDefault found %n non-empty exceptions!" nonempty_count;
       handle_default ctx lang m (Expr.pos e) nonempty_count excepts just cons
