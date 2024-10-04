@@ -2707,6 +2707,8 @@ let interpret_program_concolic
 
   let ast_stats = Mutation.get_stats scope_e in
 
+  let scope_e = Optimizations.optimize_expr optims scope_e in
+
   let scope_e =
     if Optimizations.random_mutations optims
     then begin

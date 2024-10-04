@@ -155,6 +155,23 @@ let scope A
 ```
 
 ```catala-test-inline
+$ catala Concolic --conc-optim=linearize-match -s A
+[RESULT] 
+[RESULT] Evaluating with inputs:
+[RESULT] . résidence_in = Guadeloupe ()
+[RESULT] Output of scope after evaluation:
+[RESULT] . o = 1
+[RESULT] 
+[RESULT] Evaluating with inputs:
+[RESULT] . résidence_in = Guyane ()
+[RESULT] Output of scope after evaluation:
+[RESULT] . o = 0
+[RESULT] 
+[RESULT] Concolic interpreter done
+[RESULT] Computation successful!
+```
+
+```catala-test-inline
 $ catala Concolic -O -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
