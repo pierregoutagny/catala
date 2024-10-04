@@ -1994,7 +1994,7 @@ let soft_constraints_of_input_mark ctx (m: conc_info mark) : PathConstraint.pc_e
         let round_unit = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_unit) zero in
         let round_hundred = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_hundred) zero in
         List.map (fun (x, id) -> let x = SymbExpr.mk_z3 x in (PathConstraint.mk_soft x 1 (Some id) pos false).expr)
-        [non_negative, "2non_negative" ; non_negative, "1round_unit" ; non_negative, "0round_hundred" ; round_unit, "1round_unit" ; round_hundred, "0round_hundred"]
+        [non_negative, "2non_negative" ; round_unit, "1round_unit" ; round_hundred, "0round_hundred"]
     | _ -> []
 
 let make_soft_constraints ctx (input_marks : conc_info mark StructField.Map.t) : PathConstraint.pc_expr list =
