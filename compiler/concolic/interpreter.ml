@@ -2661,10 +2661,9 @@ module Stats = struct
       let l = List.rev l in
       pp_print_list ~pp_sep:pp_print_cut step fmt l
 
-
     let executions (fmt : formatter) (execs : execution list) =
       let folded = fold_execs execs |> List.rev in
-      let max_constraints = List.map (fun exe -> exe.num_constraints) execs |> List.fold_left max 0 in
+      let max_constraints = List.fold_left (fun acc exe -> max acc (exe.num_constraints)) 0 execs in
       pp_print_list ~pp_sep:pp_print_cut step fmt folded;
       pp_print_cut fmt ();
       fprintf fmt "max constraints: %n" max_constraints
