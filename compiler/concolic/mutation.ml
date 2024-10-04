@@ -83,24 +83,46 @@ let apply_mutations (type e c) (mutations: ((e, c, 't) mutation_type * float) li
 type ast_stats_t = {
   mutable defaults : int;
   mutable defaults_with_excepts : int;
-  mutable excepts : int;
-  (* ifs, nb of except by default, asserts *)
+  mutable excepts_sum : int;
+  mutable excepts_max : int;
+  mutable ifs : int;
+  mutable asserts : int;
+  mutable matches : int;
+  mutable match_max_arms : int;
 }
 
 let pprint_ast_stats (fmt : Format.formatter) (s: ast_stats_t) =
   let open Format in
   fprintf fmt "AST Stats:@\n@[<v 2>  ";
-  fprintf fmt "defaults: %n@," s.defaults;
-  fprintf fmt "defaults with excepts: %n@," s.defaults_with_excepts;
-  fprintf fmt "total excepts: %n" s.excepts;
+  let f = fprintf fmt "%s: %n@," in
+  f "defaults" s.defaults;
+  f "defaults with excepts" s.defaults_with_excepts;
+  f "total excepts" s.excepts_sum;
+  f "max excepts in a default" s.excepts_max;
+  f "if-then-else" s.ifs;
+  f "asserts" s.asserts;
+  f "match" s.matches;
+  f "max arms on a match" s.match_max_arms;
   fprintf fmt "@]"
 
 let get_stats expr =
-  let stats = { defaults = 0 ; defaults_with_excepts = 0 ; excepts = 0 } in
+  let stats = { defaults = 0 ; defaults_with_excepts = 0 ; excepts_sum = 0 ; ifs = 0 ; excepts_max = 0 ; asserts = 0 ; matches = 0 ; match_max_arms = 0 } in
   let op = Fun.id in
   let rec f : ((yes, 'e, 'c) interpr_kind, 't) gexpr -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed = function
+    | (EIfThenElse _, _) as e ->
+        stats.ifs <- stats.ifs + 1;
+        Expr.map ~op ~f e
+    | (EAssert _, _) as e ->
+        stats.asserts <- stats.asserts + 1;
+        Expr.map ~op ~f e
+    | (EMatch { cases ; _ }, _) as e ->
+        stats.matches <- stats.matches + 1;
+        stats.match_max_arms <- max stats.match_max_arms (EnumConstructor.Map.keys cases |> List.length);
+        Expr.map ~op ~f e
     | (EDefault {excepts ; _}, _) as e ->
-        stats.excepts <- stats.excepts + List.length (excepts);
+        let len = List.length excepts in
+        stats.excepts_sum <- stats.excepts_sum + len;
+        stats.excepts_max <- max stats.excepts_max len;
         stats.defaults <- stats.defaults + 1;
         if excepts <> [] then stats.defaults_with_excepts <- stats.defaults_with_excepts + 1;
         Expr.map ~op ~f e

@@ -3037,7 +3037,7 @@ let interpret_program_concolic
             "Mutations:\n"
           ^ "  out of " ^ string_of_int ast_stats.defaults ^ " defaults"
           ^ " (" ^ string_of_int ast_stats.defaults_with_excepts ^ " non-empty)"
-          ^ " and " ^ string_of_int ast_stats.excepts ^ " excepts...\n"
+          ^ " and " ^ string_of_int ast_stats.excepts_sum ^ " excepts...\n"
           ^ "  " ^ string_of_int !Mutation.remove_excepts_n ^ " excepts removed\n"
           ^ "  " ^ string_of_int !Mutation.duplicate_excepts_n ^ " excepts duplicated\n"
           ^ "  " ^ string_of_int !Mutation.negate_justs_n ^ " justs negated\n"
