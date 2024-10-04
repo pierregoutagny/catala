@@ -518,7 +518,7 @@ let z3_round ctx = Z3_utils.z3_round_func ctx.ctx_z3round
 (* taken from z3backend, but without the option check *)
 let make_empty_context (decl_ctx : decl_ctx) (optims : Optimizations.flag list)
     : context =
-  let z3_cfg = ["model", "true"; "proof", "false"; "timeout", "100"] in
+  let z3_cfg = ["model", "true"; "proof", "false"; "timeout", "500"] in
   let z3_ctx = Z3.mk_context z3_cfg in
   let z3_dummy_sort = Z3.Sort.mk_uninterpreted_s z3_ctx "!dummy_sort!" in
   let z3_dummy_const =
