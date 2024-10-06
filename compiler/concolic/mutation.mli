@@ -18,8 +18,7 @@ val apply_mutations : (('e, 'c, 't) mutation_type * float) list -> ((yes, 'e, 'c
 type ast_stats_t = {
   mutable defaults : int;
   mutable defaults_with_excepts : int;
-  mutable excepts_sum : int;
-  mutable excepts_max : int;
+  mutable excepts_sizes : int list;
   mutable ifs : int;
   mutable asserts : int;
   mutable matches : int;
