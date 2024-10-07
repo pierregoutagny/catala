@@ -1,4 +1,7 @@
-open Path_constraint.PathConstraint
+open Catala_utils
+open Shared_ast
+open Path_constraint
+open PathConstraint
 
 type flag = | OTrivial
             | OLazyDefault
@@ -47,6 +50,23 @@ let mutation flags = random_mutations flags || one_mutation flags
 let check_optims_coherent optims =
   if soft_constraints optims && not @@ incremental_solver optims then Catala_utils.Message.warning "[CONC] Soft constraints are enabled without incremental solver. This won't do anything."
 
+let check_easy_unsat opt ctx (pcs : PathConstraint.pc_expr list) : bool =
+  if not @@ trivial opt then false else begin
+  if Global.options.debug then Message.debug "[check_easy_unsat]";
+  match pcs with
+  | Pc_z3 s0 :: l -> begin
+    if Global.options.debug then Message.debug "[check_easy_unsat] first constraint is z3";
+    let check = function
+      | Pc_z3 s -> Z3.Expr.equal (Z3.Boolean.mk_not ctx s) s0
+      | _ -> false
+    in
+    match List.find_opt check l with
+    | Some _ -> true
+    | None -> false
+  end
+  | _ -> false
+  end
+
 let remove_trivial_constraints opt (pcs : naked_path) : naked_path =
   if not (trivial opt) then pcs
   else begin
@@ -55,9 +75,6 @@ let remove_trivial_constraints opt (pcs : naked_path) : naked_path =
     in
     List.filter f pcs
   end
-
-open Catala_utils
-open Shared_ast
 
 let all_match_cases_take_unit_and_map_to_boolean_literals cases =
   EnumConstructor.Map.for_all

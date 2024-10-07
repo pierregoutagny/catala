@@ -48,5 +48,7 @@ val check_optims_coherent : flag list -> unit
 val remove_trivial_constraints :
   flag list -> PathConstraint.naked_path -> PathConstraint.naked_path
 
+val check_easy_unsat : flag list -> Z3.context -> PathConstraint.pc_expr list -> bool
+
 val optimize_expr :
   flag list -> (('a, 'b, 'c) interpr_kind, 'm) gexpr -> (('a, 'b, 'c) interpr_kind, 'm) gexpr

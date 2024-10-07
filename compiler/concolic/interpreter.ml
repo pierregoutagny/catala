@@ -2267,6 +2267,7 @@ struct
     | e  -> ignore (Unix.alarm 0); raise e
 
   let solve (ctx : context) (constraints : input) =
+    if Optimizations.check_easy_unsat Settings.optims ctx.ctx_z3 constraints then Unsat else
     let rec aux retry ctx constraints =
       let z3_constraints, z3_soft_constraints, model_empty_reentrants = split_input constraints in
       ignore (Unix.alarm 1);
