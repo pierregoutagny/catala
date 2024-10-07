@@ -83,8 +83,7 @@ let apply_mutations (type e c) (mutations: ((e, c, 't) mutation_type * float) li
 type ast_stats_t = {
   mutable defaults : int;
   mutable defaults_with_excepts : int;
-  mutable excepts_sum : int;
-  mutable excepts_max : int;
+  mutable excepts_sizes : int list;
   mutable ifs : int;
   mutable asserts : int;
   mutable matches : int;
@@ -92,13 +91,21 @@ type ast_stats_t = {
 }
 
 let pprint_ast_stats (fmt : Format.formatter) (s: ast_stats_t) =
+  let list_median l =
+    let sl = List.sort Stdlib.compare l in
+    List.nth sl (List.length sl / 2) in
+  let list_mean l =
+    (float_of_int (List.fold_left (+) 0 l)) /. (float_of_int (List.length l)) in 
   let open Format in
   fprintf fmt "AST Stats:@\n@[<v 2>  ";
   let f = fprintf fmt "%s: %n@," in
   f "defaults" s.defaults;
   f "defaults with excepts" s.defaults_with_excepts;
-  f "total excepts" s.excepts_sum;
-  f "max excepts in a default" s.excepts_max;
+  f "total excepts" (List.fold_left (+) 0 s.excepts_sizes);
+  f "max excepts in a default" (List.fold_left max (-1) s.excepts_sizes);
+  fprintf fmt "excepts: %a@," (Format.pp_print_list ~pp_sep:(fun fmt () -> Format.fprintf fmt ", ") Format.pp_print_int) (List.sort Stdlib.compare s.excepts_sizes);
+  f "median number of excepts (*excl. empty defaults*)" (list_median (List.filter (fun s -> s > 0) s.excepts_sizes));
+  fprintf fmt "mean number of excepts (*excl. empty defaults*): %.2f@," (list_mean (List.filter (fun s -> s > 0) s.excepts_sizes));
   f "if-then-else" s.ifs;
   f "asserts" s.asserts;
   f "match" s.matches;
@@ -106,7 +113,7 @@ let pprint_ast_stats (fmt : Format.formatter) (s: ast_stats_t) =
   fprintf fmt "@]"
 
 let get_stats expr =
-  let stats = { defaults = 0 ; defaults_with_excepts = 0 ; excepts_sum = 0 ; ifs = 0 ; excepts_max = 0 ; asserts = 0 ; matches = 0 ; match_max_arms = 0 } in
+  let stats = { defaults = 0 ; defaults_with_excepts = 0 ; excepts_sizes = [] ; ifs = 0 ; asserts = 0 ; matches = 0 ; match_max_arms = 0 } in
   let op = Fun.id in
   let rec f : ((yes, 'e, 'c) interpr_kind, 't) gexpr -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed = function
     | (EIfThenElse _, _) as e ->
@@ -121,8 +128,7 @@ let get_stats expr =
         Expr.map ~op ~f e
     | (EDefault {excepts ; _}, _) as e ->
         let len = List.length excepts in
-        stats.excepts_sum <- stats.excepts_sum + len;
-        stats.excepts_max <- max stats.excepts_max len;
+        stats.excepts_sizes <- len :: stats.excepts_sizes;
         stats.defaults <- stats.defaults + 1;
         if excepts <> [] then stats.defaults_with_excepts <- stats.defaults_with_excepts + 1;
         Expr.map ~op ~f e
