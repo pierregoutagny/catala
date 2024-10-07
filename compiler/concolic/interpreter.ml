@@ -2237,20 +2237,39 @@ struct
     in
     aux l [] [] StructField.Set.empty
 
+(* https://discuss.ocaml.org/t/computation-with-time-constraint/5548/9 *)
+  exception Timeout
+  let delayed_fun f timeout =
+    let _ =
+      Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout))
+    in
+    ignore (Unix.alarm timeout);
+    try
+      let r = f () in
+      ignore (Unix.alarm 0); r
+    with
+    | e  -> ignore (Unix.alarm 0); raise e
+
   let solve (ctx : context) (constraints : input) =
     let rec aux retry ctx constraints =
       let z3_constraints, z3_soft_constraints, model_empty_reentrants = split_input constraints in
-      match Z3Solver.solve ctx.ctx_z3 z3_constraints z3_soft_constraints with
-      | Z3Sat (Some model_z3) -> Sat (Some { model_z3; model_empty_reentrants })
-      | Z3Sat None -> Sat None
-      | Z3Unsat -> Unsat
-      | Z3Unknown info ->
-            if retry then begin
-              Message.warning "Concolic execution solver returned unknown once:\n%a" fmt_unknown_info info;
-              Message.warning "Trying to solve again...";
-              aux false ctx constraints
-            end
-            else Unknown info
+      ignore (Unix.alarm 1);
+      try
+        let status = delayed_fun (fun () -> Z3Solver.solve ctx.ctx_z3 z3_constraints z3_soft_constraints) 1 in
+        begin
+          match status with
+          | Z3Sat (Some model_z3) -> Sat (Some { model_z3; model_empty_reentrants })
+          | Z3Sat None -> Sat None
+          | Z3Unsat -> Unsat
+          | Z3Unknown info -> Unknown info
+        end
+      with
+      | Timeout -> if retry then begin
+          Message.warning "Concolic execution solver timed out once";
+          Message.warning "Trying to solve again...";
+          aux false ctx constraints
+        end
+        else Message.error ~internal:true "[CONC] Solver timed out"
     in aux (Optimizations.timeout_retry Settings.optims) ctx constraints
 
   let push ctx (pc : PathConstraint.pc_expr) =
