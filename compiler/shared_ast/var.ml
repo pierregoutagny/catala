@@ -81,7 +81,7 @@ module Set = struct
   let diff s1 s2 = diff s1 s2
   let iter f s = iter (fun x -> f (get x)) s
   let compare s1 s2 = compare s1 s2
-  let format ppf s = Format.pp_print_list ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ") format ppf (elements s |> List.map t)
+  let format ppf s = Format.fprintf ppf "{%a}" (Format.pp_print_list ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ") format) (elements s |> List.map t)
 
   (* Add more as needed *)
 end
