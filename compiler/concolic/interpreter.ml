@@ -2743,8 +2743,6 @@ let interpret_program_concolic
 
   let ast_stats = Mutation.get_stats scope_e in
 
-  let scope_e = Optimizations.optimize_expr optims scope_e in
-
   let scope_e =
     if Optimizations.random_mutations optims
     then begin
@@ -2765,6 +2763,8 @@ let interpret_program_concolic
       mutated_scope_e
     end
     else scope_e in
+
+  let scope_e = Optimizations.optimize_expr optims scope_e in
 
   if Optimizations.ast_stats optims then begin
     Message.result "%a" Mutation.pprint_ast_stats (Mutation.get_stats scope_e);
