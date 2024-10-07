@@ -1,4 +1,5 @@
 open Path_constraint.PathConstraint
+open Conc_types
 
 type flag = | OTrivial
             | OLazyDefault

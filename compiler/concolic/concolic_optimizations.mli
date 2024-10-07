@@ -1,5 +1,5 @@
 open Path_constraint
-open Shared_ast
+open Conc_types
 
 type flag =
   | OTrivial | OLazyDefault

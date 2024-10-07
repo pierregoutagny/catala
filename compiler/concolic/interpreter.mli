@@ -19,39 +19,9 @@
 
 open Catala_utils
 open Shared_ast
-open Symb_expr
-open Path_constraint
 module Optimizations = Concolic_optimizations
 
-type s_expr = SymbExpr.z3_expr
-
-type _conc_info = {
-  symb_expr : SymbExpr.t;
-  constraints : PathConstraint.naked_path;
-  ty : typ option;
-}
-
-type conc_info = _conc_info custom
-
-(* DCalc with possibly genericErrors and customs *)
-type ('c, 'e) conc_interpr_kind =
-  < monomorphic : yes
-  ; polymorphic : yes
-  ; overloaded : no
-  ; resolved : yes
-  ; syntacticNames : no
-  ; scopeVarStates : no
-  ; scopeVarSimpl : no
-  ; explicitScopes : no
-  ; assertions : yes
-  ; defaultTerms : yes
-  ; genericErrors : 'e
-  ; exceptions : no
-  ; custom : 'c >
-
-type conc_src_kind = (yes, no) conc_interpr_kind
-type conc_dest_kind = (yes, yes) conc_interpr_kind
-type conc_expr = (conc_src_kind, conc_info) gexpr
+open Conc_types
 
 val interpret_program_concolic :
   bool ->
