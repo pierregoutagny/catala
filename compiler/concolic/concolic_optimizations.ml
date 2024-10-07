@@ -9,6 +9,7 @@ type flag = | OTrivial
             | OIncrementalSolver
             | OSoftConstraints
             | OTestsVTime
+            | OTimeout
             | OTimeoutRetry
             | OMutationRemove
             | OMutationDuplicate
@@ -23,6 +24,7 @@ let optim_list = [
   "incremental", OIncrementalSolver;
   "soft", OSoftConstraints;
   "tests-vs-time", OTestsVTime;
+  "timeout", OTimeout;
   "no-timeout-retry", OTimeoutRetry;
   "mutation-remove", OMutationRemove;
   "mutation-duplicate", OMutationDuplicate;
@@ -36,6 +38,7 @@ let linearize_match : flag list -> bool = List.mem OLinearizeMatch
 let incremental_solver : flag list -> bool = List.mem OIncrementalSolver
 let soft_constraints : flag list -> bool = List.mem OSoftConstraints
 let tests_vs_time : flag list -> bool = List.mem OTestsVTime
+let timeout (l: flag list) : bool = List.mem OTimeout l
 let timeout_retry (l: flag list) : bool = not (List.mem OTimeoutRetry l) (* This option is active by default *)
 let mutation_remove : flag list -> bool = List.mem OMutationRemove
 let mutation_duplicate : flag list -> bool = List.mem OMutationDuplicate

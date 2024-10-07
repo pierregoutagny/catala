@@ -7,7 +7,7 @@ type flag =
   | OIncrementalSolver
   | OSoftConstraints
   | OTestsVTime
-  | OTimeoutRetry
+  | OTimeout | OTimeoutRetry
   | OMutationRemove | OMutationDuplicate | OMutationNegateJusts
   | OMutationOneConflict
   | OASTStats
@@ -23,6 +23,8 @@ val incremental_solver : flag list -> bool
 val soft_constraints : flag list -> bool
 
 val tests_vs_time : flag list -> bool
+
+val timeout : flag list -> bool
 
 val timeout_retry : flag list -> bool
 
