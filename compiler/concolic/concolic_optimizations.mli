@@ -43,6 +43,7 @@ val random_mutations : flag list -> bool
 val one_mutation : flag list -> bool
 val mutation : flag list -> bool
 
+val check_optims_coherent : flag list -> unit
 
 val remove_trivial_constraints :
   flag list -> PathConstraint.naked_path -> PathConstraint.naked_path

@@ -44,6 +44,9 @@ let random_mutations flags = mutation_remove flags || mutation_duplicate flags |
 let one_mutation flags = mutation_one_conflict flags
 let mutation flags = random_mutations flags || one_mutation flags
 
+let check_optims_coherent optims =
+  if soft_constraints optims && not @@ incremental_solver optims then Catala_utils.Message.warning "[CONC] Soft constraints are enabled without incremental solver. This won't do anything."
+
 let remove_trivial_constraints opt (pcs : naked_path) : naked_path =
   if not (trivial opt) then pcs
   else begin
