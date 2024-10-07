@@ -3,7 +3,7 @@ open Conc_types
 
 type flag =
   | OTrivial | OLazyDefault
-  | OLinearizeMatch
+  | OLinearizeMatch | OPacking
   | OIncrementalSolver
   | OSoftConstraints
   | OTestsVTime
@@ -49,4 +49,4 @@ val remove_trivial_constraints :
   flag list -> PathConstraint.naked_path -> PathConstraint.naked_path
 
 val optimize_expr :
-  flag list -> (('a, 'b, 'c) interpr_kind, 'm) gexpr -> (('a, 'b, 'c) interpr_kind, 'm) gexpr
+  flag list -> conc_expr -> conc_expr

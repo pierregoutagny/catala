@@ -4,6 +4,7 @@ open Conc_types
 type flag = | OTrivial
             | OLazyDefault
             | OLinearizeMatch
+            | OPacking
             | OIncrementalSolver
             | OSoftConstraints
             | OTestsVTime
@@ -18,6 +19,7 @@ let optim_list = [
   "trivial", OTrivial;
   "lazy-default", OLazyDefault;
   "linearize-match", OLinearizeMatch;
+  "packing", OPacking;
   "incremental", OIncrementalSolver;
   "soft", OSoftConstraints;
   "tests-vs-time", OTestsVTime;
@@ -31,6 +33,7 @@ let optim_list = [
 let trivial : flag list -> bool = List.mem OTrivial
 let lazy_default : flag list -> bool = List.mem OLazyDefault
 let linearize_match : flag list -> bool = List.mem OLinearizeMatch
+let packing : flag list -> bool = List.mem OPacking
 let incremental_solver : flag list -> bool = List.mem OIncrementalSolver
 let soft_constraints : flag list -> bool = List.mem OSoftConstraints
 let tests_vs_time : flag list -> bool = List.mem OTestsVTime
@@ -75,25 +78,42 @@ let all_match_cases_take_unit_and_map_to_boolean_literals cases =
       | _ -> assert false)
     cases
 
-let rec optimize_rec :
-  type a b c.
-    ((a, b, c) interpr_kind , 'm) gexpr ->
-    ((a, b, c) interpr_kind , 'm) boxed_gexpr =
- fun e ->
+module ConcVarSet = struct
+  type t = conc_expr Var.Set.t * int
+
+  let _n = ref 0
+
+  let create s = incr _n; s, !_n
+
+  let compare (s1, n1) (s2, n2) =
+    match Var.Set.compare s1 s2 with
+    | 0 -> compare n1 n2
+    | c -> c
+
+  let format fmt (s, n) = Format.fprintf fmt "%a_%n" (Var.Set.format) s n
+end
+
+module VarSetMap = Map.Make(ConcVarSet)
+
+let rec optimize_rec:
+    flag list ->
+    conc_expr ->
+    conc_boxed_expr =
+ fun optims e ->
   (* We proceed bottom-up, first apply on the subterms *)
-  let e = Expr.map ~f:optimize_rec ~op:Fun.id e in
+  let e = Expr.map ~f:(optimize_rec optims) ~op:Fun.id e in
   let mark = Mark.get e in
   (* Fixme: when removing enclosing expressions, it would be better if we were
      able to keep the inner position (see the division_by_zero test) *)
   (* Then reduce the parent node (this is applied through Box.apply, therefore
      delayed to unbinding time: no need to be concerned about reboxing) *)
-  let reduce (e : ((a, b, c) interpr_kind, 'm) gexpr) =
+  let reduce (e : conc_expr) : conc_naked_expr =
     (* Todo: improve the handling of eapp(log,elit) cases here, it obfuscates
        the matches and the log calls are not preserved, which would be a good
        property *)
     match Mark.remove e with
     | EMatch { e = e'; cases; name = n }
-      when all_match_cases_take_unit_and_map_to_boolean_literals cases ->
+      when linearize_match optims && all_match_cases_take_unit_and_map_to_boolean_literals cases ->
       (* transform matches whose arms are all of the form [Constructor () ->
          true/false] to a big [or] of all those cases *)
       let cases_true =
@@ -127,22 +147,37 @@ let rec optimize_rec :
       let lfalse = Expr.elit (LBool false) m in
       EnumConstructor.Map.fold f cases_true lfalse
       |> Expr.unbox
-      |> optimize_rec
+      |> optimize_rec optims
       |> Expr.unbox
       |> Mark.remove
+    | EDefault { excepts ; just ; cons} as e' when packing optims && List.length excepts > 2 -> begin
+        if Global.options.debug then Message.debug "Before packing %a" (Print.expr ()) e;
+        let f acc exc = 
+          let set = Expr.free_vars exc in
+          let set_unique = ConcVarSet.create set in
+          VarSetMap.add set_unique exc acc
+        in
+        let sets = List.fold_left f VarSetMap.empty excepts in
+        if Global.options.debug then Message.debug "map: %a" (fun fmt s -> VarSetMap.format (Print.expr ()) fmt s) sets;
+        let new_excepts = VarSetMap.to_seq sets |> List.of_seq |> List.map (fun (_,e) -> Expr.rebox e) in
+        assert (List.length new_excepts = List.length excepts);
+        let just = Expr.rebox just in
+        let cons = Expr.rebox cons in
+        let new_default = Expr.edefault ~excepts:new_excepts ~just ~cons mark in
+        if Global.options.debug then Message.debug "After packing %a" (Print.expr ()) (Expr.unbox new_default);
+        e'
+      end
     | e -> e
   in
   Expr.Box.app1 e reduce mark
 
-let optimize_expr (type a b c) (optims : flag list) :
-      ((a, b, c) interpr_kind, 'm) gexpr ->
-      ((a, b, c) interpr_kind, 'm) gexpr =
+let optimize_expr (optims : flag list) :
+      conc_expr ->
+      conc_expr =
  fun e ->
-   if linearize_match optims then begin
-     if Global.options.debug then Message.debug "[CONC] Applying match linearization optim";
-    Expr.unbox (optimize_rec e)
-  end
-  else e
+   if linearize_match optims && Global.options.debug then Message.debug "[CONC] Applying match linearization optim";
+   if packing optims && Global.options.debug then Message.debug "[CONC] Applying packing";
+   if packing optims || linearize_match optims then Expr.unbox (optimize_rec optims e) else e
 
 
 
