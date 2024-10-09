@@ -28,7 +28,8 @@ Found error ↯AssertionError↯ at tests/concolic/bad/one_mutation.catala_en:7.
 ```
 
 ```catala-test-inline
-$ catala Concolic -O -s A --conc-optim=mutation-one-conflict
+$ catala Concolic -O -s A --conc-optim=mutation-one-conflict --seed=12345
+[RESULT] [mutation] seed 12345
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = 42
