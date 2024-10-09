@@ -2669,7 +2669,7 @@ module Surface = struct
         (in_l lang)
       (match error with
         | Some (err, pos) -> fun fmt _ -> fprintf fmt "o != o # %a at %s" SymbExpr.formatter err (Pos.to_string_short pos)
-        | None -> pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt "@,%s " (and_l lang)) (print_one_output lang)
+        | None -> pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt "@ %s " (and_l lang)) (print_one_output lang)
       ) outputs;
     fprintf fmt "@]"
 end
