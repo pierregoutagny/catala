@@ -2653,7 +2653,7 @@ module Surface = struct
   let print_testscope fmt (scope_name, test_nb) =
     fprintf fmt "Test_%a_%n" ScopeName.format scope_name test_nb
 
-  let print_surface ?(error=false) lang (scope_name: ScopeName.t) test_nb fmt (inputs, outputs) =
+  let print_surface ?(error=None) lang (scope_name: ScopeName.t) test_nb fmt (inputs, outputs) =
     let dummy_var = "x" in
     fprintf fmt "%s %s %a:@\n  %s %s %s %s"
       (declaration_l lang) (scope_l lang)
@@ -2667,10 +2667,10 @@ module Surface = struct
         (output_of_l lang) ScopeName.format scope_name (with_l lang)
           (pp_print_list ~pp_sep:pp_print_cut (print_one_input lang)) inputs
         (in_l lang)
-      (if error
-        then fun fmt _ -> pp_print_string fmt "o != o # Error"
-        else pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt "@,%s " (and_l lang)) (print_one_output lang))
-        outputs;
+      (match error with
+        | Some (err, pos) -> fun fmt _ -> fprintf fmt "o != o # %a at %s" SymbExpr.formatter err (Pos.to_string_short pos)
+        | None -> pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt "@,%s " (and_l lang)) (print_one_output lang)
+      ) outputs;
     fprintf fmt "@]"
 end
 
@@ -3059,7 +3059,7 @@ let interpret_program_concolic
             (* TODO better error messages *)
             (* TODO test the different cases *)
               if Optimizations.generate_surface optims
-              then Message.result "%a" (Surface.print_surface ~error:true p.lang s !total_tests) (inputs_list, [])
+              then Message.result "%a" (Surface.print_surface ~error:(Some (get_symb_expr_r res, Expr.pos res)) p.lang s !total_tests) (inputs_list, [])
               else Message.result "Found error %a at %s" SymbExpr.formatter
                 (get_symb_expr_r res)
                 (Pos.to_string_short (Expr.pos res));
