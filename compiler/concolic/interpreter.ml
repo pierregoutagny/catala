@@ -2570,6 +2570,104 @@ let apply_diff ctx f_push f_pop (diff : PathConstraint.incremental_annotated_pc 
   in
   List.iter f diff
 
+module Surface = struct
+  open Global
+  open Format
+
+  let print_one_input language fmt ((var, _), value) =
+    fprintf fmt "@[<h>%s%s:@ %a@]"
+      "-- "
+      (String.sub var 0 (String.length var - 3))
+      (Print.UserFacing.value language) value
+
+  let print_one_output language fmt ((var, _), value) =
+    fprintf fmt "@[<h>o.%s = %a@]"
+      var
+      (Print.UserFacing.value language) value
+
+  let declaration_l = function
+    | En -> "declaration"
+    | Fr -> "déclaration"
+    | _ -> failwith "wrong language"
+
+  let definition_l = function
+    | En -> "definition"
+    | Fr -> "définition"
+    | _ -> failwith "wrong language"
+
+  let scope_l = function
+    | En -> "scope"
+    | Fr -> "champ d'application"
+    | _ -> failwith "wrong language"
+
+  let internal_l = function
+    | En -> "internal"
+    | Fr -> "interne"
+    | _ -> failwith "wrong language"
+
+  let content_l = function
+    | En -> "content"
+    | Fr -> "contenu"
+    | _ -> failwith "wrong language"
+
+  let boolean_l = function
+    | En -> "boolean"
+    | Fr -> "booléen"
+    | _ -> failwith "wrong language"
+
+  let true_l = function
+    | En -> "true"
+    | Fr -> "vrai"
+    | _ -> failwith "wrong language"
+
+  let let_l = function
+    | En -> "let"
+    | Fr -> "soit"
+    | _ -> failwith "wrong language"
+
+  let equals_l = function
+    | En -> "equals"
+    | Fr -> "égal à"
+    | _ -> failwith "wrong language"
+
+  let output_of_l = function
+    | En -> "output of"
+    | Fr -> "résultat de"
+    | _ -> failwith "wrong language"
+
+  let with_l = function
+    | En -> "with"
+    | Fr -> "avec"
+    | _ -> failwith "wrong language"
+
+  let in_l = function
+    | En -> "in"
+    | Fr -> "dans"
+    | _ -> failwith "wrong language"
+
+  let and_l = function
+    | En -> "and"
+    | Fr -> "et"
+    | _ -> failwith "wrong language"
+
+  let print_surface lang (scope_name: ScopeName.t) test_nb fmt (inputs, outputs) =
+    let dummy_var = "x" in
+    fprintf fmt "%s %s Test%n:@\n  %s %s %s %s"
+      (declaration_l lang) (scope_l lang)
+      test_nb
+      (internal_l lang) dummy_var (content_l lang) (boolean_l lang);
+    fprintf fmt "@\n@\n";
+    fprintf fmt "%s Test%n:@\n  @[<v>" (scope_l lang) test_nb;
+    fprintf fmt "%s %s %s %s@," (definition_l lang) dummy_var (equals_l lang) (true_l lang);
+    fprintf fmt "assertion (@,%s o %s %s %a %s {@[<hv>@ %a@,@]}@,%s @[<hv 0>%a@]@ )"
+      (let_l lang) (equals_l lang)
+        (output_of_l lang) ScopeName.format scope_name (with_l lang)
+          (pp_print_list ~pp_sep:pp_print_cut (print_one_input lang)) inputs
+        (in_l lang)
+      (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt "@,%s " (and_l lang)) (print_one_output lang)) outputs;
+    fprintf fmt "@]"
+end
+
 let print_fields language (prefix : string) fields =
   let ordered_fields =
     List.sort (fun ((v1, _), _) ((v2, _), _) -> String.compare v1 v2) fields
@@ -2848,13 +2946,16 @@ let interpret_program_concolic
 
         if not Global.options.debug then Message.result "";
         if Optimizations.tests_vs_time optims then Message.result "time of test: %a" Stats.Print.period (Stats.running_period stats);
-        Message.result "Evaluating with inputs:";
         let inputs_list =
           List.map
             (fun (fld, e) -> StructField.get_info fld, Expr.unbox e)
             (StructField.Map.bindings inputs)
         in
-        print_fields p.lang ". " inputs_list;
+
+        if not @@ Optimizations.generate_surface optims then begin
+          Message.result "Evaluating with inputs:";
+          print_fields p.lang ". " inputs_list
+        end;
 
         let exec = Stats.stop_step s_inputs |> Stats.add_exec_step exec in
         let s_eval = Stats.start_step "eval" in
@@ -2872,7 +2973,7 @@ let interpret_program_concolic
         if Global.options.debug then Message.debug "Path constraints after evaluation:@.@[<v>%a@]"
           PathConstraint.Print.naked_path res_path_constraints;
 
-        Message.result "Output of scope after evaluation:";
+        if not @@ Optimizations.generate_surface optims then Message.result "Output of scope after evaluation:";
 
         begin
           match o_out with
@@ -2924,7 +3025,9 @@ let interpret_program_concolic
                 (fun (fld, e) -> StructField.get_info fld, e)
                 (StructField.Map.bindings fields)
             in
-            print_fields p.lang ". " outputs_list;
+            if Optimizations.generate_surface optims
+            then Message.result "%a" (Surface.print_surface p.lang s !total_tests) (inputs_list, outputs_list)
+            else print_fields p.lang ". " outputs_list;
 
             begin
               match o_out with
@@ -2949,7 +3052,7 @@ let interpret_program_concolic
           | EGenericError ->
             (* TODO better error messages *)
             (* TODO test the different cases *)
-            Message.result "Found error %a at %s" SymbExpr.formatter
+            (if Optimizations.generate_surface optims then Message.warning else Message.result) "Found error %a at %s" SymbExpr.formatter
               (get_symb_expr_r res)
               (Pos.to_string_short (Expr.pos res));
 

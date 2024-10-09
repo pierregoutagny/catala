@@ -11,6 +11,7 @@ type flag =
   | OMutationRemove | OMutationDuplicate | OMutationNegateJusts
   | OMutationOneConflict
   | OASTStats
+  | OGenerateSurface
 
 val optim_list : (string * flag) list
 (** Used for command line arguments *)
@@ -39,6 +40,8 @@ val mutation_one_conflict : flag list -> bool
 
 
 val ast_stats : flag list -> bool
+
+val generate_surface : flag list -> bool
 
 
 val random_mutations : flag list -> bool
