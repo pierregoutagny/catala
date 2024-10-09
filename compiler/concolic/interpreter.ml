@@ -2653,7 +2653,7 @@ module Surface = struct
   let print_testscope fmt (scope_name, test_nb) =
     fprintf fmt "Test_%a_%n" ScopeName.format scope_name test_nb
 
-  let print_surface lang (scope_name: ScopeName.t) test_nb fmt (inputs, outputs) =
+  let print_surface ?(error=false) lang (scope_name: ScopeName.t) test_nb fmt (inputs, outputs) =
     let dummy_var = "x" in
     fprintf fmt "%s %s %a:@\n  %s %s %s %s"
       (declaration_l lang) (scope_l lang)
@@ -2662,12 +2662,15 @@ module Surface = struct
     fprintf fmt "@\n@\n";
     fprintf fmt "%s %a:@\n  @[<v>" (scope_l lang) print_testscope (scope_name, test_nb);
     fprintf fmt "%s %s %s %s@," (definition_l lang) dummy_var (equals_l lang) (true_l lang);
-    fprintf fmt "assertion (@,%s o %s %s %a %s {@[<hv>@ %a@,@]}@,%s @[<hv 0>%a@]@ )"
+    fprintf fmt "assertion (@,%s o %s %s %a %s {@[<hv>@ %a@,@]}@,%s @[<hv 0>%a@]@ )@,"
       (let_l lang) (equals_l lang)
         (output_of_l lang) ScopeName.format scope_name (with_l lang)
           (pp_print_list ~pp_sep:pp_print_cut (print_one_input lang)) inputs
         (in_l lang)
-      (pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt "@,%s " (and_l lang)) (print_one_output lang)) outputs;
+      (if error
+        then fun fmt _ -> pp_print_string fmt "o != o"
+        else pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt "@,%s " (and_l lang)) (print_one_output lang))
+        outputs;
     fprintf fmt "@]"
 end
 
@@ -3055,9 +3058,11 @@ let interpret_program_concolic
           | EGenericError ->
             (* TODO better error messages *)
             (* TODO test the different cases *)
-            (if Optimizations.generate_surface optims then Message.warning else Message.result) "Found error %a at %s" SymbExpr.formatter
-              (get_symb_expr_r res)
-              (Pos.to_string_short (Expr.pos res));
+              if Optimizations.generate_surface optims
+              then Message.result "%a" (Surface.print_surface ~error:true p.lang s !total_tests) (inputs_list, [])
+              else Message.result "Found error %a at %s" SymbExpr.formatter
+                (get_symb_expr_r res)
+                (Pos.to_string_short (Expr.pos res));
 
             (* TODO FIXME UGLY *)
             begin
