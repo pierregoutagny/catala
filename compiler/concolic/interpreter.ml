@@ -2650,14 +2650,17 @@ module Surface = struct
     | Fr -> "et"
     | _ -> failwith "wrong language"
 
+  let print_testscope fmt (scope_name, test_nb) =
+    fprintf fmt "Test_%a_%n" ScopeName.format scope_name test_nb
+
   let print_surface lang (scope_name: ScopeName.t) test_nb fmt (inputs, outputs) =
     let dummy_var = "x" in
-    fprintf fmt "%s %s Test%n:@\n  %s %s %s %s"
+    fprintf fmt "%s %s %a:@\n  %s %s %s %s"
       (declaration_l lang) (scope_l lang)
-      test_nb
+      print_testscope (scope_name, test_nb)
       (internal_l lang) dummy_var (content_l lang) (boolean_l lang);
     fprintf fmt "@\n@\n";
-    fprintf fmt "%s Test%n:@\n  @[<v>" (scope_l lang) test_nb;
+    fprintf fmt "%s %a:@\n  @[<v>" (scope_l lang) print_testscope (scope_name, test_nb);
     fprintf fmt "%s %s %s %s@," (definition_l lang) dummy_var (equals_l lang) (true_l lang);
     fprintf fmt "assertion (@,%s o %s %s %a %s {@[<hv>@ %a@,@]}@,%s @[<hv 0>%a@]@ )"
       (let_l lang) (equals_l lang)
