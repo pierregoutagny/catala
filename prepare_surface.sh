@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 [[ $# -ne 1 ]] && echo "needs a --conc-optim=generate-surface output file" && exit
 

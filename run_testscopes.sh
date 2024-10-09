@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 [[ $# -ne 2 ]] && echo "error: expects filename and scope as argument" >&2 && exit 1
 
