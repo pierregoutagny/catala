@@ -2575,7 +2575,7 @@ module Surface = struct
   open Format
 
   let print_one_input language fmt ((var, _), value) =
-    fprintf fmt "@[<h>%s%s:@ %a@]"
+    fprintf fmt "@[<h>%s%s: %a@]"
       "-- "
       (String.sub var 0 (String.length var - 3))
       (Print.UserFacing.value language) value
@@ -2668,7 +2668,7 @@ module Surface = struct
           (pp_print_list ~pp_sep:pp_print_cut (print_one_input lang)) inputs
         (in_l lang)
       (if error
-        then fun fmt _ -> pp_print_string fmt "o != o"
+        then fun fmt _ -> pp_print_string fmt "o != o # Error"
         else pp_print_list ~pp_sep:(fun fmt () -> fprintf fmt "@,%s " (and_l lang)) (print_one_output lang))
         outputs;
     fprintf fmt "@]"
