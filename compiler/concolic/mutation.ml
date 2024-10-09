@@ -1,7 +1,14 @@
 open Shared_ast
 open Catala_utils
 
-let _ = Random.self_init ()
+
+let init = function
+  | None -> 
+      Message.result "[mutation] random seed";
+      Random.self_init ()
+  | Some n ->
+      Message.result "[mutation] seed %n" n;
+      Random.init n
 
 let choose_in_list l n =
   if l = [] || n = 0 then [] else

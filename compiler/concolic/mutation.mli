@@ -1,5 +1,7 @@
 open Shared_ast
 
+val init : int option -> unit
+
 type ('e, 'c, 't) mutation_type = ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed
 
 val remove_excepts_n : int ref

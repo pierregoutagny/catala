@@ -1070,6 +1070,7 @@ module Commands = struct
       options
       stats
       conc_optims
+      mutation_seed
       includes
       optimize
       check_invariants
@@ -1093,7 +1094,7 @@ module Commands = struct
                   ( Filename.basename @@ Option.value ~default:"out.py" out_file,
                     out_fmt )
               else None)
-             conc_optims)
+             conc_optims mutation_seed)
           prg
           (get_scope_uid prg.decl_ctx ex_scope));
 
@@ -1130,6 +1131,12 @@ module Commands = struct
       & info ["conc-optim"] ~doc:"Concolic execution optimizations"
       (* FIXME add information on optims *)
     in
+    let mutation_seed =
+      let open Cmdliner.Arg in
+      value
+      & opt (some int) None
+      & info ["seed"] ~docv:"SEED" ~doc:"Concolic mutation seed."
+    in
     let python_tests =
       let open Cmdliner.Arg in
       value
@@ -1146,6 +1153,7 @@ module Commands = struct
         $ Cli.Flags.Global.options
         $ stats
         $ conc_optims
+        $ mutation_seed
         $ Cli.Flags.include_dirs
         $ Cli.Flags.optimize
         $ Cli.Flags.check_invariants

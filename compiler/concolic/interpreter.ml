@@ -2722,6 +2722,7 @@ let interpret_program_concolic
     (print_stats : bool)
     (o_out : (string * Format.formatter) option)
     (optims : Optimizations.flag list)
+    (mutation_seed : int option)
     (p : (dcalc, m) gexpr program)
     s : (Uid.MarkedString.info * conc_expr) list =
   if Global.options.debug then Message.debug "=== Start concolic interpretation... ===";
@@ -2743,6 +2744,8 @@ let interpret_program_concolic
   let scope_e = simplify_program ctx p s in
 
   let ast_stats = Mutation.get_stats scope_e in
+
+  if Optimizations.mutation optims then Mutation.init mutation_seed;
 
   let scope_e =
     if Optimizations.random_mutations optims
