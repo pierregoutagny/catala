@@ -1956,10 +1956,10 @@ let soft_constraints_of_input_mark ctx (m: conc_info mark) : PathConstraint.pc_e
         let round_hundred = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_hundred) zero in
         List.map (fun (x, id) -> let x = SymbExpr.mk_z3 x in (PathConstraint.mk_soft x 1 (Some id) pos false).expr)
         [
-          non_negative, "3non_negative" ;
-          round_unit, "2round_unit" ;
-          round_ten, "1round_ten" ;
-          round_hundred, "0round_hundred";
+          non_negative, "3non-negative" ;
+          round_unit, "2unit" ;
+          round_ten, "1ten" ;
+          round_hundred, "0hundred";
         ]
     | _ -> []
 
@@ -2026,11 +2026,11 @@ struct
   let print_soft_sats () =
     let open Format in
     let seq = StringMap.to_seq !soft_sats in
-    asprintf "sat groups:@[<v>@,%a@]" (pp_print_seq ~pp_sep:(pp_print_cut) (fun fmt (name, n) -> fprintf fmt "%s sat: %n" name n)) seq
+    asprintf "sat groups:@[<v>@,%a@]" (pp_print_seq ~pp_sep:(pp_print_cut) (fun fmt (name, n) -> fprintf fmt "%n %s sat group" n name)) seq
   let print_soft_unsats () =
     let open Format in
     let seq = StringMap.to_seq !soft_unsats in
-    asprintf "unsat groups:@[<v>@,%a@]" (pp_print_seq ~pp_sep:(pp_print_cut) (fun fmt (name, n) -> fprintf fmt "%s unsat: %n" name n)) seq
+    asprintf "unsat groups:@[<v>@,%a@]" (pp_print_seq ~pp_sep:(pp_print_cut) (fun fmt (name, n) -> fprintf fmt "%n %s unsat group" n name)) seq
 
   module type Z3SolverModuleType = sig
     type t
