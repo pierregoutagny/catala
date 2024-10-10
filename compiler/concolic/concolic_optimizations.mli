@@ -1,9 +1,9 @@
 open Path_constraint
-open Shared_ast
+open Conc_types
 
 type flag =
   | OTrivial | OLazyDefault
-  | OLinearizeMatch
+  | OLinearizeMatch | OPacking
   | OIncrementalSolver
   | OSoftConstraints
   | OTestsVTime
@@ -53,4 +53,4 @@ val remove_trivial_constraints :
 val check_easy_unsat : flag list -> Z3.context -> PathConstraint.pc_expr list -> bool
 
 val optimize_expr :
-  flag list -> (('a, 'b, 'c) interpr_kind, 'm) gexpr -> (('a, 'b, 'c) interpr_kind, 'm) gexpr
+  flag list -> conc_expr -> conc_expr
