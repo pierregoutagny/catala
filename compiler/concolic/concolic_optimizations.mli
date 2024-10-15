@@ -11,6 +11,7 @@ type flag =
   | OMutationRemove | OMutationDuplicate | OMutationNegateJusts
   | OMutationOneConflict
   | OASTStats
+  | OAll
 
 val optim_list : (string * flag) list
 (** Used for command line arguments *)

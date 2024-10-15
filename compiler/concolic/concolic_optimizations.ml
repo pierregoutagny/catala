@@ -18,6 +18,7 @@ type flag = | OTrivial
             | OMutationNegateJusts
             | OMutationOneConflict
             | OASTStats
+            | OAll
 
 let optim_list = [
   "trivial", OTrivial;
@@ -34,12 +35,16 @@ let optim_list = [
   "mutation-negate-justs", OMutationNegateJusts;
   "mutation-one-conflict", OMutationOneConflict;
   "ast-stats", OASTStats;
+  "all", OAll;
 ]
-let trivial : flag list -> bool = List.mem OTrivial
-let lazy_default : flag list -> bool = List.mem OLazyDefault
-let linearize_match : flag list -> bool = List.mem OLinearizeMatch
-let packing : flag list -> bool = List.mem OPacking
-let incremental_solver : flag list -> bool = List.mem OIncrementalSolver
+
+let all_or (f: flag) (opt: flag list) : bool = List.mem OAll opt || List.mem f opt
+
+let trivial : flag list -> bool = all_or OTrivial
+let lazy_default : flag list -> bool = all_or OLazyDefault
+let linearize_match : flag list -> bool = all_or OLinearizeMatch
+let packing : flag list -> bool = all_or OPacking
+let incremental_solver : flag list -> bool = all_or OIncrementalSolver
 let soft_constraints : flag list -> bool = List.mem OSoftConstraints
 let tests_vs_time : flag list -> bool = List.mem OTestsVTime
 let timeout (l: flag list) : bool = List.mem OTimeout l
