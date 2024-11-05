@@ -2106,6 +2106,23 @@ struct
         s
       | Some s -> s
 
+    let run_number = ref 0
+    let print_smt solver_string status stats =
+      let folder = "smt_out" in
+      let smt_filename = Format.sprintf "%s/%06d.smt" folder !run_number in
+      let smt_oc = Stdlib.open_out smt_filename in
+      let smt_fmt = Format.formatter_of_out_channel smt_oc in
+      Format.pp_print_string smt_fmt solver_string;
+      Stdlib.close_out smt_oc;
+      let log_filename = Format.sprintf "%s/%06d.log" folder !run_number in
+      let log_oc = Stdlib.open_out log_filename in
+      let log_fmt = Format.formatter_of_out_channel log_oc in
+      Format.pp_print_string log_fmt status;
+      Format.pp_print_newline log_fmt ();
+      Format.pp_print_string log_fmt stats;
+      Stdlib.close_out log_oc;
+      incr run_number
+
     let _solve ctx (local_constraints : s_expr list) : z3_solver_result =
       let solver = get_solver ctx in
       if Global.options.debug then Message.debug "Using incremental Z3 solver";
@@ -2124,6 +2141,7 @@ struct
             z3assertions = S.get_assertions solver;
           }
       in
+      print_smt (S.to_string solver) (Z3.Solver.string_of_status status) (S.get_statistics solver |> Z3.Statistics.to_string);
       S.pop solver;
       result
 
