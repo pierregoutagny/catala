@@ -8,11 +8,11 @@ declaration scope A:
 
 scope A:
   definition o equals 0
-  exception definition o under condition y != 0 and x/y = 0.5 consequence equals 1
+  exception definition o under condition y != 42 and x/(y - 42) = 0.5 consequence equals 1
 ```
 
-Here we can see that even if there is a `y!=0` condition, the engine tries an input
-with y=0. This happens because the Z3 condition that ensures the branch where
+Here we can see that even if there is a `y!=42` condition, the engine tries an input
+with y=42. This happens because the Z3 condition that ensures the branch where
 the denominator is zero is taken, is treated after the condition in the
 default. I think this is expected.
 TODO try with an assert beforehand instead.
@@ -20,16 +20,16 @@ TODO try with an assert beforehand instead.
 In order, the constraints sent to the solver are (simplified debug output):
 ```
 [no constraints]
-=> Sat: input x=42, y=42
+=> Sat: input x=0, y=0
 => output o=0
 
-NEGATE (y!=0 and x/y = 0.5)
-       (y!=0)
-=> Sat: input x=1, y=1
+NEGATE (y!=42 and x/(y-42) = 0.5)
+       (y!=42)
+=> Sat: input x=-21, y=0
 => output: o=1
 
-NEGATE (y!=0)
-=> Sat: x=42, y=0
+NEGATE (y!=42)
+=> Sat: x=0, y=42
 => output: division by zero error
 ```
 
@@ -37,23 +37,23 @@ NEGATE (y!=0)
 $ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = 42
-[RESULT] . y_in = 42
+[RESULT] . x_in = 0
+[RESULT] . y_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 0
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = -1
-[RESULT] . y_in = -2
+[RESULT] . x_in = -21
+[RESULT] . y_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 1
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = 42
-[RESULT] . y_in = 0
+[RESULT] . x_in = 0
+[RESULT] . y_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/div_guard_in_condition.catala_en:11.55-11.56,tests/concolic/good/div_guard_in_condition.catala_en:11.53-11.56,)↯ at tests/concolic/good/div_guard_in_condition.catala_en:11.53-11.56
+Found error ↯DivisionByZero(tests/concolic/good/div_guard_in_condition.catala_en:11.57-11.63,tests/concolic/good/div_guard_in_condition.catala_en:11.54-11.64,)↯ at tests/concolic/good/div_guard_in_condition.catala_en:11.54-11.64
 [RESULT] 
 [RESULT] Concolic interpreter done
 [RESULT] Computation successful!

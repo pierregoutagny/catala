@@ -16,7 +16,7 @@ scope A:
 $ catala Concolic -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = $42.00
+[RESULT] . x_in = $0.00
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 0
 [RESULT] 

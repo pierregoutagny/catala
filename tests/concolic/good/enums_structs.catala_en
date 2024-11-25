@@ -30,7 +30,7 @@ scope A:
     definition o equals -1
     exception definition o
         under condition
-            a != A1 content 0
+            a != A1 content 42
             and s.a = A2 content false
             and b = B2 content s
             and t.a != a
@@ -79,7 +79,7 @@ let scope A
   in
   let set o : integer =
     error_empty
-      ⟨ ⟨ ⟨(~ (a = A1 0))
+      ⟨ ⟨ ⟨(~ (a = A1 42))
            && s.a = A2 false
            && b = B2 s
            && (~ (t.a = a))
@@ -96,11 +96,11 @@ let scope A
 $ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . a_in = A1 42
-[RESULT] . b_in = B1 A1 42
-[RESULT] . s_in = StructS { -- a: A1 42 }
+[RESULT] . a_in = A1 0
+[RESULT] . b_in = B1 A1 0
+[RESULT] . s_in = StructS { -- a: A1 0 }
 [RESULT]
-. t_in = StructT { -- a: A1 42 -- s: StructS { -- a: A1 42 } -- b: B1 A1 42 }
+. t_in = StructT { -- a: A1 0 -- s: StructS { -- a: A1 0 } -- b: B1 A1 0 }
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = -1
 [RESULT] 

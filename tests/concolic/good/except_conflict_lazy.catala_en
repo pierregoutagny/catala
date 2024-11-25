@@ -13,12 +13,12 @@ scope A:
     exception definition o under condition a=1 consequence equals 1
     exception definition o under condition b=2 consequence equals 2
     exception definition o under condition c=3 consequence equals 3
-    exception definition o under condition 1.0 = 1 / d consequence equals 4
+    exception definition o under condition 1.0 = 1 / (d - 42) consequence equals 4
 ```
 
 Without the optimization there are 24 evaluations (solve: 320ms, eval: 81ms,
 total: 424ms). Note for example that after (a,b,c,d) = (4,2,3,1), which raises
-a b/c conflict, the engine tries (4,2,3,0) where there is still a b/c conflict
+a b/c conflict, the engine tries (4,2,3,42) where there is still a b/c conflict
 (which we already caught) but it raises a DivisionByZero error.
 See below this test block for an example with the optimization.
 
@@ -26,10 +26,10 @@ See below this test block for an example with the optimization.
 $ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . a_in = 42
-[RESULT] . b_in = 42
-[RESULT] . c_in = 42
-[RESULT] . d_in = 42
+[RESULT] . a_in = 0
+[RESULT] . b_in = 0
+[RESULT] . c_in = 0
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 0
 [RESULT] 
@@ -37,7 +37,7 @@ $ catala Concolic --conc-optim=incremental -s A
 [RESULT] . a_in = 4
 [RESULT] . b_in = 5
 [RESULT] . c_in = 6
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 4
 [RESULT] 
@@ -45,16 +45,16 @@ $ catala Concolic --conc-optim=incremental -s A
 [RESULT] . a_in = 4
 [RESULT] . b_in = 5
 [RESULT] . c_in = 6
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 4
 [RESULT] . b_in = 5
 [RESULT] . c_in = 3
-[RESULT] . d_in = 42
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 3
 [RESULT] 
@@ -62,25 +62,25 @@ Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en
 [RESULT] . a_in = 4
 [RESULT] . b_in = 5
 [RESULT] . c_in = 3
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.75-16.76,tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
+Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.82-16.83,tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 4
 [RESULT] . b_in = 5
 [RESULT] . c_in = 3
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 3
 [RESULT] . b_in = 2
-[RESULT] . c_in = 42
-[RESULT] . d_in = 42
+[RESULT] . c_in = 0
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 2
 [RESULT] 
@@ -88,25 +88,25 @@ Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en
 [RESULT] . a_in = 4
 [RESULT] . b_in = 2
 [RESULT] . c_in = 5
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.75-16.76,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
+Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.82-16.83,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 4
 [RESULT] . b_in = 2
 [RESULT] . c_in = 5
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 4
 [RESULT] . b_in = 2
 [RESULT] . c_in = 3
-[RESULT] . d_in = 42
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT]
 Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
@@ -115,25 +115,25 @@ Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:15.67
 [RESULT] . a_in = 4
 [RESULT] . b_in = 2
 [RESULT] . c_in = 3
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.75-16.76,tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
+Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.82-16.83,tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 4
 [RESULT] . b_in = 2
 [RESULT] . c_in = 3
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
-[RESULT] . b_in = 42
-[RESULT] . c_in = 42
-[RESULT] . d_in = 42
+[RESULT] . b_in = 0
+[RESULT] . c_in = 0
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 1
 [RESULT] 
@@ -141,25 +141,25 @@ Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en
 [RESULT] . a_in = 1
 [RESULT] . b_in = 4
 [RESULT] . c_in = 5
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.75-16.76,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
+Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.82-16.83,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
 [RESULT] . b_in = 4
 [RESULT] . c_in = 5
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
 [RESULT] . b_in = 4
 [RESULT] . c_in = 3
-[RESULT] . d_in = 42
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT]
 Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
@@ -168,25 +168,25 @@ Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:15.67
 [RESULT] . a_in = 1
 [RESULT] . b_in = 4
 [RESULT] . c_in = 3
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.75-16.76,tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
+Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.82-16.83,tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
 [RESULT] . b_in = 4
 [RESULT] . c_in = 3
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
 [RESULT] . b_in = 2
-[RESULT] . c_in = 42
-[RESULT] . d_in = 42
+[RESULT] . c_in = 0
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT]
 Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
@@ -195,25 +195,25 @@ Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:14.67
 [RESULT] . a_in = 1
 [RESULT] . b_in = 2
 [RESULT] . c_in = 4
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.75-16.76,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
+Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.82-16.83,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
 [RESULT] . b_in = 2
 [RESULT] . c_in = 4
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
 [RESULT] . b_in = 2
 [RESULT] . c_in = 3
-[RESULT] . d_in = 42
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT]
 Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
@@ -222,19 +222,19 @@ Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:15.67
 [RESULT] . a_in = 1
 [RESULT] . b_in = 2
 [RESULT] . c_in = 3
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.75-16.76,tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
+Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.82-16.83,tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
 [RESULT] . b_in = 2
 [RESULT] . c_in = 3
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Concolic interpreter done
 [RESULT] Computation successful!
@@ -247,10 +247,10 @@ total: 288ms). The type of case mentioned above does not happen anymore.
 $ catala Concolic --conc-optim=lazy-default --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . a_in = 42
-[RESULT] . b_in = 42
-[RESULT] . c_in = 42
-[RESULT] . d_in = 42
+[RESULT] . a_in = 0
+[RESULT] . b_in = 0
+[RESULT] . c_in = 0
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 0
 [RESULT] 
@@ -258,7 +258,7 @@ $ catala Concolic --conc-optim=lazy-default --conc-optim=incremental -s A
 [RESULT] . a_in = 4
 [RESULT] . b_in = 5
 [RESULT] . c_in = 6
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 4
 [RESULT] 
@@ -266,16 +266,16 @@ $ catala Concolic --conc-optim=lazy-default --conc-optim=incremental -s A
 [RESULT] . a_in = 4
 [RESULT] . b_in = 5
 [RESULT] . c_in = 6
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 4
 [RESULT] . b_in = 5
 [RESULT] . c_in = 3
-[RESULT] . d_in = 42
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 3
 [RESULT] 
@@ -283,25 +283,25 @@ Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en
 [RESULT] . a_in = 4
 [RESULT] . b_in = 5
 [RESULT] . c_in = 3
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.75-16.76,tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
+Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.82-16.83,tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 4
 [RESULT] . b_in = 5
 [RESULT] . c_in = 3
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 3
 [RESULT] . b_in = 2
-[RESULT] . c_in = 42
-[RESULT] . d_in = 42
+[RESULT] . c_in = 0
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 2
 [RESULT] 
@@ -309,34 +309,34 @@ Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en
 [RESULT] . a_in = 4
 [RESULT] . b_in = 2
 [RESULT] . c_in = 5
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.75-16.76,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
+Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.82-16.83,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 4
 [RESULT] . b_in = 2
 [RESULT] . c_in = 5
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 4
 [RESULT] . b_in = 2
 [RESULT] . c_in = 3
-[RESULT] . d_in = 42
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT]
 Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
-[RESULT] . b_in = 42
-[RESULT] . c_in = 42
-[RESULT] . d_in = 42
+[RESULT] . b_in = 0
+[RESULT] . c_in = 0
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 1
 [RESULT] 
@@ -344,25 +344,25 @@ Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:15.67
 [RESULT] . a_in = 1
 [RESULT] . b_in = 4
 [RESULT] . c_in = 5
-[RESULT] . d_in = 1
+[RESULT] . d_in = 43
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.75-16.76,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
+Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:16.82-16.83,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
 [RESULT] . b_in = 4
 [RESULT] . c_in = 5
-[RESULT] . d_in = 0
+[RESULT] . d_in = 42
 [RESULT] Output of scope after evaluation:
 [RESULT]
-Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.54-16.55,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.55
+Found error ↯DivisionByZero(tests/concolic/good/except_conflict_lazy.catala_en:16.55-16.61,tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:16.50-16.62
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
 [RESULT] . b_in = 4
 [RESULT] . c_in = 3
-[RESULT] . d_in = 42
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT]
 Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:15.67-15.68,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13
@@ -370,8 +370,8 @@ Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:15.67
 [RESULT] Evaluating with inputs:
 [RESULT] . a_in = 1
 [RESULT] . b_in = 2
-[RESULT] . c_in = 42
-[RESULT] . d_in = 42
+[RESULT] . c_in = 0
+[RESULT] . d_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT]
 Found error ↯Conflict(tests/concolic/good/except_conflict_lazy.catala_en:14.67-14.68,tests/concolic/good/except_conflict_lazy.catala_en:13.67-13.68,)↯ at tests/concolic/good/except_conflict_lazy.catala_en:9.12-9.13

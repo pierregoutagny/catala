@@ -54,7 +54,7 @@ $ catala Concolic --conc-optim=incremental -s B
 [RESULT] . x_in = <function>
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 1
-[RESULT] . x = 42
+[RESULT] . x = 0
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = <function>

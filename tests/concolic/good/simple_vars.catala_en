@@ -29,13 +29,13 @@ $ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . b_in = true
-[RESULT] . x_in = 42
+[RESULT] . x_in = 0
 [RESULT] Output of scope after evaluation:
-[RESULT] . o = 42
+[RESULT] . o = 0
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . b_in = false
-[RESULT] . x_in = 42
+[RESULT] . x_in = 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 12
 [RESULT] 
