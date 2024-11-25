@@ -14,7 +14,7 @@ declaration scope A:
 
 scope A:
   definition o equals match x with pattern
-    -- Case2 : 42
+    -- Case2 : 0
     -- anything : 31
 ```
 
@@ -25,7 +25,7 @@ declaration scope B:
 
 scope B:
   definition o equals match x with pattern
-    -- Case2 : 42
+    -- Case2 : 0
     -- Case1 of i : i
     -- anything : 31
 ```
@@ -44,7 +44,7 @@ let scope A
     error_empty
       ⟨ ⟨true ⊢ ⟨match x with
                  | Case1 _ → 31
-                 | Case2 → 42
+                 | Case2 → 0
                  | Case3 → 31⟩⟩
       | false ⊢ ∅ ⟩
   in
@@ -55,14 +55,14 @@ let scope A
 $ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = Case1 42
+[RESULT] . x_in = Case1 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 31
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = Case2 ()
 [RESULT] Output of scope after evaluation:
-[RESULT] . o = 42
+[RESULT] . o = 0
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = Case3 ()
@@ -84,7 +84,7 @@ let scope B
     error_empty
       ⟨ ⟨true ⊢ ⟨match x with
                  | Case1 i → i
-                 | Case2 → 42
+                 | Case2 → 0
                  | Case3 → 31⟩⟩
       | false ⊢ ∅ ⟩
   in
@@ -95,14 +95,14 @@ let scope B
 $ catala Concolic --conc-optim=incremental -s B
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = Case1 42
+[RESULT] . x_in = Case1 0
 [RESULT] Output of scope after evaluation:
-[RESULT] . o = 42
+[RESULT] . o = 0
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = Case2 ()
 [RESULT] Output of scope after evaluation:
-[RESULT] . o = 42
+[RESULT] . o = 0
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = Case3 ()

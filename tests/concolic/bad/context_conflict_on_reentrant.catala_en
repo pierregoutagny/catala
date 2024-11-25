@@ -8,7 +8,7 @@ declaration scope A:
 scope A:
     definition x equals -1
     definition o equals 10
-    definition o under condition x>0 consequence equals 20
+    definition o under condition x=0 consequence equals 20
 ```
 
 When a value is forced for x, we are able to find the conflict. When its
@@ -30,7 +30,7 @@ Found error ↯Conflict(tests/concolic/bad/context_conflict_on_reentrant.catala_
 [RESULT] . x_in = <function>
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 10
-[RESULT] . x = 0
+[RESULT] . x = 2
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = <function>

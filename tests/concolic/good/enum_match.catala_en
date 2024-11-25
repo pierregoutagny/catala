@@ -41,7 +41,7 @@ let scope A
 $ catala Concolic --conc-optim=incremental -s A
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = E1 42
+[RESULT] . x_in = E1 0
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 1
 [RESULT] 
