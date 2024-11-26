@@ -762,7 +762,7 @@ let propagate_generic_error
     if Global.options.debug then Message.debug "Propagating error %a" SymbExpr.formatter e_symb;
     let constraints = e_constraints @ other_constraints in
     (* Add the new constraints but don't change the symbolic expression *)
-    add_conc_info_e Symb_none ~constraints e
+    add_conc_info_e SymbExpr.none ~constraints e
   | _, Symb_error _ ->
     Message.error ~internal:true
       "A non-error case cannot have an error symbolic expression"
@@ -1701,7 +1701,7 @@ let rec evaluate_expr :
            *)
           (* NOTE that there is no symbolic expression on asserts *)
           let constraints = e_symb_pc :: e_constraints in
-          add_conc_info_m m Symb_none ~constraints concrete |> make_ok
+          add_conc_info_m m SymbExpr.none ~constraints concrete |> make_ok
         | ELit (LBool false) ->
           (* FIXME use [partially_evaluate_expr_for_assertion_failure_message]
              in error message like in concrete interpreter *)
