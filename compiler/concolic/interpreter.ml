@@ -606,16 +606,12 @@ let make_z3_struct ctx (name : StructName.t) (es : conc_expr list) : s_expr =
     let e_symb = get_symb_expr e in
     match e_symb with
     | Symb_z3 s -> s
-    | Symb_reentrant _ -> ctx.ctx_dummy_const
+    | Symb_reentrant _ | Symb_abs -> ctx.ctx_dummy_const
     | Symb_none -> (
-      match Mark.remove e with
-      | EAbs _ -> ctx.ctx_dummy_const
-      | _ ->
         Message.error ~pos:(Expr.pos e)
-          "Fields of structs that are not functions or context variables must \
-           have a symbolic expression. This should not happen if the \
-           evaluation of fields worked.")
-    | Symb_incomplete -> 
+          "Fields of structs must have a symbolic expression. This should not
+          happen if the evaluation of fields worked.")
+    | Symb_incomplete ->
       Message.error ~pos:(Expr.pos e)
         "Fields of structs cannot be incomplete" (* TODO INC *)
     | Symb_error _ ->
@@ -1327,9 +1323,9 @@ let rec evaluate_operator
 let rec evaluate_expr :
     context -> Global.backend_lang -> conc_expr -> conc_result =
  fun ctx lang e ->
-  (* if Global.options.debug then Message.debug "eval %a\nsymbolic: %a" (Print.expr ()) e SymbExpr.formatter
-     (get_symb_expr e); *)
-  if Global.options.debug then Message.debug "eval symbolic: %a" SymbExpr.formatter (get_symb_expr e);
+  if Global.options.debug then Message.debug "eval %a\nsymbolic: %a" (Print.expr ()) e SymbExpr.formatter
+     (get_symb_expr e);
+(*   if Global.options.debug then Message.debug "eval symbolic: %a" SymbExpr.formatter (get_symb_expr e); *)
   let m = Mark.get e in
   let pos = Expr.mark_pos m in
   let ret =
@@ -1444,10 +1440,9 @@ let rec evaluate_expr :
       add_conc_info_e r_symb ~constraints result |> make_ok
     | EAbs _ ->
       if Global.options.debug then Message.debug "... it's an EAbs";
-      make_ok e
-      (* DONE simplify this once issue #540 is resolved *)
-      (* TODO QU Raphaël: 540 has been resolved?
-         =>> DONE *)
+      (* Give Symb_abs symbolic expression if it is not already something else.
+         This is mainly used in [make_z3_struct] *)
+      add_conc_info_e SymbExpr.abs e |> make_ok
     | ELit l as e ->
       if Global.options.debug then Message.debug "... it's an ELit";
       let symb_expr = symb_of_lit ctx l in
@@ -2533,6 +2528,8 @@ struct
           failwith "[inputs_of_model] input mark should not be none"
         | Symb_incomplete ->
           failwith "[inputs_of_model] input mark should not be incomplete" (* TODO INC *)
+        | Symb_abs ->
+          failwith "[inputs_of_model] input mark should not be abs" (* TODO INC *)
         | Symb_error _ ->
           failwith "[inputs_of_model] input mark should not be an error"
       in
