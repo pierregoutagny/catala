@@ -51,12 +51,14 @@ module SymbExpr = struct
     | Symb_reentrant of reentrant
       (* only for the lambda expression corresponding to a reentrant variable *)
     | Symb_none
+    | Symb_incomplete
     | Symb_error of RuntimeError.t
         (** TODO make sure that this can only be used on errors? *)
 
   let mk_z3 s = Symb_z3 s
   let mk_reentrant name symbol = Symb_reentrant { name; symbol }
   let none = Symb_none
+  let incomplete = Symb_incomplete
 
   let mk_emptyerror message =
     let err = RuntimeError.(make EmptyError message) in
@@ -117,6 +119,7 @@ module SymbExpr = struct
       else str
     | Symb_reentrant r -> string_of_reentrant r
     | Symb_none -> "None"
+    | Symb_incomplete -> "Incomplete"
     | Symb_error err -> RuntimeError.to_string err
 
   let formatter (fmt : Format.formatter) (symb_expr : t) : unit =

@@ -615,6 +615,9 @@ let make_z3_struct ctx (name : StructName.t) (es : conc_expr list) : s_expr =
           "Fields of structs that are not functions or context variables must \
            have a symbolic expression. This should not happen if the \
            evaluation of fields worked.")
+    | Symb_incomplete -> 
+      Message.error ~pos:(Expr.pos e)
+        "Fields of structs cannot be incomplete" (* TODO INC *)
     | Symb_error _ ->
       Message.error ~pos:(Expr.pos e)
         "Fields of structs cannot be errors when making the symbolic \
@@ -970,7 +973,12 @@ let rec evaluate_operator
   let z3_round _ = z3_round ctx in
   (* Mark.add m @@ *)
   match op, args with
-  | Length, _ -> failwith "EOp Length not implemented"
+  | Length, [(EArray es, _)] ->
+    let l = Runtime.integer_of_int (List.length es) in
+    let symb_expr = SymbExpr.incomplete in
+    (* no constraints generated *)
+    add_conc_info_m m symb_expr ~constraints:[] (ELit (LInt l))
+    (* TODO INC *)
   | Log _, _ -> failwith "Eop Log not implemented"
   | (FromClosureEnv | ToClosureEnv), _ ->
     (* NOTE CONC used for typing only *)
@@ -994,7 +1002,7 @@ let rec evaluate_operator
   | Concat, _ -> failwith "Eop Concat not implemented"
   | Filter, _ -> failwith "Eop Filter not implemented"
   | Fold, _ -> failwith "Eop Fold not implemented"
-  (* Length | Log _ *)
+  | Length, _ (* | Log _ *)
   | Eq (* | Map | Concat | Filter | Fold | Reduce *), _ -> err ()
   | Not, [((ELit (LBool b), _) as e)] ->
     op1 ctx m (fun x -> ELit (LBool (o_not x))) Z3.Boolean.mk_not b e
@@ -1455,7 +1463,12 @@ let rec evaluate_expr :
       propagate_generic_error_list es []
       @@ fun es ->
       (* make symbolic expression using the symbolic sub-expressions *)
-      let symb_expr = SymbExpr.mk_z3 (make_z3_struct ctx name es) in
+      (* TODO INC *)
+      let symb_expr =
+        if List.exists (fun x -> get_symb_expr x = SymbExpr.incomplete) es
+        then SymbExpr.incomplete
+        else SymbExpr.mk_z3 (make_z3_struct ctx name es)
+      in
 
       (* TODO catch error... should not happen *)
 
@@ -1663,7 +1676,14 @@ let rec evaluate_expr :
         Message.error ~pos:(Expr.pos cond)
           "Expected a boolean literal for the result of this condition (should \
            not happen if the term was well-typed)")
-    | EArray _ -> failwith "EArray not implemented"
+    | EArray es ->
+        let es = List.map (evaluate_expr ctx lang) es in
+        propagate_generic_error_list es []
+        @@ fun es ->
+        let constraints = gather_constraints es in
+        let es_concr = EArray es in
+        add_conc_info_m m SymbExpr.incomplete ~constraints es_concr |> make_ok
+        (* TODO INC *)
     | EAssert e' ->
       (* TODO CONC REU *)
       propagate_generic_error (evaluate_expr ctx lang e') []
@@ -2511,6 +2531,8 @@ struct
           make_term ctx m.model_z3 mk ty s
         | Symb_none ->
           failwith "[inputs_of_model] input mark should not be none"
+        | Symb_incomplete ->
+          failwith "[inputs_of_model] input mark should not be incomplete" (* TODO INC *)
         | Symb_error _ ->
           failwith "[inputs_of_model] input mark should not be an error"
       in
