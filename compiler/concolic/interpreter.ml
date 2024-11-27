@@ -614,6 +614,9 @@ let make_z3_struct ctx (name : StructName.t) (es : conc_expr list) : s_expr =
     | Symb_incomplete ->
       Message.error ~pos:(Expr.pos e)
         "Fields of structs cannot be incomplete" (* TODO INC *)
+    | Symb_fallback ->
+      Message.error ~pos:(Expr.pos e)
+        "Fields of structs cannot be fallback" (* TODO INC *)
     | Symb_error _ ->
       Message.error ~pos:(Expr.pos e)
         "Fields of structs cannot be errors when making the symbolic \
@@ -969,11 +972,12 @@ let rec evaluate_operator
   let z3_round _ = z3_round ctx in
   (* Mark.add m @@ *)
   match op, args with
-  | Length, [(EArray es, _)] ->
-    let l = Runtime.integer_of_int (List.length es) in
-    let symb_expr = SymbExpr.incomplete in
+  | Length, [(EArray es, _) as arr] ->
+    let l = LInt (Runtime.integer_of_int (List.length es)) in
+    let symb_expr = SymbExpr.apply_fallback (get_symb_expr arr) (symb_of_lit ctx l)
+    in
     (* no constraints generated *)
-    add_conc_info_m m symb_expr ~constraints:[] (ELit (LInt l))
+    add_conc_info_m m symb_expr ~constraints:[] (ELit l)
     (* TODO INC *)
   | Log _, _ -> failwith "Eop Log not implemented"
   | (FromClosureEnv | ToClosureEnv), _ ->
@@ -1460,9 +1464,8 @@ let rec evaluate_expr :
       (* make symbolic expression using the symbolic sub-expressions *)
       (* TODO INC *)
       let symb_expr =
-        if List.exists (fun x -> get_symb_expr x = SymbExpr.incomplete) es
-        then SymbExpr.incomplete
-        else SymbExpr.mk_z3 (make_z3_struct ctx name es)
+        SymbExpr.propagate_incomplete_fallback_list (List.map get_symb_expr es) @@ fun _ ->
+        SymbExpr.mk_z3 (make_z3_struct ctx name es)
       in
 
       (* TODO catch error... should not happen *)
@@ -1676,8 +1679,9 @@ let rec evaluate_expr :
         propagate_generic_error_list es []
         @@ fun es ->
         let constraints = gather_constraints es in
+        let symb_expr = SymbExpr.mk_incomplete_or_fallback_list (List.map get_symb_expr es) in
         let es_concr = EArray es in
-        add_conc_info_m m SymbExpr.incomplete ~constraints es_concr |> make_ok
+        add_conc_info_m m symb_expr ~constraints es_concr |> make_ok
         (* TODO INC *)
     | EAssert e' ->
       (* TODO CONC REU *)
@@ -2528,6 +2532,8 @@ struct
           failwith "[inputs_of_model] input mark should not be none"
         | Symb_incomplete ->
           failwith "[inputs_of_model] input mark should not be incomplete" (* TODO INC *)
+        | Symb_fallback ->
+          failwith "[inputs_of_model] input mark should not be fallback" (* TODO INC *)
         | Symb_abs ->
           failwith "[inputs_of_model] input mark should not be abs" (* TODO INC *)
         | Symb_error _ ->

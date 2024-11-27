@@ -30,6 +30,7 @@ module SymbExpr : sig
       (* only for the lambda expression corresponding to a reentrant variable *)
     | Symb_none
     | Symb_incomplete
+    | Symb_fallback
     | Symb_abs
     | Symb_error of RuntimeError.t (* only for generic errors *)
 
@@ -38,8 +39,16 @@ module SymbExpr : sig
   val mk_z3 : z3_expr -> t
   val mk_reentrant : StructField.t -> z3_expr -> t
   val none : t
+
   val incomplete : t
+  val fallback : t
+  val mk_incomplete_or_fallback : t -> t
+  val mk_incomplete_or_fallback_list : t list -> t
+  val propagate_incomplete_fallback_list : t list -> (t list -> t) -> t
+  val apply_fallback : t -> t -> t
+
   val abs : t
+
   val mk_emptyerror : RuntimeError.message -> t
   val mk_conflicterror : RuntimeError.message -> RuntimeError.span_list -> t
 
@@ -78,4 +87,8 @@ module SymbExpr : sig
   val to_string : ?typed:bool -> t -> string
   val formatter : Format.formatter -> t -> unit
   val formatter_typed : Format.formatter -> t -> unit
+
+
+  (** {2 Properties} *)
+  val has_variables : t -> bool
 end
