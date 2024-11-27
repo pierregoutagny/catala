@@ -39,3 +39,12 @@ let z3_int_of_bigint ctx (n : Z.t) : expr =
   (* NOTE I use string instead of int to translate without overflows, as both
      [Runtime.integer] and Z3 integers are big *)
   Integer.mk_numeral_s ctx (Z.to_string n)
+
+
+(** Check whether constants are present in a Z3 expression *)
+let get_children = Expr.get_args
+
+let rec has_constants (e: expr) : bool =
+  Expr.is_const e ||
+  List.exists has_constants (get_children e)
+

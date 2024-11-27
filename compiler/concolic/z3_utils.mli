@@ -16,3 +16,6 @@ val z3_force_real : context -> expr -> expr
 
 val z3_int_of_bigint : context -> Z.t -> expr
 (** Translate a Bigint to a Z3 [Integer] while avoiding overflow *)
+
+val has_constants : expr -> bool
+(** Return whether the expression contains any Z3 "const" *)
