@@ -1,0 +1,55 @@
+# Article
+
+```catala
+declaration scope A:
+    input x content integer
+    output o content integer
+
+declaration scope B:
+    input x content integer
+    output o content integer
+
+scope A:
+    definition o under condition number of [1;2] = 2 consequence equals 0
+
+scope B:
+    definition o under condition number of [x] = 2 consequence equals 0
+```
+
+```catala-test-inline
+$ catala Concolic -s A
+[WARNING] Unused varible: x does not contribute to computing any of scope A
+  outputs. Did you forget something?
+
+┌─⯈ tests/concolic/good/list.catala_en:5.11-5.12:
+└─┐
+5 │     input x content integer
+  │           ‾
+  └─ Article
+[RESULT] 
+[RESULT] Evaluating with inputs:
+[RESULT] . x_in = 0
+[RESULT] Output of scope after evaluation:
+[RESULT] . o = 0
+[RESULT] 
+[RESULT] Concolic interpreter done
+[RESULT] Computation successful!
+```
+
+```catala-test-inline
+$ catala Concolic -s B
+[WARNING] Unused varible: x does not contribute to computing any of scope A
+  outputs. Did you forget something?
+
+┌─⯈ tests/concolic/good/list.catala_en:5.11-5.12:
+└─┐
+5 │     input x content integer
+  │           ‾
+  └─ Article
+[RESULT] 
+[RESULT] Evaluating with inputs:
+[RESULT] . x_in = 0
+[ERROR] Unexpected error: Invalid_argument("[PathConstraint.mk_z3] expects a
+  z3 symbolic expression")
+#return code 125#
+```
