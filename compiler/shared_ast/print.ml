@@ -990,6 +990,7 @@ module UserFacing = struct
 
   let integer (lang : Global.backend_lang) ppf n =
     let sep, nsep = bigsep lang in
+    let sep = "" in
     let nsep = Z.pow (Z.of_int 10) nsep in
     if Z.sign n < 0 then Format.pp_print_char ppf '-';
     let rec aux n =
@@ -1004,7 +1005,7 @@ module UserFacing = struct
   let money (lang : Global.backend_lang) ppf n =
     let num = Z.abs n in
     let units, cents = Z.div_rem num (Z.of_int 100) in
-    if Z.sign n < 0 then Format.pp_print_char ppf '-';
+    if Z.sign n < 0 then Format.pp_print_string ppf "- ";
     (match lang with En -> Format.pp_print_string ppf "$" | Fr | Pl -> ());
     integer lang ppf units;
     Format.pp_print_string ppf (decsep lang);
