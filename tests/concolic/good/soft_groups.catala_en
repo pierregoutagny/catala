@@ -41,7 +41,7 @@ $ catala Concolic -s A
 [RESULT] . o = 4
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = -$0.09
+[RESULT] . x_in = - $0.09
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 5
 [RESULT] 
@@ -78,7 +78,7 @@ $ catala Concolic --conc-optim=soft --conc-optim=incremental -s A
 [RESULT] . o = 4
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = -$0.01
+[RESULT] . x_in = - $0.01
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 5
 [RESULT] 

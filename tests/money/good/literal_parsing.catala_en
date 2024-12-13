@@ -23,5 +23,5 @@ $ catala Typecheck --check-invariants
 $ catala test-scope A
 [RESULT] Computation successful! Results:
 [RESULT] x = $0.30
-[RESULT] y = -$0.30
+[RESULT] y = - $0.30
 ```

@@ -28,7 +28,7 @@ Found error ↯DivisionByZero(tests/concolic/good/div_money_decimal.catala_en:11
 [RESULT] . o = 0
 [RESULT] 
 [RESULT] Evaluating with inputs:
-[RESULT] . x_in = -$0.01
+[RESULT] . x_in = - $0.01
 [RESULT] . y_in = -0.001
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 1
