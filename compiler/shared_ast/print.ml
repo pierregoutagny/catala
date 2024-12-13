@@ -990,7 +990,6 @@ module UserFacing = struct
 
   let integer (lang : Global.backend_lang) ppf n =
     let sep, nsep = bigsep lang in
-    let sep = "" in
     let nsep = Z.pow (Z.of_int 10) nsep in
     if Z.sign n < 0 then Format.pp_print_char ppf '-';
     let rec aux n =
