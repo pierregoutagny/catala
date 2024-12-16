@@ -1101,11 +1101,21 @@ let rec evaluate_operator
   | Eq | Map | Map2 | Concat | Filter | Fold | Reduce), _ -> err ()
   | Not, [((ELit (LBool b), _) as e)] ->
     op1 ctx m (fun x -> ELit (LBool (o_not x))) Z3.Boolean.mk_not b e
-  | GetDay, _ -> failwith "Eop GetDay not implemented"
-  | GetMonth, _ -> failwith "Eop GetMonth not implemented"
-  | GetYear, _ -> failwith "Eop GetYear not implemented"
-  | FirstDayOfMonth, _ -> failwith "Eop FirstDayOfMonth not implemented"
-  | LastDayOfMonth, _ -> failwith "Eop LastDayOfMonth not implemented"
+  | GetDay, [(ELit (LDate d), _)] ->
+    let concrete = ELit (LInt (o_getDay d)) in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
+  | GetMonth, [(ELit (LDate d), _)] ->
+    let concrete = ELit (LInt (o_getMonth d)) in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
+  | GetYear, [(ELit (LDate d), _)] ->
+    let concrete = ELit (LInt (o_getYear d)) in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
+  | FirstDayOfMonth, [(ELit (LDate d), _)] ->
+    let concrete = ELit (LDate (o_firstDayOfMonth d)) in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
+  | LastDayOfMonth, [(ELit (LDate d), _)] ->
+    let concrete = ELit (LDate (o_lastDayOfMonth d)) in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
   | And, [((ELit (LBool b1), _) as e1); ((ELit (LBool b2), _) as e2)] ->
     op2list ctx m
       (fun x y -> ELit (LBool (o_and x y)))
@@ -1118,9 +1128,8 @@ let rec evaluate_operator
     op2 ctx m
       (fun x y -> ELit (LBool (o_xor x y)))
       Z3.Boolean.mk_xor b1 b2 e1 e2
-  | ( ( Not
-        (* | GetDay | GetMonth | GetYear | FirstDayOfMonth | LastDayOfMonth *)
-      | And | Or | Xor ),
+  | ( ( Not | GetDay | GetMonth | GetYear | FirstDayOfMonth | LastDayOfMonth |
+        And | Or | Xor ),
       _ ) ->
     err ()
   | Minus_int, [((ELit (LInt x), _) as e)] ->
