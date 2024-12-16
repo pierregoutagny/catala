@@ -32,7 +32,7 @@ module PathConstraint : sig
 
   (** {2 Builders} *)
 
-  val mk_z3 : SymbExpr.t -> Pos.t -> bool -> naked_pc
+  val mk_z3 : SymbExpr.t -> Pos.t -> bool -> naked_path
   val mk_soft : SymbExpr.t -> int -> soft_id option -> Pos.t -> bool -> naked_pc
   val mk_reentrant : SymbExpr.t -> s_expr -> Pos.t -> bool -> naked_pc option
 
