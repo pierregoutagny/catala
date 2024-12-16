@@ -14,14 +14,14 @@ module PathConstraint = struct
   type naked_pc = { expr : pc_expr; pos : Pos.t; branch : bool }
   type naked_path = naked_pc list
 
-  let mk_z3 (expr : SymbExpr.t) (pos : Pos.t) (branch : bool) : naked_path =
+  let mk_z3 (expr : SymbExpr.t) (pos : Pos.t) (branch : bool) : naked_pc =
     let expr =
       match expr with
       | Symb_z3 e -> Pc_z3 e
       | _ ->
         invalid_arg "[PathConstraint.mk_z3] expects a z3 symbolic expression"
     in
-    [{ expr; pos; branch }]
+    { expr; pos; branch }
 
   let default_id = ref 0
   let fresh_id () = incr default_id; !default_id
