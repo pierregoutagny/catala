@@ -3049,33 +3049,6 @@ let interpret_program_concolic
       let solver_result = Solver.solve ctx solver_constraints in
       let exec = Stats.stop_step s_solve |> Stats.add_exec_step exec in
 
-      (* Continue to the next loop without taking into account the returned constraints *)
-      let continue stats exec apc new_path_constraints =
-          (* add empty steps for stats *)
-          let exec =
-            Stats.start_step "get inputs from model"
-            |> Stats.stop_step
-            |> Stats.add_exec_step exec
-          in
-          let exec =
-            Stats.start_step "eval"
-            |> Stats.stop_step
-            |> Stats.add_exec_step exec
-          in
-          let s_new_pc = Stats.start_step "choose new path constraints" in
-          let new_expected_path, diff = PathConstraint.make_expected_path new_path_constraints in
-
-          let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
-          let s_diff = Stats.start_step "apply diff" in
-
-          let diff = (PathConstraint.IncrPop apc :: diff) in
-          apply_diff ctx Solver.push Solver.pop diff;
-          let exec = Stats.stop_step s_diff |> Stats.add_exec_step exec in
-          let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
-          if new_expected_path = [] then stats
-          else concolic_loop new_expected_path stats
-      in
-
       match solver_result with
       | Solver.Sat (Some m) ->
         if Global.options.debug then Message.debug "Solver returned a model";
@@ -3098,20 +3071,10 @@ let interpret_program_concolic
         end;
 
         let exec = Stats.stop_step s_inputs |> Stats.add_exec_step exec in
+
         let s_eval = Stats.start_step "eval" in
         let res = eval_conc_with_input ctx p.lang s_in scope_e mark_e inputs in
-
         let exec = Stats.stop_step s_eval |> Stats.add_exec_step exec in
-
-        let s_new_pc = Stats.start_step "choose new path constraints" in
-        let res_path_constraints = get_constraints_r res in
-
-        let res_path_constraints =
-          Optimizations.remove_trivial_constraints optims res_path_constraints
-        in
-
-        if Global.options.debug then Message.debug "Path constraints after evaluation:@.@[<v>%a@]"
-          PathConstraint.Print.naked_path res_path_constraints;
 
         if not @@ Optimizations.generate_surface optims then Message.result "Output of scope after evaluation:";
 
@@ -3231,30 +3194,57 @@ let interpret_program_concolic
                struct corresponding to the scope variables"
         end;
         incr total_tests;
-
+        
         let incomplete =
           List.exists PathConstraint.is_incomplete (get_constraints_r res) in
 
         if incomplete then begin
-            found_incomplete := true;
-            Message.warning "Concolic evaluation found an expression that \
-                             cannot be encoded (a list or a date). The engine \
-                             will now try to backtrack.";
-            match previous_path with
-            | [] ->
-              Message.result "Incomplete execution finished with no more constraints.";
-              let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
-              let exec =
-                Stats.start_step "apply diff"
-                |> Stats.stop_step
-                |> Stats.add_exec_step exec
-              in
-              let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
-              stats
-            | apc :: new_path_constraints ->
-                continue stats exec apc new_path_constraints
+          found_incomplete := true;
+          Message.warning "Concolic evaluation found an expression that \
+                           cannot be encoded (a list or a date). The engine \
+                           will now try to backtrack.";
+          match previous_path with
+          | [] ->
+            Message.result "Incomplete execution finished with no more constraints.";
+            (* add empty steps for stats *)
+            let exec =
+              Stats.start_step "choose new path constraints"
+              |> Stats.stop_step
+              |> Stats.add_exec_step exec
+            in
+            let exec =
+              Stats.start_step "apply diff"
+              |> Stats.stop_step
+              |> Stats.add_exec_step exec
+            in
+            let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
+            stats
+          | apc :: new_path_constraints ->
+            let s_new_pc = Stats.start_step "choose new path constraints" in
+            let new_expected_path, diff = PathConstraint.make_expected_path new_path_constraints in
+
+            let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
+
+            let s_diff = Stats.start_step "apply diff" in
+            let diff = (PathConstraint.IncrPop apc :: diff) in
+            apply_diff ctx Solver.push Solver.pop diff;
+            let exec = Stats.stop_step s_diff |> Stats.add_exec_step exec in
+
+            let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
+            if new_expected_path = [] then stats
+            else concolic_loop new_expected_path stats
         end
         else
+
+        let s_new_pc = Stats.start_step "choose new path constraints" in
+        let res_path_constraints = get_constraints_r res in
+
+        let res_path_constraints =
+          Optimizations.remove_trivial_constraints optims res_path_constraints
+        in
+
+        if Global.options.debug then Message.debug "Path constraints after evaluation:@.@[<v>%a@]"
+          PathConstraint.Print.naked_path res_path_constraints;
 
         (* TODO find a better way than all those revs *)
         let new_path_constraints, diff_compare = PathConstraint.compare_paths (List.rev previous_path) (List.rev res_path_constraints) in
@@ -3275,7 +3265,28 @@ let interpret_program_concolic
         match previous_path with
         | [] -> failwith "[CONC] Failed to solve without constraints"
         | apc :: new_path_constraints ->
-            continue stats exec apc new_path_constraints
+          (* add empty steps for stats *)
+          let exec =
+            Stats.start_step "get inputs from model"
+            |> Stats.stop_step
+            |> Stats.add_exec_step exec
+          in
+          let exec =
+            Stats.start_step "eval"
+            |> Stats.stop_step
+            |> Stats.add_exec_step exec
+          in
+          let s_new_pc = Stats.start_step "choose new path constraints" in
+          let new_expected_path, diff = PathConstraint.make_expected_path new_path_constraints in
+
+          let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
+          let s_diff = Stats.start_step "apply diff" in
+          let diff = (PathConstraint.IncrPop apc :: diff) in
+          apply_diff ctx Solver.push Solver.pop diff;
+          let exec = Stats.stop_step s_diff |> Stats.add_exec_step exec in
+          let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
+          if new_expected_path = [] then stats
+          else concolic_loop new_expected_path stats
       end
       | Solver.Sat None ->
         failwith "[CONC] Constraints satisfiable but no model was produced"
@@ -3303,8 +3314,8 @@ let interpret_program_concolic
 
     Message.result "Concolic interpreter done";
     if !found_incomplete then
-      Message.warning "Please note that the concolic execution be incomplete: \
-      it could systematically explore the whole program.";
+      Message.warning "Please note that the concolic execution may be \
+      incomplete: it could systematically explore the whole program.";
 
     let stats = Stats.stop stats in
     if print_stats then

@@ -49,7 +49,7 @@ $ catala Concolic -s A
 [RESULT] . o = 1
 [RESULT] 
 [RESULT] Concolic interpreter done
-[WARNING] Please note that the concolic execution be incomplete: it could systematically explore the whole program.
+[WARNING] Please note that the concolic execution may be incomplete: it could systematically explore the whole program.
 [RESULT] Computation successful!
 ```
 
