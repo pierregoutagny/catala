@@ -7,7 +7,7 @@ module PathConstraint = struct
   type soft_id = string
   type soft = { symb : s_expr ; weight : int ; id : soft_id }
   type reentrant = { symb : SymbExpr.reentrant; is_empty : bool }
-  type pc_expr = Pc_z3 of s_expr | Pc_soft of soft | Pc_reentrant of reentrant
+  type pc_expr = Pc_z3 of s_expr | Pc_soft of soft | Pc_reentrant of reentrant | Pc_incomplete
 
   (* path constraint cannot be empty (this looks like a GADT but it would be
      overkill I think) *)
@@ -18,8 +18,9 @@ module PathConstraint = struct
     let expr =
       match expr with
       | Symb_z3 e -> Pc_z3 e
+      | Symb_incomplete -> Pc_incomplete
       | _ ->
-        invalid_arg "[PathConstraint.mk_z3] expects a z3 symbolic expression"
+        invalid_arg "[PathConstraint.mk_z3] expects a z3 symbolic expression (or incomplete)"
     in
     { expr; pos; branch }
 
@@ -59,6 +60,11 @@ module PathConstraint = struct
           SymbExpr.formatter expr
     in
     Option.bind expr (fun expr -> Some { expr; pos; branch })
+
+    let is_incomplete (pc: naked_pc) : bool =
+      match pc.expr with
+      | Pc_incomplete -> true
+      | _ -> false
 
   type annotated_pc =
     | Negated of naked_pc
@@ -155,6 +161,7 @@ module PathConstraint = struct
         fprintf fmt "%s(%s)"
           (if is_empty then "Empty" else "NotEmpty")
           (Mark.remove (StructField.get_info name))
+      | Pc_incomplete -> pp_print_string fmt "Incomplete"
 
     let pc_debug_info (fmt : formatter) (pc : naked_pc) : unit =
       if Global.options.debug then

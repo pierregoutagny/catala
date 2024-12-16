@@ -6,7 +6,7 @@ module PathConstraint : sig
   type soft_id = string
   type soft = { symb : s_expr ; weight : int ; id : soft_id }
   type reentrant = { symb : SymbExpr.reentrant; is_empty : bool }
-  type pc_expr = Pc_z3 of s_expr | Pc_soft of soft | Pc_reentrant of reentrant
+  type pc_expr = Pc_z3 of s_expr | Pc_soft of soft | Pc_reentrant of reentrant | Pc_incomplete
 
   (* path constraint cannot be empty (this looks like a GADT but it would be
      overkill I think) *)
@@ -20,6 +20,8 @@ module PathConstraint : sig
         (** a path node that has been explored should, and whose constraint
             should not be negated *)
     | Normal of naked_pc  (** all other constraints *)
+
+    val is_incomplete : naked_pc -> bool
 
   type annotated_path = annotated_pc list
 

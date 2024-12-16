@@ -2245,6 +2245,7 @@ struct
         aux l' acc_z3 acc_soft
           (if e.is_empty then StructField.Set.add e.symb.name acc_reentrant
            else acc_reentrant)
+      | Pc_incomplete :: _ -> Message.error ~internal:true "[Solver.split_input] should not get Pc_incomplete as argument"
     in
     aux l [] [] StructField.Set.empty
 
@@ -2289,10 +2290,12 @@ struct
     | Pc_z3 pc -> Z3Solver.push ctx.ctx_z3 pc
     | Pc_soft _ -> () (* Z3Solver.push_soft ctx.ctx_z3 sc *)
     | Pc_reentrant _ -> ()
+    | Pc_incomplete -> Message.error ~internal:true "[Solver.push] should not get Pc_incomplete as argument"
   let pop ctx (pc : PathConstraint.pc_expr) =
     match pc with
     | Pc_z3 _ | Pc_soft _ -> Z3Solver.pop ctx.ctx_z3 ()
     | Pc_reentrant _ -> ()
+    | Pc_incomplete -> Message.error ~internal:true "[Solver.pop] should not get Pc_incomplete as argument"
 
   (** Create a dummy concolic mark with a position and a type. It has no
       symbolic expression or constraints, and is used for subexpressions inside
@@ -2556,6 +2559,7 @@ let pc_expr_of_apc ctx (apc : PathConstraint.annotated_pc) :
       | Pc_z3 e -> Pc_z3 (Z3.Boolean.mk_not ctx.ctx_z3 e)
       | Pc_soft _ -> failwith "[pc_expr_of_apc] negation of soft constraint should not happen"
       | Pc_reentrant e -> Pc_reentrant { e with is_empty = not e.is_empty }
+      | Pc_incomplete -> Message.error ~internal:true "[pc_expr_of_apc] should not get Pc_incomplete as argument"
     end
 let constraint_list_of_path ctx (path : PathConstraint.annotated_path) :
     PathConstraint.pc_expr list (* FIXME Solver.input? *) =
@@ -3099,6 +3103,9 @@ let interpret_program_concolic
                struct corresponding to the scope variables"
         end;
         incr total_tests;
+
+        let incomplete =
+          List.exists PathConstraint.is_incomplete (get_constraints_r res) in
 
         (* TODO find a better way than all those revs *)
         let new_path_constraints, diff_compare = PathConstraint.compare_paths (List.rev previous_path) (List.rev res_path_constraints) in
