@@ -355,7 +355,7 @@ let rec translate_typ (ctx : context) (t : naked_typ) : context * Z3.Sort.sort =
     (* context variable *)
     ctx, ctx.ctx_dummy_sort
   | TArrow _ -> ctx, ctx.ctx_dummy_sort (* other functions *)
-  | TArray _ -> failwith "[translate_typ] TArray not implemented"
+  | TArray _ -> ctx, ctx.ctx_dummy_sort (* TODO maybe put a better sort here? this should not be read anyway... *)
   | TAny -> failwith "[translate_typ] TAny not implemented"
   | TClosureEnv -> failwith "[translate_typ] TClosureEnv not implemented"
   | TDefault _ -> failwith "[translate_typ] TDefault not implemented"
@@ -809,7 +809,16 @@ let handle_eq evaluate_operator pos lang e1 e2 =
   | ELit (LMoney x1), ELit (LMoney x2) -> o_eq_mon_mon x1 x2
   | ELit (LDuration x1), ELit (LDuration x2) -> o_eq_dur_dur x1 x2
   | ELit (LDate x1), ELit (LDate x2) -> o_eq_dat_dat x1 x2
-  | EArray _, EArray _ -> failwith "EOp Eq EArray not implemented"
+  | EArray es1, EArray es2 -> (
+    try
+      List.for_all2
+        (fun e1 e2 ->
+          match Mark.remove (evaluate_operator Eq pos lang [e1; e2]) with
+          | ELit (LBool b) -> b
+          | _ -> assert false
+          (* should not happen *))
+        es1 es2
+    with Invalid_argument _ -> false)
   | EStruct { fields = es1; name = s1 }, EStruct { fields = es2; name = s2 } ->
     StructName.equal s1 s2
     && StructField.Map.equal
@@ -991,15 +1000,105 @@ let rec evaluate_operator
     let symb_expr = SymbExpr.app2_z3 (Z3.Boolean.mk_eq ctx.ctx_z3) s_e1 s_e2 in
     (* TODO catch errors here, or maybe propagate [None]? *)
     add_conc_info_m m symb_expr ~constraints:[] concrete
-  | Map, _ -> failwith "Eop Map not implemented"
-  | Map2, _ -> failwith "Eop Map not implemented"
-  | Reduce, _ -> failwith "Eop Reduce not implemented"
-  (* | Reduce, _ -> failwith "Eop Reduce not implemented" *)
-  | Concat, _ -> failwith "Eop Concat not implemented"
-  | Filter, _ -> failwith "Eop Filter not implemented"
-  | Fold, _ -> failwith "Eop Fold not implemented"
-  | Length, _ (* | Log _ *)
-  | Eq (* | Map | Concat | Filter | Fold | Reduce *), _ -> err ()
+  | Map, [f; (EArray es, _)] ->
+    let concrete =
+      EArray
+        (List.map
+           (fun e' ->
+              evaluate_expr
+                (Mark.copy e'
+                   (EApp { f; args = [e']; tys = [Expr.maybe_ty (Mark.get e')] })))
+           es)
+    in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
+  | Map2, [f; (EArray es1, _); (EArray es2, _)] ->
+    let concrete =
+      EArray
+        (List.map2
+           (fun e1 e2 ->
+              evaluate_expr
+                (Mark.add m
+                   (EApp
+                      {
+                        f;
+                        args = [e1; e2];
+                        tys =
+                          [
+                            Expr.maybe_ty (Mark.get e1); Expr.maybe_ty (Mark.get e2);
+                          ];
+                      })))
+           es1 es2)
+    in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
+  | Reduce, [_; default; (EArray [], _)] ->
+    let concrete = Mark.remove default in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete |> make_ok
+  | Reduce, [f; _; (EArray (x0 :: xn), _)] ->
+    let concrete =
+      Mark.remove
+        (List.fold_left
+           (fun acc x ->
+              propagate_generic_error acc [] @@ fun acc ->
+              evaluate_expr
+                (Mark.copy f
+                   (EApp
+                      {
+                        f;
+                        args = [acc; x];
+                        tys =
+                          [
+                            Expr.maybe_ty (Mark.get acc); Expr.maybe_ty (Mark.get x);
+                          ];
+                      })))
+           (make_ok x0) xn)
+    in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
+  | Concat, [(EArray es1, _); (EArray es2, _)] ->
+    let concrete = EArray (es1 @ es2) in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete |> make_ok
+  | Filter, [f; (EArray es, _)] ->
+    let concrete =
+    EArray
+      (List.filter
+         (fun e' ->
+           match
+             evaluate_expr
+               (Mark.copy e'
+                  (EApp { f; args = [e']; tys = [Expr.maybe_ty (Mark.get e')] }))
+           with
+           | ELit (LBool b), _ -> b
+           | _ ->
+             Message.error
+               ~pos:(Expr.pos (List.nth args 0))
+               "%a" Format.pp_print_text
+               "This predicate evaluated to something else than a boolean \
+                (should not happen if the term was well-typed)")
+         es)
+    in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete |> make_ok
+  | Fold, [f; init; (EArray es, _)] ->
+    let concrete =
+    Mark.remove
+      (List.fold_left
+         (fun acc e' ->
+            propagate_generic_error acc [] @@ fun acc ->
+           evaluate_expr
+             (Mark.copy e'
+                (EApp
+                   {
+                     f;
+                     args = [acc; e'];
+                     tys =
+                       [
+                         Expr.maybe_ty (Mark.get acc);
+                         Expr.maybe_ty (Mark.get e');
+                       ];
+                   })))
+         (make_ok init) es)
+    in
+    add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
+  | (Length (* | Log _ *)
+  | Eq | Map | Map2 | Concat | Filter | Fold | Reduce), _ -> err ()
   | Not, [((ELit (LBool b), _) as e)] ->
     op1 ctx m (fun x -> ELit (LBool (o_not x))) Z3.Boolean.mk_not b e
   | GetDay, _ -> failwith "Eop GetDay not implemented"
@@ -2926,6 +3025,8 @@ let interpret_program_concolic
     (* add soft constraints to solver if it is incremental *)
     List.iter (Solver.push ctx) soft_constraints;
 
+    let found_incomplete = ref false in
+
     let rec concolic_loop (previous_path : PathConstraint.annotated_path) stats
         : Stats.t =
       if Optimizations.tests_vs_time optims then Message.result "time of step: %a" Stats.Print.period (Stats.running_period stats);
@@ -2947,6 +3048,33 @@ let interpret_program_concolic
       let s_solve = Stats.start_step "solve" in
       let solver_result = Solver.solve ctx solver_constraints in
       let exec = Stats.stop_step s_solve |> Stats.add_exec_step exec in
+
+      (* Continue to the next loop without taking into account the returned constraints *)
+      let continue stats exec apc new_path_constraints =
+          (* add empty steps for stats *)
+          let exec =
+            Stats.start_step "get inputs from model"
+            |> Stats.stop_step
+            |> Stats.add_exec_step exec
+          in
+          let exec =
+            Stats.start_step "eval"
+            |> Stats.stop_step
+            |> Stats.add_exec_step exec
+          in
+          let s_new_pc = Stats.start_step "choose new path constraints" in
+          let new_expected_path, diff = PathConstraint.make_expected_path new_path_constraints in
+
+          let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
+          let s_diff = Stats.start_step "apply diff" in
+
+          let diff = (PathConstraint.IncrPop apc :: diff) in
+          apply_diff ctx Solver.push Solver.pop diff;
+          let exec = Stats.stop_step s_diff |> Stats.add_exec_step exec in
+          let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
+          if new_expected_path = [] then stats
+          else concolic_loop new_expected_path stats
+      in
 
       match solver_result with
       | Solver.Sat (Some m) ->
@@ -3107,6 +3235,27 @@ let interpret_program_concolic
         let incomplete =
           List.exists PathConstraint.is_incomplete (get_constraints_r res) in
 
+        if incomplete then begin
+            found_incomplete := true;
+            Message.warning "Concolic evaluation found an expression that \
+                             cannot be encoded (a list or a date). The engine \
+                             will now try to backtrack.";
+            match previous_path with
+            | [] ->
+              Message.result "Incomplete execution finished with no more constraints.";
+              let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
+              let exec =
+                Stats.start_step "apply diff"
+                |> Stats.stop_step
+                |> Stats.add_exec_step exec
+              in
+              let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
+              stats
+            | apc :: new_path_constraints ->
+                continue stats exec apc new_path_constraints
+        end
+        else
+
         (* TODO find a better way than all those revs *)
         let new_path_constraints, diff_compare = PathConstraint.compare_paths (List.rev previous_path) (List.rev res_path_constraints) in
         let new_path_constraints, diff_expected = PathConstraint.make_expected_path (List.rev new_path_constraints) in
@@ -3126,29 +3275,7 @@ let interpret_program_concolic
         match previous_path with
         | [] -> failwith "[CONC] Failed to solve without constraints"
         | apc :: new_path_constraints ->
-          (* add empty steps for stats *)
-          let exec =
-            Stats.start_step "get inputs from model"
-            |> Stats.stop_step
-            |> Stats.add_exec_step exec
-          in
-          let exec =
-            Stats.start_step "eval"
-            |> Stats.stop_step
-            |> Stats.add_exec_step exec
-          in
-          let s_new_pc = Stats.start_step "choose new path constraints" in
-          let new_expected_path, diff = PathConstraint.make_expected_path new_path_constraints in
-
-          let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
-          let s_diff = Stats.start_step "apply diff" in
-
-          let diff = (PathConstraint.IncrPop apc :: diff) in
-          apply_diff ctx Solver.push Solver.pop diff;
-          let exec = Stats.stop_step s_diff |> Stats.add_exec_step exec in
-          let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
-          if new_expected_path = [] then stats
-          else concolic_loop new_expected_path stats
+            continue stats exec apc new_path_constraints
       end
       | Solver.Sat None ->
         failwith "[CONC] Constraints satisfiable but no model was produced"
@@ -3175,6 +3302,9 @@ let interpret_program_concolic
     end;
 
     Message.result "Concolic interpreter done";
+    if !found_incomplete then
+      Message.warning "Please note that the concolic execution be incomplete: \
+      it could systematically explore the whole program.";
 
     let stats = Stats.stop stats in
     if print_stats then
