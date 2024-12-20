@@ -3210,8 +3210,8 @@ let interpret_program_concolic
         if incomplete then begin
           found_incomplete := true;
           Message.warning "Concolic evaluation found an expression that \
-                           cannot be encoded (a list or a date). The engine \
-                           will now try to backtrack.";
+                           cannot be encoded (a list or a date). The current
+                           path will be dropped.";
           match previous_path with
           | [] ->
             Message.result "Incomplete execution finished with no more constraints.";
