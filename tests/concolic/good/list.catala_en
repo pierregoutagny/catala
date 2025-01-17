@@ -36,7 +36,8 @@ $ catala Concolic -s A
 [RESULT] . x_in = 3
 [RESULT] Output of scope after evaluation:
 [RESULT] . o = 20
-[WARNING] Concolic evaluation found an expression that cannot be encoded (a list or a date). The engine will now try to backtrack.
+[WARNING] Concolic evaluation found an expression that cannot be encoded (a list or a date). The current
+                           path will be dropped.
 [RESULT] 
 [RESULT] Evaluating with inputs:
 [RESULT] . x_in = 2
