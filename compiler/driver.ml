@@ -1102,7 +1102,6 @@ module Commands = struct
 
   let interpret_concolic
       typed
-      output
       options
       stats
       conc_optims
@@ -1110,43 +1109,19 @@ module Commands = struct
       includes
       optimize
       check_invariants
-      ex_scope
-      python_tests =
+      ex_scope =
     let prg, _ =
       Passes.dcalc options ~includes ~optimize ~check_invariants ~typed
     in
 
-    let out_file, _ = get_output_format options ~ext:"" output in
-    let test_file, with_output =
-      if python_tests then get_output_format options ~ext:"_test.py" output
-      else Some "/dev/null", File.with_formatter_of_file "/dev/null"
-    in
-    with_output (fun out_fmt ->
-        Interpreter.load_runtime_modules prg;
-        print_interpretation_results options
-          (Concolic.Interpreter.interpret_program_concolic stats
-             (if python_tests then
-                Some
-                  ( Filename.basename @@ Option.value ~default:"out.py" out_file,
-                    out_fmt )
-              else None)
-             conc_optims mutation_seed)
-          prg
-          (get_scope_uid prg.decl_ctx ex_scope));
-
-    if python_tests then
-      Message.result "Wrote test file to %s"
-        (Option.value ~default:"test.py" test_file);
-    if
-      python_tests
-      && (not @@ Sys.file_exists (Option.value ~default:"out" out_file ^ ".py"))
-    then
-      let () =
-        Message.result
-          "Python backend file does not exist, generating it with the same \
-           options (not using avoid_exceptions nor close_conversion)"
-      in
-      python options includes output optimize check_invariants false false
+    Interpreter.load_runtime_modules
+      ~hashf:Hash.(finalise ~closure_conversion:false ~monomorphize_types:false)
+      prg;
+    print_interpretation_results options
+      (Concolic.Interpreter.interpret_program_concolic stats
+         conc_optims mutation_seed)
+      prg
+      (get_scope_uid prg.decl_ctx ex_scope)
 
   let concolic_cmd =
     let f no_typing =
@@ -1173,19 +1148,11 @@ module Commands = struct
       & opt (some int) None
       & info ["seed"] ~docv:"SEED" ~doc:"Concolic mutation seed."
     in
-    let python_tests =
-      let open Cmdliner.Arg in
-      value
-      & flag
-      & info ["python_tests"]
-          ~doc:"Output testcases compatible with the Python backend."
-    in
     Cmd.v
       (Cmd.info "concolic" ~doc:"Runs the concolic interpreter")
       Term.(
         const f
         $ Cli.Flags.no_typing
-        $ Cli.Flags.output
         $ Cli.Flags.Global.options
         $ stats
         $ conc_optims
@@ -1194,7 +1161,7 @@ module Commands = struct
         $ Cli.Flags.optimize
         $ Cli.Flags.check_invariants
         $ Cli.Flags.ex_scope
-        $ python_tests)
+        )
 
   let commands =
     [

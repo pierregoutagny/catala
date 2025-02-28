@@ -25,7 +25,6 @@ open Conc_types
 
 val interpret_program_concolic :
   bool ->
-  (string * Format.formatter) option ->
   Optimizations.flag list ->
   int option ->
   (dcalc, 'm) gexpr program ->
