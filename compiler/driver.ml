@@ -680,7 +680,7 @@ module Commands = struct
           result)
       results
 
-  let interpret_dcalc typed show_interpret_time options includes optimize check_invariants ex_scope
+  let interpret_dcalc typed options includes optimize check_invariants ex_scope
       =
     let prg, _ =
       Passes.dcalc options ~includes ~optimize ~check_invariants ~typed
@@ -690,7 +690,7 @@ module Commands = struct
     let r = print_interpretation_results options Interpreter.interpret_program_dcalc prg
       (get_scope_uid prg.decl_ctx ex_scope)
     in 
-    if show_interpret_time then Message.result "interpret time %f" (Sys.time () -. t1);
+    Message.result "interpret time %f" (Sys.time () -. t1);
     r
 
   let lcalc
@@ -763,13 +763,7 @@ module Commands = struct
       (get_scope_uid prg.decl_ctx ex_scope)
 
   let interpret_cmd =
-    let show_interpret_time =
-      let open Cmdliner.Arg in
-      value
-      & flag
-      & info ["show-interpret-time"] ~doc:"Prints the time spent in the actual interpreter (without compilation time)"
-    in
-    let f lcalc avoid_exceptions closure_conversion monomorphize_types no_typing show_interpret_time
+    let f lcalc avoid_exceptions closure_conversion monomorphize_types no_typing
         =
       if not lcalc then
         if avoid_exceptions || closure_conversion || monomorphize_types then
@@ -777,8 +771,8 @@ module Commands = struct
             "The flags @{<bold>--avoid-exceptions@}, \
              @{<bold>--closure-conversion@} and @{<bold>--monomorphize-types@} \
              only make sense with the @{<bold>--lcalc@} option"
-        else if no_typing then interpret_dcalc Expr.untyped show_interpret_time
-        else interpret_dcalc Expr.typed show_interpret_time
+        else if no_typing then interpret_dcalc Expr.untyped
+        else interpret_dcalc Expr.typed
       else if no_typing then
         interpret_lcalc Expr.untyped avoid_exceptions closure_conversion
           monomorphize_types
@@ -799,7 +793,6 @@ module Commands = struct
         $ Cli.Flags.closure_conversion
         $ Cli.Flags.monomorphize_types
         $ Cli.Flags.no_typing
-        $ show_interpret_time
         $ Cli.Flags.Global.options
         $ Cli.Flags.include_dirs
         $ Cli.Flags.optimize
