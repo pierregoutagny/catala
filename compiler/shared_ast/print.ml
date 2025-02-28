@@ -1003,7 +1003,7 @@ module UserFacing = struct
   let money (lang : Global.backend_lang) ppf n =
     let num = Z.abs n in
     let units, cents = Z.div_rem num (Z.of_int 100) in
-    if Z.sign n < 0 then Format.pp_print_string ppf "- ";
+    if Z.sign n < 0 then Format.pp_print_char ppf '-';
     (match lang with En -> Format.pp_print_string ppf "$" | Fr | Pl -> ());
     integer lang ppf units;
     Format.pp_print_string ppf (decsep lang);
