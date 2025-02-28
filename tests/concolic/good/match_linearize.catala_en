@@ -72,54 +72,150 @@ let scope A
 
 ```catala-test-inline
 $ catala Concolic -s A
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = Guadeloupe ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = Guyane ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = Martinique ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = LaRéunion ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = SaintBarthélemy ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = SaintMartin ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = Métropole ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = SaintPierreEtMiquelon ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = Mayotte ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = Guadeloupe ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = Guyane ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = Martinique ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = LaRéunion ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = SaintBarthélemy ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = SaintMartin ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = Métropole ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = SaintPierreEtMiquelon ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = Mayotte ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```
 
 ```catala-test-inline
@@ -156,35 +252,87 @@ let scope A
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=linearize-match -s A
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = Guadeloupe ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = Guyane ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = Guadeloupe ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = Guyane ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```
 
 ```catala-test-inline
 $ catala Concolic -O -s A
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = Guadeloupe ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . résidence_in = Guyane ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = Guadeloupe ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . résidence_in = Guyane ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```
 

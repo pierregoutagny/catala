@@ -27,33 +27,86 @@ let scope A (A_in: A_in {x_in: integer; y_in: integer}): A {o: integer} =
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s A
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = 0
-[RESULT] . y_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = 3
-[RESULT] . y_in = 2
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 2
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = 1
-[RESULT] . y_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = 1
-[RESULT] . y_in = 2
-[RESULT] Output of scope after evaluation:
-[RESULT]
-Found error ↯Conflict(tests/concolic/good/except_conflict.catala_en:12.67-12.68,tests/concolic/good/except_conflict.catala_en:11.67-11.68,)↯ at tests/concolic/good/except_conflict.catala_en:7.12-7.13
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = 0
+└─
+┌─[RESULT]─
+│  . y_in = 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = 3
+└─
+┌─[RESULT]─
+│  . y_in = 2
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 2
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = 1
+└─
+┌─[RESULT]─
+│  . y_in = 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = 1
+└─
+┌─[RESULT]─
+│  . y_in = 2
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ Found error ↯Conflict(tests/concolic/good/except_conflict.catala_en:12.67-12.68,tests/concolic/good/except_conflict.catala_en:11.67-11.68,)↯ at tests/concolic/good/except_conflict.catala_en:7.12-7.13
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```
 

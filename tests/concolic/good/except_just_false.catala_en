@@ -26,34 +26,89 @@ let scope A (A_in: A_in {x_in: integer}): A {o: integer} =
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s A
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = 2
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 2
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = 3
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 3
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = 4
-[RESULT] Output of scope after evaluation:
-[RESULT]
-Found error ↯Empty↯ at tests/concolic/good/except_just_false.catala_en:6.12-6.13
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = -1
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = 2
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 2
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = 3
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 3
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = 4
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ Found error ↯Empty↯ at tests/concolic/good/except_just_false.catala_en:6.12-6.13
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = -1
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```
 

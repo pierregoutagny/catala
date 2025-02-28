@@ -53,24 +53,60 @@ let scope A
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s A
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = Case1 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 31
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = Case2 ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = Case3 ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 31
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = Case1 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 31
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = Case2 ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = Case3 ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 31
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```
 
 ```catala-test-inline
@@ -93,22 +129,58 @@ let scope B
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s B
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = Case1 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = Case2 ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = Case3 ()
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 31
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = Case1 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = Case2 ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = Case3 ()
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 31
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```

@@ -41,33 +41,89 @@ let scope A (A_in: A_in {d_in: date}): A {o: integer} =
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s A
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . d_in = 2010-01-01
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 2
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . d_in = 2010-01-02
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 3
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . d_in = 2024-01-15
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 4
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . d_in = 2009-12-31
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . d_in = 1954-06-07
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . d_in = 2010-01-01
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 2
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . d_in = 2010-01-02
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 3
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . d_in = 2024-01-15
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 4
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . d_in = 2009-12-31
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . d_in = 1954-06-07
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```
 

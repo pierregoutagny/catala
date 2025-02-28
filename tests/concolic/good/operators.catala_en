@@ -35,24 +35,62 @@ let scope A
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s A
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . t_in = 0
-[RESULT] . x_in = 0
-[RESULT] . y_in = 0
-[RESULT] . z_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . t_in = -2
-[RESULT] . x_in = -1
-[RESULT] . y_in = -2
-[RESULT] . z_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = -1
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . t_in = 0
+└─
+┌─[RESULT]─
+│  . x_in = 0
+└─
+┌─[RESULT]─
+│  . y_in = 0
+└─
+┌─[RESULT]─
+│  . z_in = 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . t_in = -2
+└─
+┌─[RESULT]─
+│  . x_in = -1
+└─
+┌─[RESULT]─
+│  . y_in = -2
+└─
+┌─[RESULT]─
+│  . z_in = 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = -1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```
 

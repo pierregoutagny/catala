@@ -98,13 +98,15 @@ variables, and refuses to procede:
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s A
-[ERROR] This input of the scope is a function. This case is not handled by the concolic interpreter for now. You may want to call this scope from an other scope and provide a specific function as argument.
-
-┌─⯈ tests/concolic/bad/func.catala_en:9.11-9.12:
-└─┐
-9 │     input f content boolean depends on x content integer
-  │           ‾
-  └─ Article
+┌─[ERROR]─
+│
+│  This input of the scope is a function. This case is not handled by the concolic interpreter for now. You may want to call this scope from an other scope and provide a specific function as argument.
+│
+├─➤ tests/concolic/bad/func.catala_en:9.11-9.12:
+│   │
+│ 9 │     input f content boolean depends on x content integer
+│   │           ‾
+└─ Article
 #return code 123#
 ```
 
@@ -113,7 +115,9 @@ specific function and input.
 
 ```catala-test-inline
 $ catala Interpret -s TestB
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ Computation successful!
+└─
 ```
 
 And now the concolic interpreter can do that as well, and even gather a
@@ -122,23 +126,59 @@ Note that there are a few too many warnings for now.
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s B
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 2
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = 11
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = -1
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . x_in = 0
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o = 2
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . x_in = 11
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . x_in = -1
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Concolic interpreter done
+└─
+┌─[RESULT]─
+│ Computation successful!
+└─
 ```
 

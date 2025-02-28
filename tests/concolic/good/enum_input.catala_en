@@ -53,36 +53,98 @@ let scope A
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s A
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . a_in = A1 0
-[RESULT] . b_in = B1 A1 0
-[RESULT] . x_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . a_in = A1 2
-[RESULT] . b_in = B1 A1 3
-[RESULT] . x_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = -1
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . a_in = A1 3
-[RESULT] . b_in = B2 ()
-[RESULT] . x_in = 2
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 2
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . a_in = A1 2
-[RESULT] . b_in = B1 A2 false
-[RESULT] . x_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . a_in = A1 0
+└─
+┌─[RESULT]─
+│  . b_in = B1 A1 0
+└─
+┌─[RESULT]─
+│  . x_in = 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . a_in = A1 2
+└─
+┌─[RESULT]─
+│  . b_in = B1 A1 3
+└─
+┌─[RESULT]─
+│  . x_in = 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = -1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . a_in = A1 3
+└─
+┌─[RESULT]─
+│  . b_in = B2 ()
+└─
+┌─[RESULT]─
+│  . x_in = 2
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 2
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . a_in = A1 2
+└─
+┌─[RESULT]─
+│  . b_in = B1 A2 false
+└─
+┌─[RESULT]─
+│  . x_in = 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```
 

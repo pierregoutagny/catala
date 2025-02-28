@@ -28,18 +28,33 @@ scope A:
 
 ```catala-test-inline
 $ catala Interpret -s A
-[RESULT] Computation successful! Results:
-[RESULT] o = 0.86
+┌─[RESULT]─
+│  o = 0.86
+└─
 ```
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s A
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 0.86
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 0.86
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```
 

@@ -51,37 +51,103 @@ let scope B (B_in: B_in {i_in: integer; x_in: integer}): B {o: integer} =
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s B
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . i_in = 0
-[RESULT] . x_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 21
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . i_in = 2
-[RESULT] . x_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 33
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . i_in = 1
-[RESULT] . x_in = 0
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 2
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . i_in = 1
-[RESULT] . x_in = 29
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 33
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . i_in = 1
-[RESULT] . x_in = -2
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 1
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . i_in = 0
+└─
+┌─[RESULT]─
+│  . x_in = 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 21
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . i_in = 2
+└─
+┌─[RESULT]─
+│  . x_in = 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 33
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . i_in = 1
+└─
+┌─[RESULT]─
+│  . x_in = 0
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 2
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . i_in = 1
+└─
+┌─[RESULT]─
+│  . x_in = 29
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 33
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . i_in = 1
+└─
+┌─[RESULT]─
+│  . x_in = -2
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```

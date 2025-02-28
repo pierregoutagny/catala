@@ -19,26 +19,65 @@ of `<function>`.
 
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s A
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = <function>
-[RESULT] Output of scope after evaluation:
-[RESULT]
-Found error ↯Conflict(tests/concolic/bad/context_conflict_on_reentrant.catala_en:11.57-11.59,tests/concolic/bad/context_conflict_on_reentrant.catala_en:10.25-10.27,)↯ at tests/concolic/bad/context_conflict_on_reentrant.catala_en:6.12-6.13
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = <function>
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 10
-[RESULT] . x = 2
-[RESULT] 
-[RESULT] Evaluating with inputs:
-[RESULT] . x_in = <function>
-[RESULT] Output of scope after evaluation:
-[RESULT] . o = 10
-[RESULT] . x = -1
-[RESULT] 
-[RESULT] Concolic interpreter done
-[RESULT] Computation successful!
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = <function>
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ Found error ↯Conflict(tests/concolic/bad/context_conflict_on_reentrant.catala_en:11.57-11.59,tests/concolic/bad/context_conflict_on_reentrant.catala_en:10.25-10.27,)↯ at tests/concolic/bad/context_conflict_on_reentrant.catala_en:6.12-6.13
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = <function>
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 10
+└─
+┌─[RESULT]─
+│  . x = 2
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Evaluating with inputs:
+└─
+┌─[RESULT]─
+│  . x_in = <function>
+└─
+┌─[RESULT]─
+│  Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│  . o = 10
+└─
+┌─[RESULT]─
+│  . x = -1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│  Concolic interpreter done
+└─
+┌─[RESULT]─
+│  Computation successful!
+└─
 ```
 
