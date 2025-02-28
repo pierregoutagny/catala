@@ -78,7 +78,7 @@ let translate_binop :
       | S.KMoney -> [TLit TMoney; TLit TRat]
       | S.KDate ->
         Message.error ~pos:op_pos
-          "This operator doesn't exist, dates can't be multiplied"
+          "This operator doesn't exist, dates can't be multiplied."
       | S.KDuration -> [TLit TDuration; TLit TInt])
   | S.Div k ->
     op_expr Div
@@ -89,7 +89,7 @@ let translate_binop :
       | S.KMoney -> [TLit TMoney; TLit TMoney]
       | S.KDate ->
         Message.error ~pos:op_pos
-          "This operator doesn't exist, dates can't be divided"
+          "This operator doesn't exist, dates can't be divided."
       | S.KDuration -> [TLit TDuration; TLit TDuration])
   | S.Lt k | S.Lte k | S.Gt k | S.Gte k ->
     op_expr
@@ -130,7 +130,7 @@ let translate_unop ((op, op_pos) : S.unop Mark.pos) pos arg : Ast.expr boxed =
       | S.KMoney -> TLit TMoney
       | S.KDate ->
         Message.error ~pos:op_pos
-          "This operator doesn't exist, dates can't be negative"
+          "This operator doesn't exist, dates can't be negative."
       | S.KDuration -> TLit TDuration)
 
 let raise_error_cons_not_found
@@ -155,7 +155,7 @@ let rec disambiguate_constructor
     | [c] -> Mark.remove c
     | _ ->
       Message.error ~pos
-        "The deep pattern matching syntactic sugar is not yet supported"
+        "The deep pattern matching syntactic sugar is not yet supported."
   in
   let possible_c_uids =
     try Ident.Map.find (Mark.remove constructor) ctxt.local.constructor_idmap
@@ -189,7 +189,7 @@ let rec disambiguate_constructor
       let c_uid = EnumName.Map.find e_uid possible_c_uids in
       e_uid, c_uid
     with EnumName.Map.Not_found _ ->
-      Message.error ~pos "Enum %s@ does@ not@ contain@ case@ %s"
+      Message.error ~pos "Enum %s@ does@ not@ contain@ case@ %s."
         (Mark.remove enum) (Mark.remove constructor))
   | mod_id :: path ->
     let constructor =
@@ -216,10 +216,14 @@ let rec check_formula (op, pos_op) e =
         ~extra_pos:["", pos_op; "", pos_op1]
         "%a" Format.pp_print_text
         "Please add parentheses to explicit which of these operators should be \
-         applied first";
+         applied first.";
     check_formula (op1, pos_op1) e1;
     check_formula (op1, pos_op1) e2
   | _ -> ()
+
+(** Helper that restores surface positions in module paths. *)
+let restore_position path_item mname =
+  ModuleName.map_info (fun (mn, _) -> mn, Mark.get path_item) mname
 
 (** Usage: [translate_expr scope ctxt naked_expr]
 
@@ -270,7 +274,7 @@ let rec translate_expr
               Var.make
                 (match names with [] -> "zip" | _ -> String.concat "_" names)
             in
-            Expr.make_abs [| x1; x2 |]
+            Expr.make_ghost_abs [x1; x2]
               (Expr.make_tuple (Expr.evar x1 m :: explode (Expr.evar x2 m)) m)
               tys pos
           in
@@ -302,7 +306,7 @@ let rec translate_expr
         (fun c_uid' tau ->
           if EnumConstructor.compare c_uid c_uid' <> 0 then
             let nop_var = Var.make "_" in
-            Expr.make_abs [| nop_var |]
+            Expr.make_ghost_abs [nop_var]
               (Expr.elit (LBool false) emark)
               [tau] pos_op
           else
@@ -311,7 +315,9 @@ let rec translate_expr
               Ident.Map.add (Mark.remove binding) binding_var local_vars
             in
             let e2 = rec_helper ~local_vars e2 in
-            Expr.make_abs [| binding_var |] e2 [tau] pos_op)
+            Expr.make_abs
+              [Mark.add (Mark.get binding) binding_var]
+              e2 [tau] pos_op)
         (fst (EnumName.Map.find enum_uid ctxt.enums))
     in
     Expr.ematch ~e:(rec_helper e1_sub) ~name:enum_uid ~cases emark
@@ -362,14 +368,15 @@ let rec translate_expr
         LDuration (Runtime.duration_of_numbers 0 0 (int_of_string i))
       | LNumber ((Dec (_, _), _), Some ((Year | Month | Day), _)) ->
         Message.error ~pos
-          "Impossible to specify decimal amounts of days, months or years"
+          "Impossible to specify decimal amounts of days, months or years."
       | LDate date ->
         if date.literal_date_month > 12 then
           Message.error ~pos
-            "There is an error in this date: the month number is bigger than 12";
+            "There is an error in this date: the month number is bigger than \
+             12.";
         if date.literal_date_day > 31 then
           Message.error ~pos
-            "There is an error in this date: the day number is bigger than 31";
+            "There is an error in this date: the day number is bigger than 31.";
         LDate
           (try
              Runtime.date_of_numbers date.literal_date_year
@@ -377,7 +384,7 @@ let rec translate_expr
            with Failure _ ->
              Message.error ~pos
                "There is an error in this date, it does not correspond to a \
-                correct calendar day")
+                correct calendar day.")
     in
     Expr.elit lit emark
   | Ident ([], (x, pos), state) -> (
@@ -389,7 +396,7 @@ let rec translate_expr
       (* the whole box thing is to accomodate for this case *)
     | Some uid, Some state ->
       Message.error ~pos:(Mark.get state)
-        "%a is a local variable, it has no states" Print.var uid
+        "%a is a local variable, it has no states." Print.var uid
     | None, state -> (
       match Ident.Map.find_opt x scope_vars with
       | Some (ScopeVar uid) ->
@@ -403,7 +410,7 @@ let rec translate_expr
           | None, [], _ -> None
           | Some st, [], _ ->
             Message.error ~pos:(Mark.get st)
-              "Variable %a does not define states" ScopeVar.format uid
+              "Variable %a does not define states." ScopeVar.format uid
           | st, states, Some (((x'_uid, _), Ast.ScopeDef.Var sx'), _)
             when ScopeVar.equal uid x'_uid -> (
             if st <> None then
@@ -417,7 +424,7 @@ let rec translate_expr
             | None ->
               Message.error ~internal:true
                 "inconsistent state: inside a definition of a variable with no \
-                 state but variable has states"
+                 state but variable has states."
             | Some inside_def_state ->
               if StateName.compare inside_def_state (List.hd states) = 0 then
                 Message.error ~pos "%a" Format.pp_print_text
@@ -445,7 +452,7 @@ let rec translate_expr
                     "", Mark.get st;
                     "Variable defined here", Mark.get (ScopeVar.get_info uid);
                   ]
-                "Reference to unknown variable state"
+                "Reference to unknown variable state."
             | some -> some)
           | _, states, _ ->
             (* we take the last state in the chain *)
@@ -454,7 +461,7 @@ let rec translate_expr
         Expr.elocation
           (DesugaredScopeVar { name = uid, pos; state = x_state })
           emark
-      | Some (SubScope (uid, _, _)) ->
+      | Some (SubScope (uid, _)) ->
         Expr.elocation
           (DesugaredScopeVar { name = uid, pos; state = None })
           emark
@@ -464,7 +471,7 @@ let rec translate_expr
           if state <> None then
             Message.error ~pos
               "Access to intermediate states is only allowed for variables of \
-               the current scope";
+               the current scope.";
           Expr.elocation
             (ToplevelVar { name = v, Mark.get (TopdefName.get_info v) })
             emark
@@ -474,9 +481,9 @@ let rec translate_expr
   | Ident (_ :: _, (_, pos), Some _) ->
     Message.error ~pos
       "Access to intermediate states is only allowed for variables of the \
-       current scope"
+       current scope."
   | Ident (path, name, None) -> (
-    let ctxt = Name_resolution.module_ctx ctxt path in
+    let _, ctxt = Name_resolution.module_ctx ctxt path in
     match Ident.Map.find_opt (Mark.remove name) ctxt.local.topdefs with
     | Some v ->
       Expr.elocation
@@ -498,6 +505,7 @@ let rec translate_expr
   | FunCall ((Builtin b, pos), [arg]) ->
     let op, ty =
       match b with
+      | S.ToInteger -> Op.ToInt, TAny
       | S.ToDecimal -> Op.ToRat, TAny
       | S.ToMoney -> Op.ToMoney, TAny
       | S.Round -> Op.Round, TAny
@@ -510,16 +518,22 @@ let rec translate_expr
     in
     Expr.eappop ~op:(op, pos) ~tys:[ty, pos] ~args:[rec_helper arg] emark
   | S.Builtin _ ->
-    Message.error ~pos "Invalid use of built-in: needs one operand"
+    Message.error ~pos "Invalid use of built-in: needs one operand."
   | FunCall (f, args) ->
     let args = List.map rec_helper args in
     Expr.eapp ~f:(rec_helper f) ~args ~tys:[] emark
   | ScopeCall (((path, id), _), fields) ->
     if scope = None then
-      Message.error ~pos "Scope calls are not allowed outside of a scope";
+      Message.error ~pos "Scope calls are not allowed outside of a scope.";
     let called_scope, scope_def =
-      let ctxt = Name_resolution.module_ctx ctxt path in
-      let uid = Name_resolution.get_scope ctxt id in
+      let resolved_path, ctxt = Name_resolution.module_ctx ctxt path in
+      let uid =
+        let uid = Name_resolution.get_scope ctxt id in
+        (* Retain the correct positions *)
+        ScopeName.map_info
+          (fun (_ml, pos) -> List.map2 restore_position path resolved_path, pos)
+          uid
+      in
       uid, ScopeName.Map.find uid ctxt.scopes
     in
     let in_struct =
@@ -540,32 +554,33 @@ let rec translate_expr
                         called_scope,
                       Mark.get (ScopeName.get_info called_scope) );
                   ]
-                "Scope %a has no input variable %a" ScopeName.format
+                "Scope %a has no input variable %a." ScopeName.format
                 called_scope Print.lit_style (Mark.remove fld_id)
           in
           ScopeVar.Map.update var
             (function
-              | None -> Some (rec_helper e)
+              | None -> Some (Mark.get fld_id, rec_helper e)
               | Some _ ->
                 Message.error ~pos:(Mark.get fld_id)
-                  "Duplicate definition of scope input variable '%a'"
+                  "Duplicate definition of scope input variable '%a'."
                   ScopeVar.format var)
             acc)
         ScopeVar.Map.empty fields
     in
     Expr.escopecall ~scope:called_scope ~args:in_struct emark
   | LetIn (xs, e1, e2) ->
-    let vs = List.map (fun x -> Var.make (Mark.remove x)) xs in
+    let m_xs : _ Var.t Mark.pos list =
+      List.map (fun x -> Mark.map Var.make x) xs
+    in
     let local_vars =
       List.fold_left2
-        (fun local_vars x v -> Ident.Map.add (Mark.remove x) v local_vars)
-        local_vars xs vs
+        (fun local_vars x v ->
+          Ident.Map.add (Mark.remove x) (Mark.remove v) local_vars)
+        local_vars xs m_xs
     in
     let taus = List.map (fun x -> TAny, Mark.get x) xs in
     (* This type will be resolved in Scopelang.Desambiguation *)
-    let f =
-      Expr.make_abs (Array.of_list vs) (rec_helper ~local_vars e2) taus pos
-    in
+    let f = Expr.make_abs m_xs (rec_helper ~local_vars e2) taus pos in
     Expr.eapp ~f ~args:[rec_helper e1] ~tys:[] emark
   | StructReplace (e, fields) ->
     let fields =
@@ -573,22 +588,27 @@ let rec translate_expr
         (fun acc (field_id, field_expr) ->
           if Ident.Map.mem (Mark.remove field_id) acc then
             Message.error ~pos:(Mark.get field_expr)
-              "Duplicate redefinition of field@ %a" Ident.format
+              "Duplicate redefinition of field@ %a." Ident.format
               (Mark.remove field_id);
           Ident.Map.add (Mark.remove field_id) (rec_helper field_expr) acc)
         Ident.Map.empty fields
     in
     Expr.edstructamend ~fields ~e:(rec_helper e) ~name_opt:None emark
   | StructLit (((path, s_name), _), fields) ->
-    let ctxt = Name_resolution.module_ctx ctxt path in
+    let resolved_path, ctxt = Name_resolution.module_ctx ctxt path in
     let s_uid =
       match Ident.Map.find_opt (Mark.remove s_name) ctxt.local.typedefs with
       | Some (Name_resolution.TStruct s_uid)
       | Some (Name_resolution.TScope (_, { out_struct_name = s_uid; _ })) ->
-        s_uid
+        (* Retain the correct positions *)
+        StructName.map_info
+          (fun (_, (s, _pos)) ->
+            let path = List.map2 restore_position path resolved_path in
+            path, (s, Mark.get s_name))
+          s_uid
       | _ ->
         Message.error ~pos:(Mark.get s_name)
-          "This identifier should refer to a struct name"
+          "This identifier should refer to a struct name."
     in
     let s_fields =
       List.fold_left
@@ -597,9 +617,10 @@ let rec translate_expr
             try
               StructName.Map.find s_uid
                 (Ident.Map.find (Mark.remove f_name) ctxt.local.field_idmap)
+              |> StructField.map_info (Mark.map_mark (fun _ -> Mark.get f_name))
             with StructName.Map.Not_found _ | Ident.Map.Not_found _ ->
               Message.error ~pos:(Mark.get f_name)
-                "This identifier should refer to a field of struct %s"
+                "This identifier should refer to a field of struct %s."
                 (Mark.remove s_name)
           in
           (match StructField.Map.find_opt f_uid s_fields with
@@ -607,7 +628,7 @@ let rec translate_expr
           | Some e_field ->
             Message.error
               ~extra_pos:["", Mark.get f_e; "", Expr.pos e_field]
-              "The field %a has been defined twice:" StructField.format f_uid);
+              "The field %a has been defined twice." StructField.format f_uid);
           let f_e = rec_helper f_e in
           StructField.Map.add f_uid f_e s_fields)
         StructField.Map.empty fields
@@ -618,7 +639,7 @@ let rec translate_expr
         (fun expected_f _ -> not (StructField.Map.mem expected_f s_fields))
         expected_s_fields
     then
-      Message.error ~pos "Missing field(s) for structure %a:@\n%a"
+      Message.error ~pos "Missing field(s) for structure %a:@\n%a."
         StructName.format s_uid
         (Format.pp_print_list
            ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ")
@@ -664,6 +685,10 @@ let rec translate_expr
           possible_c_uids
       else
         let e_uid, c_uid = EnumName.Map.choose possible_c_uids in
+        let c_uid =
+          (* Retain the correct position *)
+          EnumConstructor.map_info (fun (v, _) -> v, pos_constructor) c_uid
+        in
         let payload = Option.map rec_helper payload in
         Expr.einj
           ~e:
@@ -677,12 +702,24 @@ let rec translate_expr
         | enum :: rpath -> List.rev rpath, enum
         | _ -> assert false
       in
-      let ctxt = Name_resolution.module_ctx ctxt path in
+      let resolved_path, ctxt = Name_resolution.module_ctx ctxt path in
       let possible_c_uids = get_possible_c_uids ctxt in
       (* The path has been qualified *)
-      let e_uid = Name_resolution.get_enum ctxt enum in
+      let e_uid =
+        let e_uid = Name_resolution.get_enum ctxt enum in
+        (* Retain the correct positions *)
+        EnumName.map_info
+          (fun (_, (x, _pos)) ->
+            let path = List.map2 restore_position path resolved_path in
+            path, (x, Mark.get enum))
+          e_uid
+      in
       try
-        let c_uid = EnumName.Map.find e_uid possible_c_uids in
+        let c_uid =
+          EnumName.Map.find e_uid possible_c_uids
+          |> (* Retain the correct position *)
+          EnumConstructor.map_info (fun (v, _) -> v, pos_constructor)
+        in
         let payload = Option.map rec_helper payload in
         Expr.einj
           ~e:
@@ -691,8 +728,8 @@ let rec translate_expr
             | None -> Expr.elit LUnit mark_constructor)
           ~cons:c_uid ~name:e_uid emark
       with EnumName.Map.Not_found _ ->
-        Message.error ~pos "Enum %s does not contain case %s" (Mark.remove enum)
-          constructor))
+        Message.error ~pos "Enum %s does not contain case %s."
+          (Mark.remove enum) constructor))
   | MatchWith (e1, (cases, _cases_pos)) ->
     let e1 = rec_helper e1 in
     let cases_d, e_uid =
@@ -705,7 +742,7 @@ let rec translate_expr
     | None -> ()
     | Some binding ->
       Message.warning ~pos:(Mark.get binding)
-        "This binding will be ignored (remove it to suppress warning)");
+        "This binding will be ignored (remove it to suppress warning).");
     let enum_uid, c_uid =
       disambiguate_constructor ctxt
         (fst (Mark.remove pattern))
@@ -715,7 +752,7 @@ let rec translate_expr
       EnumConstructor.Map.mapi
         (fun c_uid' tau ->
           let nop_var = Var.make "_" in
-          Expr.make_abs [| nop_var |]
+          Expr.make_ghost_abs [nop_var]
             (Expr.elit (LBool (EnumConstructor.compare c_uid c_uid' = 0)) emark)
             [tau] pos)
         (fst (EnumName.Map.find enum_uid ctxt.enums))
@@ -730,14 +767,14 @@ let rec translate_expr
     let collection =
       detuplify_list opos (List.map Mark.remove param_names) collection
     in
-    let params = List.map (fun n -> Var.make (Mark.remove n)) param_names in
+    let params = List.map (fun n -> Mark.map Var.make n) param_names in
     let local_vars =
       List.fold_left2
-        (fun vars n p -> Ident.Map.add (Mark.remove n) p vars)
+        (fun vars n p -> Ident.Map.add (Mark.remove n) (Mark.remove p) vars)
         local_vars param_names params
     in
     let f_pred =
-      Expr.make_abs (Array.of_list params)
+      Expr.make_abs params
         (rec_helper ~local_vars predicate)
         (List.map (fun _ -> TAny, pos) params)
         pos
@@ -753,7 +790,8 @@ let rec translate_expr
         in
         let x = Expr.evar v emark in
         let tys = List.map (fun _ -> TAny, pos) param_names in
-        Expr.make_abs [| v |]
+        Expr.make_abs
+          [Mark.add Pos.no_pos v]
           (Expr.make_app f_pred
              (List.init nb_args (fun i ->
                   Expr.etupleaccess ~e:x ~index:i ~size:nb_args emark))
@@ -769,33 +807,100 @@ let rec translate_expr
         | _ -> assert false)
       ~tys:[TAny, pos; TAny, pos]
       ~args:[f_pred; collection] emark
+  | CollectionOp ((Fold { f; init }, opos), collection) ->
+    let acc_names, param_names, fct = f in
+    let collection =
+      detuplify_list opos (List.map Mark.remove param_names) collection
+    in
+    let accs = List.map (fun n -> Mark.map Var.make n) acc_names in
+    let params = List.map (fun n -> Mark.map Var.make n) param_names in
+    let init = rec_helper ~local_vars init in
+    let local_vars =
+      List.fold_left2
+        (fun vars n p -> Ident.Map.add (Mark.remove n) (Mark.remove p) vars)
+        local_vars param_names params
+    in
+    let local_vars =
+      List.fold_left2
+        (fun vars n p -> Ident.Map.add (Mark.remove n) (Mark.remove p) vars)
+        local_vars acc_names accs
+    in
+    let f_proc =
+      Expr.make_abs (accs @ params)
+        (rec_helper ~local_vars fct)
+        (List.map (fun _ -> TAny, pos) (accs @ params))
+        pos
+    in
+    let f_proc =
+      (* Detuplification for both acc and list elements *)
+      match List.length acc_names, List.length param_names with
+      | 1, 1 -> f_proc
+      | nb_accs, nb_args ->
+        let v_acc =
+          match accs with
+          | [v] -> Mark.remove v
+          | _ -> Var.make (String.concat "_" (List.map Mark.remove acc_names))
+        in
+        let v_param =
+          match params with
+          | [v] -> Mark.remove v
+          | _ -> Var.make (String.concat "_" (List.map Mark.remove param_names))
+        in
+        let x_acc = Expr.evar v_acc emark in
+        let x_param = Expr.evar v_param emark in
+        let tys = List.init (nb_accs + nb_args) (fun _ -> TAny, pos) in
+        Expr.make_ghost_abs [v_acc; v_param]
+          (Expr.make_app f_proc
+             ((if nb_accs = 1 then [x_acc]
+               else
+                 List.mapi
+                   (fun index _ ->
+                     Expr.etupleaccess ~e:x_acc ~index ~size:nb_accs emark)
+                   accs)
+             @
+             if nb_args = 1 then [x_param]
+             else
+               List.mapi
+                 (fun index _ ->
+                   Expr.etupleaccess ~e:x_param ~index ~size:nb_args emark)
+                 params)
+             tys pos)
+          [TAny, pos; TAny, pos]
+          pos
+    in
+    Expr.eappop ~op:(Fold, opos)
+      ~tys:[TAny, pos; TAny, pos; TAny, pos]
+      ~args:[f_proc; init; collection] emark
   | CollectionOp
       ( ( S.AggregateArgExtremum { max; default; f = param_names, predicate },
           opos ),
         collection ) ->
-    let default = rec_helper default in
+    let default =
+      match default with
+      | Some dft -> rec_helper dft
+      | None -> Expr.efatalerror Runtime.ListEmpty (Untyped { pos = opos })
+    in
     let pos_dft = Expr.pos default in
     let collection =
       detuplify_list opos (List.map Mark.remove param_names) collection
     in
-    let params = List.map (fun n -> Var.make (Mark.remove n)) param_names in
+    let params = List.map (fun n -> Mark.map Var.make n) param_names in
     let local_vars =
       List.fold_left2
-        (fun vars n p -> Ident.Map.add (Mark.remove n) p vars)
+        (fun vars n p -> Ident.Map.add (Mark.remove n) (Mark.remove p) vars)
         local_vars param_names params
     in
     let cmp_op = if max then Op.Gt, opos else Op.Lt, opos in
     let f_pred =
-      Expr.make_abs (Array.of_list params)
-        (rec_helper ~local_vars predicate)
-        [TAny, pos]
-        pos
+      Expr.make_abs params (rec_helper ~local_vars predicate) [TAny, pos] pos
     in
     let add_weight_f =
-      let vs = List.map (fun p -> Var.make (Bindlib.name_of p)) params in
+      let vs =
+        List.map (fun p -> Var.make (Bindlib.name_of (Mark.remove p))) params
+      in
       let xs = List.map (fun v -> Expr.evar v emark) vs in
       let x = match xs with [x] -> x | xs -> Expr.etuple xs emark in
-      Expr.make_abs (Array.of_list vs)
+      Expr.make_ghost_abs vs
         (Expr.make_tuple [x; Expr.eapp ~f:f_pred ~args:xs ~tys:[] emark] emark)
         [TAny, pos]
         pos
@@ -804,7 +909,7 @@ let rec translate_expr
       (* fun x1 x2 -> if cmp_op (x1.2) (x2.2) cmp *)
       let v1, v2 = Var.make "x1", Var.make "x2" in
       let x1, x2 = Expr.make_var v1 emark, Expr.make_var v2 emark in
-      Expr.make_abs [| v1; v2 |]
+      Expr.make_ghost_abs [v1; v2]
         (Expr.eifthenelse
            (Expr.eappop ~op:cmp_op
               ~tys:[TAny, pos_dft; TAny, pos_dft]
@@ -821,14 +926,15 @@ let rec translate_expr
     let weights_var = Var.make "weights" in
     let default = Expr.make_app add_weight_f [default] [TAny, pos] pos_dft in
     let weighted_result =
-      Expr.make_let_in weights_var
+      Expr.make_let_in (Mark.ghost weights_var)
         (TArray (TTuple [TAny, pos; TAny, pos], pos), pos)
         (Expr.eappop ~op:(Map, opos)
            ~tys:[TAny, pos; TArray (TAny, pos), pos]
            ~args:[add_weight_f; collection] emark)
         (Expr.eappop ~op:(Reduce, opos)
            ~tys:[TAny, pos; TAny, pos; TAny, pos]
-           ~args:[reduce_f; default; Expr.evar weights_var emark]
+           ~args:
+             [reduce_f; Expr.thunk_term default; Expr.evar weights_var emark]
            emark)
         pos
     in
@@ -847,10 +953,10 @@ let rec translate_expr
     in
     let init = Expr.elit (LBool init) emark in
     let params0, predicate = predicate in
-    let params = List.map (fun n -> Var.make (Mark.remove n)) params0 in
+    let params = List.map (fun n -> Mark.map Var.make n) params0 in
     let local_vars =
       List.fold_left2
-        (fun vars n p -> Ident.Map.add (Mark.remove n) p vars)
+        (fun vars n p -> Ident.Map.add (Mark.remove n) (Mark.remove p) vars)
         local_vars params0 params
     in
     let f =
@@ -858,19 +964,25 @@ let rec translate_expr
       let acc =
         Expr.make_var acc_var (Untyped { pos = Mark.get (List.hd params0) })
       in
-      Expr.eabs
-        (Expr.bind
-           (Array.of_list (acc_var :: params))
-           (translate_binop op pos acc (rec_helper ~local_vars predicate)))
-        [TAny, pos; TAny, pos]
-        emark
+      let vs = Mark.ghost acc_var :: params in
+      let vs_marks = List.map Mark.get vs in
+      let mvars =
+        Expr.bind
+          (Array.of_list (List.map Mark.remove vs))
+          (translate_binop op pos acc (rec_helper ~local_vars predicate))
+      in
+      Expr.eabs mvars vs_marks [TAny, pos; TAny, pos] emark
     in
     Expr.eappop ~op:(Fold, opos)
       ~tys:[TAny, pos; TAny, pos; TAny, pos]
       ~args:[f; init; collection] emark
   | CollectionOp ((AggregateExtremum { max; default }, opos), collection) ->
     let collection = rec_helper collection in
-    let default = rec_helper default in
+    let default =
+      match default with
+      | Some dft -> rec_helper dft
+      | None -> Expr.efatalerror Runtime.ListEmpty (Untyped { pos = opos })
+    in
     let op = if max then S.Gt KPoly else S.Lt KPoly in
     let op_f =
       (* fun x1 x2 -> if op x1 x2 then x1 else x2 *)
@@ -878,14 +990,14 @@ let rec translate_expr
       let v1, v2 = Var.make (vname ^ "1"), Var.make (vname ^ "2") in
       let x1 = Expr.make_var v1 emark in
       let x2 = Expr.make_var v2 emark in
-      Expr.make_abs [| v1; v2 |]
+      Expr.make_ghost_abs [v1; v2]
         (Expr.eifthenelse (translate_binop (op, pos) pos x1 x2) x1 x2 emark)
         [TAny, pos; TAny, pos]
         pos
     in
     Expr.eappop ~op:(Reduce, opos)
       ~tys:[TAny, pos; TAny, pos; TAny, pos]
-      ~args:[op_f; default; collection]
+      ~args:[op_f; Expr.thunk_term default; collection]
       emark
   | CollectionOp ((AggregateSum { typ }, opos), collection) ->
     let collection = rec_helper collection in
@@ -898,7 +1010,7 @@ let rec translate_expr
       | S.Duration -> LDuration (Runtime.duration_of_numbers 0 0 0)
       | t ->
         Message.error ~pos:opos
-          "It is impossible to sum values of type %a together"
+          "It is impossible to sum values of type %a together."
           SurfacePrint.format_primitive_typ t
     in
     let op_f =
@@ -908,14 +1020,14 @@ let rec translate_expr
       let v1, v2 = Var.make "sum1", Var.make "sum2" in
       let x1 = Expr.make_var v1 emark in
       let x2 = Expr.make_var v2 emark in
-      Expr.make_abs [| v1; v2 |]
+      Expr.make_ghost_abs [v1; v2]
         (translate_binop (S.Add KPoly, opos) pos x1 x2)
         [TAny, pos; TAny, pos]
         pos
     in
     Expr.eappop ~op:(Reduce, opos)
       ~tys:[TAny, pos; TAny, pos; TAny, pos]
-      ~args:[op_f; Expr.elit default_lit emark; collection]
+      ~args:[op_f; Expr.thunk_term (Expr.elit default_lit emark); collection]
       emark
   | CollectionOp ((Member { element = member }, opos), collection) ->
     let param_var = Var.make "collection_member" in
@@ -937,9 +1049,11 @@ let rec translate_expr
           ]
         emark
     in
+    let vars = [Mark.ghost acc_var; Mark.add opos param_var] in
     let f =
       Expr.eabs
-        (Expr.bind [| acc_var; param_var |] f_body)
+        (Expr.bind (Array.of_list (List.map Mark.remove vars)) f_body)
+        (List.map Mark.get vars)
         [TLit TBool, pos; TAny, pos]
         emark
     in
@@ -965,8 +1079,9 @@ and disambiguate_match_and_build_expression
       (e_uid : EnumName.t)
       (ctxt : Name_resolution.context)
       case_body
-      e_binder =
-    Expr.eabs e_binder
+      e_binder
+      pos_binder =
+    Expr.eabs e_binder pos_binder
       [
         EnumConstructor.Map.find c_uid
           (fst (EnumName.Map.find e_uid ctxt.Name_resolution.enums));
@@ -991,7 +1106,7 @@ and disambiguate_match_and_build_expression
               ~pos:(Mark.get case.S.match_case_pattern)
               "This case matches a constructor of enumeration@ %a@ but@ \
                previous@ cases@ were@ matching@ constructors@ of@ enumeration@ \
-               %a"
+               %a."
               EnumName.format e_uid EnumName.format e_uid'
       in
       (match EnumConstructor.Map.find_opt c_uid cases_d with
@@ -999,7 +1114,7 @@ and disambiguate_match_and_build_expression
       | Some e_case ->
         Message.error
           ~extra_pos:["", Mark.get case.match_case_expr; "", Expr.pos e_case]
-          "The constructor %a@ has@ been@ matched@ twice:"
+          "The constructor %a@ has@ been@ matched@ twice."
           EnumConstructor.format c_uid);
       let local_vars, param_var =
         create_var local_vars (Option.map Mark.remove binding)
@@ -1009,7 +1124,14 @@ and disambiguate_match_and_build_expression
           case.S.match_case_expr
       in
       let e_binder = Expr.bind [| param_var |] case_body in
-      let case_expr = bind_case_body c_uid e_uid ctxt case_body e_binder in
+      let pos_binder =
+        match binding with
+        | None -> [Pos.no_pos]
+        | Some binding -> [Mark.get binding]
+      in
+      let case_expr =
+        bind_case_body c_uid e_uid ctxt case_body e_binder pos_binder
+      in
       ( EnumConstructor.Map.add c_uid case_expr cases_d,
         Some e_uid,
         curr_index + 1 )
@@ -1023,14 +1145,14 @@ and disambiguate_match_and_build_expression
               ( "Next reachable case:",
                 curr_index + 1 |> List.nth cases |> Mark.get );
             ]
-          "Wildcard must be the last match case"
+          "Wildcard must be the last match case."
       in
       match e_uid with
       | None ->
         if 1 = nb_cases then
           Message.error ~pos:case_pos "%a" Format.pp_print_text
             "Couldn't infer the enumeration name from lonely wildcard \
-             (wildcard cannot be used as single match case)"
+             (wildcard cannot be used as single match case)."
         else raise_wildcard_not_last_case_err ()
       | Some e_uid ->
         if curr_index < nb_cases - 1 then raise_wildcard_not_last_case_err ();
@@ -1045,7 +1167,7 @@ and disambiguate_match_and_build_expression
         if EnumConstructor.Map.is_empty missing_constructors then
           Message.warning ~pos:case_pos
             "Unreachable match case, all constructors of the enumeration@ %a@ \
-             are@ already@ specified"
+             are@ already@ specified."
             EnumName.format e_uid;
         (* The current used strategy is to replace the wildcard branch:
                match foo with
@@ -1065,12 +1187,12 @@ and disambiguate_match_and_build_expression
             match_case_expr
         in
         let e_binder = Expr.bind [| payload_var |] case_body in
-
+        let pos_binder = [Pos.no_pos] in
         (* For each missing cases, binds the wildcard payload. *)
         EnumConstructor.Map.fold
           (fun c_uid _ (cases_d, e_uid_opt, curr_index) ->
             let case_expr =
-              bind_case_body c_uid e_uid ctxt case_body e_binder
+              bind_case_body c_uid e_uid ctxt case_body e_binder pos_binder
             in
             ( EnumConstructor.Map.add c_uid case_expr cases_d,
               e_uid_opt,
@@ -1108,13 +1230,13 @@ let rec arglist_eq_check pos_decl pos_def pdecl pdefs =
   | [], (arg, apos) :: _ ->
     Message.error
       ~extra_pos:["Declared here:", pos_decl; "Extra argument:", apos]
-      "This definition has an extra, undeclared argument '%a'" Print.lit_style
+      "This definition has an extra, undeclared argument '%a'." Print.lit_style
       arg
   | (arg, apos) :: _, [] ->
     Message.error
       ~extra_pos:
         ["Argument declared here:", apos; "Mismatching definition:", pos_def]
-      "This definition is missing argument '%a'" Print.lit_style arg
+      "This definition is missing argument '%a'." Print.lit_style arg
   | decl :: pdecl, def :: pdefs when Uid.MarkedString.equal decl def ->
     arglist_eq_check pos_decl pos_def pdecl pdefs
   | (decl_arg, decl_apos) :: _, (def_arg, def_apos) :: _ ->
@@ -1122,7 +1244,7 @@ let rec arglist_eq_check pos_decl pos_def pdecl pdefs =
       ~extra_pos:
         ["Argument declared here:", decl_apos; "Defined here:", def_apos]
       "Function argument name mismatch between declaration@ ('%a')@ and@ \
-       definition@ ('%a')"
+       definition@ ('%a')."
       Print.lit_style decl_arg Print.lit_style def_arg
 
 let process_rule_parameters
@@ -1142,7 +1264,7 @@ let process_rule_parameters
           "Declared here without arguments", decl_pos;
           "Unexpected arguments appearing here", pos;
         ]
-      "Extra arguments in this definition of@ %a" Ast.ScopeDef.format decl_name
+      "Extra arguments in this definition of@ %a." Ast.ScopeDef.format decl_name
   | Some (_, pos), None ->
     Message.error
       ~extra_pos:
@@ -1150,7 +1272,7 @@ let process_rule_parameters
           "Arguments declared here", pos;
           "Definition missing the arguments", Mark.get def.S.definition_name;
         ]
-      "This definition for %a is missing the arguments" Ast.ScopeDef.format
+      "This definition for %a is missing the arguments." Ast.ScopeDef.format
       decl_name
   | Some (pdecl, pos_decl), Some (pdefs, pos_def) ->
     arglist_eq_check pos_decl pos_def (List.map fst pdecl) pdefs;
@@ -1250,7 +1372,7 @@ let process_def
           ExceptionToLabel (label_id, Mark.get label_str)
         with Ident.Map.Not_found _ ->
           Message.error ~pos:(Mark.get label_str)
-            "Unknown label for the scope variable %a: \"%s\""
+            "Unknown label for the scope variable %a: \"%s\"."
             Ast.ScopeDef.format def_key (Mark.remove label_str))
     in
     let scope_def =
@@ -1366,7 +1488,7 @@ let process_scope_use_item
       | Some (_, old_pos) ->
         Message.error
           ~extra_pos:["", old_pos; "", Mark.get item]
-          "You cannot set multiple date rounding modes"
+          "You cannot set multiple date rounding modes."
       | None ->
         {
           scope with
@@ -1418,14 +1540,14 @@ let check_unlabeled_exception
       match scope_def_ctxt.default_exception_rulename with
       | None ->
         Message.error ~pos:(Mark.get item)
-          "This exception does not have a corresponding definition"
+          "This exception does not have a corresponding definition."
       | Some (Ambiguous pos) ->
         Message.error ~pos:(Mark.get item)
           ~pos_msg:(fun ppf -> Format.pp_print_text ppf "Ambiguous exception")
           ~extra_pos:(List.map (fun p -> "Candidate definition", p) pos)
           "%a" Format.pp_print_text
           "This exception can refer to several definitions. Try using labels \
-           to disambiguate"
+           to disambiguate."
       | Some (Unique _) -> ()))
   | _ -> ()
 
@@ -1482,13 +1604,11 @@ let process_topdef
         | [(Data (S.TTuple _), pos)] ->
           Message.error ~pos
             "Defining arguments of a function as a tuple is not supported, \
-             please name the individual arguments"
+             please name the individual arguments."
         | _ -> ()
       in
       let e =
-        Expr.make_abs
-          (Array.of_list (List.map Mark.remove args))
-          body
+        Expr.make_abs args body
           (List.map translate_tbase tys)
           (Mark.get def.S.topdef_name)
       in
@@ -1509,18 +1629,23 @@ let process_topdef
                   "", Mark.get (TopdefName.get_info id);
                   "", Mark.get def.S.topdef_name;
                 ]
-              (msg ^^ " for %a") TopdefName.format id
+              (msg ^^ " for %a.") TopdefName.format id
           in
           if not (Type.equal def0.Ast.topdef_type typ) then
             err "Conflicting type definitions"
           else
+            let topdef_visibility =
+              match def0.topdef_visibility, topdef_visibility with
+              | Private, Private -> Private
+              | Public, _ | _, Public -> Public
+            in
             match def0.Ast.topdef_expr, eopt with
             | None, None -> err "Multiple declarations"
             | Some _, Some _ -> err "Multiple definitions"
             | (Some _ as topdef_expr), None ->
               Some { Ast.topdef_expr; topdef_visibility; topdef_type = typ }
             | None, (Some _ as topdef_expr) ->
-              Some { def0 with Ast.topdef_expr }))
+              Some { def0 with Ast.topdef_expr; topdef_visibility }))
       prgm.Ast.program_root.module_topdefs
   in
   { prgm with program_root = { prgm.program_root with module_topdefs } }
@@ -1547,7 +1672,7 @@ let init_scope_defs
   let add_def _ v scope_def_map =
     let pos =
       match v with
-      | ScopeVar v | SubScope (v, _, _) -> Mark.get (ScopeVar.get_info v)
+      | ScopeVar v | SubScope (v, _) -> Mark.get (ScopeVar.get_info v)
     in
     let new_def v_sig io =
       {
@@ -1591,8 +1716,11 @@ let init_scope_defs
             (scope_def_map, 0) states
         in
         scope_def)
-    | SubScope (v0, subscope_uid, forward_out) ->
+    | SubScope (v0, subscope_uid) ->
       let sub_scope_def = Name_resolution.get_scope_context ctxt subscope_uid in
+      let forward_out =
+        (Name_resolution.get_var_io ctxt v0).scope_decl_context_io_output
+      in
       let ctxt =
         List.fold_left
           (fun ctx m ->
@@ -1674,7 +1802,7 @@ let translate_program (ctxt : Name_resolution.context) (surface : S.program) :
         (fun _ v acc ->
           match v with
           | ScopeVar _ -> acc
-          | SubScope (sub_var, sub_scope, _) ->
+          | SubScope (sub_var, sub_scope) ->
             ScopeVar.Map.add sub_var sub_scope acc)
         s_context.Name_resolution.var_idmap ScopeVar.Map.empty
     in

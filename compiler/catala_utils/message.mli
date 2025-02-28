@@ -54,7 +54,7 @@ module Content : sig
 
   (** {2 Content emission}*)
 
-  val emit_n : ?ppf:Format.formatter -> level -> t list -> unit
+  val emit_n : ?ppf:Format.formatter -> t list -> level -> unit
   val emit : ?ppf:Format.formatter -> t -> level -> unit
 end
 
@@ -66,7 +66,7 @@ end
 exception CompilerError of Content.t
 exception CompilerErrors of Content.t list
 
-type lsp_error_kind = Lexing | Parsing | Typing | Generic
+type lsp_error_kind = Lexing | Parsing | Typing | Generic | Warning
 
 type lsp_error = {
   kind : lsp_error_kind;
@@ -92,6 +92,9 @@ val pad : int -> string -> Format.formatter -> unit
     width 1) *)
 
 (* {1 More general color-enabled formatting helpers}*)
+
+val std_ppf : unit -> Format.formatter
+val err_ppf : unit -> Format.formatter
 
 val formatter_of_out_channel : out_channel -> unit -> Format.formatter
 (** Creates a new formatter from the given out channel, with correct handling of

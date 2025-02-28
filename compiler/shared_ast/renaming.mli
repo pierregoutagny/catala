@@ -30,21 +30,19 @@ val default_config : config
 val get_ctx : config -> context
 
 val unbind_in :
-  context ->
-  ?fname:(string -> string) ->
-  ('e, 'b) Bindlib.binder ->
-  ('e, _) Mark.ed Var.t * 'b * context
-(* [fname] applies a transformation on the variable name (typically something
-   like [String.to_snake_case]). The result is advisory and a numerical suffix
-   may be appended or modified *)
+  context -> ('e, 'b) Bindlib.binder -> ('e, _) Mark.ed Var.t * 'b * context
+(* [fname] applies the transformation registered with [sanitize_varname] in the
+   context to the variable name (typically something like
+   [String.to_snake_case]). The result is advisory and a numerical suffix may be
+   appended or modified *)
 
 val unmbind_in :
   context ->
-  ?fname:(string -> string) ->
   ('e, 'b) Bindlib.mbinder ->
   ('e, _) Mark.ed Var.t Array.t * 'b * context
 
 val new_id : context -> string -> string * context
+val new_var_id : context -> string -> string * context
 val reserve_name : context -> string -> context
 
 val set_rewriters :
@@ -83,7 +81,9 @@ val program :
   reserved:string list ->
   skip_constant_binders:bool ->
   constant_binder_name:string option ->
-  namespaced_fields_constrs:bool ->
+  namespaced_fields:bool ->
+  namespaced_constrs:bool ->
+  prefix_module:bool ->
   ?f_var:(string -> string) ->
   ?f_struct:(string -> string) ->
   ?f_field:(string -> string) ->
@@ -96,8 +96,13 @@ val program :
     [reserved], typically keywords and built-ins, will be avoided ; the meaning
     of the following three flags is described in [Bindlib.Renaming].
 
-    if [namespaced_fields_constrs] is true, then struct fields and enum
-    constructors can reuse names from other fields/constructors or other idents.
+    if [namespaced_fields] (resp. [_constrs]) is true, then struct fields (resp.
+    enum constructors) can reuse names from other fields/constructors or other
+    idents.
+
+    if [prefix_module] is true, the qualifying module name is inserted within
+    the ident string, separated with a [.] dot. This happens before
+    sanitization.
 
     The [f_*] optional arguments sanitize the different kinds of ids. The
     default is what is used for OCaml: project to ASCII, capitalise structs,

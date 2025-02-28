@@ -66,8 +66,13 @@ let formatter_of_out_channel oc =
     if Lazy.force tty then Format.pp_set_margin ppf (terminal_columns ());
     ppf
 
-let std_ppf = formatter_of_out_channel stdout
-let err_ppf = formatter_of_out_channel stderr
+let std_ppf =
+  let ppf = lazy (formatter_of_out_channel stdout ()) in
+  fun () -> Lazy.force ppf
+
+let err_ppf =
+  let ppf = lazy (formatter_of_out_channel stderr ()) in
+  fun () -> Lazy.force ppf
 
 let ignore_ppf =
   let ppf = lazy (Format.make_formatter (fun _ _ _ -> ()) (fun () -> ())) in
@@ -92,7 +97,7 @@ let unformat (f : Format.formatter -> unit) : string =
 
 let pad n s ppf = Pos.pad_fmt n s ppf
 
-(**{2 Message types and output helpers *)
+(** {2 Message types and output helpers} *)
 
 type level = Error | Warning | Debug | Log | Result
 
@@ -275,6 +280,60 @@ module Content = struct
     restore_ppf ();
     Format.pp_print_newline ppf ()
 
+  let gnu_msg ~pp_marker ppf target content =
+    (* The top message doesn't come with a position, which is not something the
+       GNU standard allows. So we look the position list and put the top message
+       everywhere there is not a more precise message. If we can't find a
+       position without a more precise message, we just take the first position
+       in the list to pair with the message. *)
+    Format.pp_print_list ~pp_sep:Format.pp_print_newline
+      (fun ppf elt ->
+        let pos, message =
+          match elt with
+          | MainMessage m ->
+            let pos =
+              List.find_map
+                (function
+                  | Position { pos_message = None; pos } -> Some pos | _ -> None)
+                content
+              |> function
+              | None ->
+                List.find_map
+                  (function
+                    | Position { pos_message = _; pos } -> Some pos | _ -> None)
+                  content
+              | some -> some
+            in
+            pos, Some m
+          | Position { pos_message; pos } -> Some pos, pos_message
+          | Outcome m -> None, Some m
+          | Suggestion sl -> None, Some (fun ppf -> Suggestions.format ppf sl)
+        in
+        Option.iter
+          (fun pos ->
+            Format.fprintf ppf "@{<blue>%s@}: " (Pos.to_string_short pos))
+          pos;
+        Format.fprintf ppf "[%t]" (pp_marker target);
+        match message with
+        | Some message ->
+          Format.pp_print_char ppf ' ';
+          Format.pp_print_string ppf (unformat message)
+        | None -> ())
+      ppf content;
+    Format.pp_print_newline ppf ()
+
+  let lsp_msg ppf content =
+    (* Hypothesis: [MainMessage] is always part of a content list. *)
+    let rec retrieve_message acc = function
+      | [] -> acc
+      | MainMessage m :: _ -> Some m
+      | Outcome m :: t ->
+        retrieve_message (match acc with None -> Some m | _ -> acc) t
+      | (Position _ | Suggestion _) :: t -> retrieve_message acc t
+    in
+    let msg = retrieve_message None content in
+    Option.iter (fun msg -> Format.fprintf ppf "%s" (unformat msg)) msg
+
   let emit ?ppf ?(pp_marker = pp_marker) (content : t) (target : level) : unit =
     let ppf = Option.value ~default:(get_ppf target) ppf in
     match Global.options.message_format with
@@ -282,61 +341,21 @@ module Content = struct
       match target with
       | Debug | Log -> basic_msg ~pp_marker ppf target content
       | Result | Warning | Error -> fancy_msg ~pp_marker ppf target content)
-    | Global.GNU ->
-      (* The top message doesn't come with a position, which is not something
-         the GNU standard allows. So we look the position list and put the top
-         message everywhere there is not a more precise message. If we can't
-         find a position without a more precise message, we just take the first
-         position in the list to pair with the message. *)
-      Format.pp_print_list ~pp_sep:Format.pp_print_newline
-        (fun ppf elt ->
-          let pos, message =
-            match elt with
-            | MainMessage m ->
-              let pos =
-                List.find_map
-                  (function
-                    | Position { pos_message = None; pos } -> Some pos
-                    | _ -> None)
-                  content
-                |> function
-                | None ->
-                  List.find_map
-                    (function
-                      | Position { pos_message = _; pos } -> Some pos
-                      | _ -> None)
-                    content
-                | some -> some
-              in
-              pos, Some m
-            | Position { pos_message; pos } -> Some pos, pos_message
-            | Outcome m -> None, Some m
-            | Suggestion sl -> None, Some (fun ppf -> Suggestions.format ppf sl)
-          in
-          Option.iter
-            (fun pos ->
-              Format.fprintf ppf "@{<blue>%s@}: " (Pos.to_string_short pos))
-            pos;
-          Format.fprintf ppf "[%t]" (pp_marker target);
-          match message with
-          | Some message ->
-            Format.pp_print_char ppf ' ';
-            Format.pp_print_string ppf (unformat message)
-          | None -> ())
-        ppf content;
-      Format.pp_print_newline ppf ()
+    | GNU -> gnu_msg ~pp_marker ppf target content
+    | Lsp -> lsp_msg ppf content
 
-  let emit_n ?ppf (target : level) = function
-    | [content] -> emit content target
+  let emit_n ?ppf (errs : t list) (target : level) =
+    match errs with
+    | [content] -> emit ?ppf content target
     | contents ->
       let ppf = Option.value ~default:(get_ppf target) ppf in
       let len = List.length contents in
       List.iteri
         (fun i c ->
-          if i > 0 then Format.pp_print_newline ppf ();
+          if i > 0 then Format.pp_print_space ppf ();
           let extra_label = Printf.sprintf "(%d/%d)" (succ i) len in
           let pp_marker ?extra_label:_ = pp_marker ~extra_label in
-          emit ~pp_marker c target)
+          emit ~ppf ~pp_marker c target)
         contents
 
   let emit ?ppf (content : t) (target : level) = emit ?ppf content target
@@ -349,7 +368,7 @@ open Content
 exception CompilerError of Content.t
 exception CompilerErrors of Content.t list
 
-type lsp_error_kind = Lexing | Parsing | Typing | Generic
+type lsp_error_kind = Lexing | Parsing | Typing | Generic | Warning
 
 type lsp_error = {
   kind : lsp_error_kind;
@@ -435,7 +454,6 @@ let debug = make ~level:Debug ~cont:emit
 let log = make ~level:Log ~cont:emit
 let result = make ~level:Result ~cont:emit
 let results r = emit (List.flatten (List.map of_result r)) Result
-let warning = make ~level:Warning ~cont:emit
 
 let join_pos ~pos ~fmt_pos ~extra_pos =
   (* Error positioning might be provided using multiple options. Thus, we look
@@ -445,6 +463,26 @@ let join_pos ~pos ~fmt_pos ~extra_pos =
   | Some ((_, pos) :: _), _, _ | _, Some ((_, pos) :: _), _ | _, _, Some pos ->
     Some pos
   | _ -> None
+
+let warning
+    ?header
+    ?internal
+    ?pos
+    ?pos_msg
+    ?extra_pos
+    ?fmt_pos
+    ?outcome
+    ?suggestion
+    fmt =
+  make ?header ?internal ?pos ?pos_msg ?extra_pos ?fmt_pos ?outcome ?suggestion
+    fmt ~level:Warning ~cont:(fun m x ->
+      Option.iter
+        (fun f ->
+          let message ppf = Content.emit ~ppf m Warning in
+          let pos = join_pos ~pos ~fmt_pos ~extra_pos in
+          f { kind = Warning; message; pos; suggestion })
+        !global_error_hook;
+      emit m x)
 
 let error ?(kind = Generic) : ('a, 'exn) emitter =
  fun ?header ?internal ?pos ?pos_msg ?extra_pos ?fmt_pos ?outcome ?suggestion
@@ -499,19 +537,22 @@ let with_delayed_errors
       "delayed error called outside scope: encapsulate using \
        'with_delayed_errors' first");
   global_errors.stop_on_error <- stop_on_error;
-  try
-    let r = f () in
-    match global_errors.errors with
-    | None -> error ~internal:true "intertwined delayed error scope"
-    | Some [] ->
-      global_errors.errors <- None;
-      r
-    | Some [err] ->
-      global_errors.errors <- None;
-      raise (CompilerError err)
-    | Some errs ->
-      global_errors.errors <- None;
-      raise (CompilerErrors (List.rev errs))
-  with e ->
+  let result =
+    match f () with
+    | r -> fun () -> r
+    | exception (CompilerError _ as e) ->
+      let bt = Printexc.get_raw_backtrace () in
+      fun () -> Printexc.raise_with_backtrace e bt
+    | exception e -> raise e
+  in
+  match global_errors.errors with
+  | None -> error ~internal:true "intertwined delayed error scope"
+  | Some [] ->
     global_errors.errors <- None;
-    raise e
+    result ()
+  | Some [err] ->
+    global_errors.errors <- None;
+    raise (CompilerError err)
+  | Some errs ->
+    global_errors.errors <- None;
+    raise (CompilerErrors (List.rev errs))

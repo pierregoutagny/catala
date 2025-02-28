@@ -50,6 +50,7 @@ type error =
   | NoValue
   | Conflict
   | DivisionByZero
+  | ListEmpty
   | NotSameLength
   | UncomparableDurations
   | AmbiguousDateRounding
@@ -60,6 +61,7 @@ let error_to_string = function
   | NoValue -> "NoValue"
   | Conflict -> "Conflict"
   | DivisionByZero -> "DivisionByZero"
+  | ListEmpty -> "ListEmpty"
   | NotSameLength -> "NotSameLength"
   | UncomparableDurations -> "UncomparableDurations"
   | AmbiguousDateRounding -> "AmbiguousDateRounding"
@@ -73,6 +75,7 @@ let error_message = function
      variable"
   | DivisionByZero ->
     "a value is being used as denominator in a division and it computed to zero"
+  | ListEmpty -> "the list was empty"
   | NotSameLength -> "traversing multiple lists of different lengths"
   | UncomparableDurations ->
     "ambiguous comparison between durations in different units (e.g. months \
@@ -192,6 +195,7 @@ let integer_of_string (s : string) : integer = Z.of_string s
 let integer_to_string (i : integer) : string = Z.to_string i
 let integer_to_int (i : integer) : int = Z.to_int i
 let integer_of_int (i : int) : integer = Z.of_int i
+let integer_of_decimal (d : decimal) : integer = Q.to_bigint d
 let integer_exponentiation (i : integer) (e : int) : integer = Z.pow i e
 let integer_log2 = Z.log2
 
@@ -247,6 +251,7 @@ type runtime_value =
   | Enum of string * (string * runtime_value)
   | Struct of string * (string * runtime_value) list
   | Array of runtime_value array
+  | Tuple of runtime_value array
   | Unembeddable
 
 let unembeddable _ = Unembeddable
@@ -315,26 +320,51 @@ module BufferedJson = struct
       str;
     Buffer.add_char buf '"'
 
+  let decimal buf d =
+    let max_decimals = 6 in
+    let dec_str =
+      let open Z in
+      let sign = Q.sign d in
+      let n = abs (Q.num d) in
+      let d = abs (Q.den d) in
+      let int_part, dec_part = div_rem n d in
+      bprint buf (~$sign * int_part);
+      Buffer.add_char buf '.';
+      let dec_part = (((~$10 ** max_decimals) * dec_part) + (d / ~$2)) / d in
+      format ("%0" ^ string_of_int max_decimals ^ "d") dec_part
+    in
+    let rec last_non0 n =
+      if n <= 1 || dec_str.[n - 1] <> '0' then n else last_non0 (n - 1)
+    in
+    Buffer.add_substring buf dec_str 0 (last_non0 max_decimals)
+
   (* Note: the output format is made for transition with what Yojson gave us,
      but we could change it to something nicer (e.g. objects for structures) *)
   let rec runtime_value buf = function
-    | Unit -> Buffer.add_string buf {|"Unit"|}
+    | Unit -> Buffer.add_string buf "{}"
     | Bool b -> Buffer.add_string buf (string_of_bool b)
     | Money m -> Buffer.add_string buf (money_to_string m)
     | Integer i -> Buffer.add_string buf (integer_to_string i)
-    | Decimal d ->
-      Buffer.add_string buf (decimal_to_string ~max_prec_digits:10 d)
+    | Decimal d -> decimal buf d
     | Date d -> quote buf (date_to_string d)
     | Duration d -> quote buf (duration_to_string d)
     | Enum (name, (constr, v)) ->
-      Printf.bprintf buf {|[["%s"],["%s",%a]]|} name constr runtime_value v
+      Printf.bprintf buf
+        {|{"kind": "enum", "name": "%s", "constructor": "%s", "value": %a}|}
+        name constr runtime_value v
     | Struct (name, elts) ->
-      Printf.bprintf buf {|["%s",[%a]]|} name
+      Printf.bprintf buf {|{"kind": "struct", "name": "%s", "fields": {%a}}|}
+        name
         (list (fun buf (cstr, v) ->
-             Printf.bprintf buf {|"%s":%a|} cstr runtime_value v))
+             Printf.bprintf buf {|"%s": %a|} cstr runtime_value v))
         elts
-    | Array elts ->
-      Printf.bprintf buf "[%a]" (list runtime_value) (Array.to_list elts)
+    | (Array elts | Tuple elts) as v ->
+      Printf.bprintf buf {|{"kind": %s, "value":[%a]}|}
+        (match v with
+        | Array _ -> "\"array\""
+        | Tuple _ -> "\"tuple\""
+        | _ -> assert false)
+        (list runtime_value) (Array.to_list elts)
     | Unembeddable -> Buffer.add_string buf {|"unembeddable"|}
 
   let information buf info = Printf.bprintf buf "[%a]" (list quote) info
@@ -378,6 +408,26 @@ module BufferedJson = struct
     Printf.bprintf buf {|,"fun_inputs":[%a]|} (list var_def) fc.fun_inputs;
     Printf.bprintf buf {|,"body":[%a]|} (list event) fc.body;
     Printf.bprintf buf {|,"output":%a}|} var_def fc.output
+
+  and raw_event buf = function
+    | BeginCall name ->
+      Printf.bprintf buf {|{"event": "BeginCall", "name": "%s"}|}
+        (String.concat "." name)
+    | EndCall name ->
+      Printf.bprintf buf {|{"event": "EndCall", "name": "%s"}|}
+        (String.concat "." name)
+    | VariableDefinition (name, io, value) ->
+      Printf.bprintf buf
+        {|{
+         "event": "VariableDefinition",
+         "name": "%s",
+         "io": %a,
+         "value": %a
+         }|}
+        (String.concat "." name) io_log io runtime_value value
+    | DecisionTaken source_pos ->
+      Printf.bprintf buf {|{"event": "DecisionTaken", "pos": %a}|}
+        source_position source_pos
 end
 
 module Json = struct
@@ -391,6 +441,7 @@ module Json = struct
   let runtime_value = str runtime_value
   let io_log = str io_log
   let event = str event
+  let raw_event = str raw_event
 end
 
 let log_ref : raw_event list ref = ref []
@@ -463,6 +514,12 @@ let rec pp_events ?(is_first_call = true) ppf events =
       Format.fprintf ppf "@[<hv 2>[@ %a@;<1 -2>]@]"
         (Format.pp_print_list
            ~pp_sep:(fun ppf () -> Format.fprintf ppf ";@ ")
+           format_value)
+        (elts |> Array.to_list)
+    | Tuple elts ->
+      Format.fprintf ppf "@[<hv 2>(@ %a@;<1 -2>)@]"
+        (Format.pp_print_list
+           ~pp_sep:(fun ppf () -> Format.fprintf ppf ",@ ")
            format_value)
         (elts |> Array.to_list)
   and format_event ppf = function
@@ -750,6 +807,8 @@ let compare_periods pos (p1 : duration) (p2 : duration) : int =
    Comparing the difference to duration_0 is not a good idea because we still
    want to fail on [1 month, 30 days] rather than return [false] *)
 let equal_periods pos (p1 : duration) (p2 : duration) : bool =
+  Dates_calc.Dates.period_to_ymds p1 = Dates_calc.Dates.period_to_ymds p2
+  ||
   try Dates_calc.Dates.period_to_days (Dates_calc.Dates.sub_periods p1 p2) = 0
   with Dates_calc.Dates.AmbiguousComputation ->
     error UncomparableDurations [pos]
@@ -757,6 +816,7 @@ let equal_periods pos (p1 : duration) (p2 : duration) : bool =
 module Oper = struct
   let o_not = Stdlib.not
   let o_length a = Z.of_int (Array.length a)
+  let o_toint_rat = integer_of_decimal
   let o_torat_int = decimal_of_integer
   let o_torat_mon = decimal_of_money
   let o_tomoney_rat = money_of_decimal
@@ -782,7 +842,7 @@ module Oper = struct
 
   let o_reduce f dft a =
     let len = Array.length a in
-    if len = 0 then dft
+    if len = 0 then dft ()
     else
       let r = ref a.(0) in
       for i = 1 to len - 1 do
@@ -806,7 +866,10 @@ module Oper = struct
   let o_sub_rat_rat i1 i2 = Q.sub i1 i2
   let o_sub_mon_mon m1 m2 = Z.sub m1 m2
   let o_sub_dat_dat = Dates_calc.Dates.sub_dates
-  let o_sub_dat_dur dat dur = Dates_calc.Dates.(add_dates dat (neg_period dur))
+
+  let o_sub_dat_dur r pos dat dur =
+    o_add_dat_dur r pos dat (Dates_calc.Dates.neg_period dur)
+
   let o_sub_dur_dur = Dates_calc.Dates.sub_periods
   let o_mult_int_int i1 i2 = Z.mul i1 i2
   let o_mult_rat_rat i1 i2 = Q.mul i1 i2

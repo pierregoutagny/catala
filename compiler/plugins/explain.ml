@@ -17,14 +17,70 @@
 open Catala_utils
 open Shared_ast
 
+module Style = struct
+  type color = Graph.Graphviz.color
+
+  type elt = {
+    fill : color;
+    border : color;
+    stroke : int; (* in px *)
+    text : color;
+  }
+
+  type theme = {
+    page_background : Graph.Graphviz.color;
+    arrows : Graph.Graphviz.color;
+    input : elt;
+    middle : elt;
+    constant : elt;
+    condition : elt;
+    output : elt;
+  }
+
+  let dark =
+    {
+      page_background = 0x0;
+      arrows = 0x606060;
+      input =
+        { fill = 0x252526; border = 0xBC3FBC; stroke = 2; text = 0xFFFFFF };
+      middle =
+        { fill = 0x252526; border = 0x0097FB; stroke = 2; text = 0xFFFFFF };
+      constant =
+        { fill = 0x252526; border = 0x40C8AE; stroke = 2; text = 0xFFFFFF };
+      condition =
+        { fill = 0x252526; border = 0xff7700; stroke = 2; text = 0xFFFFFF };
+      output =
+        { fill = 0x252526; border = 0xFFFFFF; stroke = 2; text = 0xFFFFFF };
+    }
+
+  let light =
+    {
+      page_background = 0xffffff;
+      arrows = 0x0;
+      input = { fill = 0xffaa55; border = 0x0; stroke = 1; text = 0x0 };
+      middle = { fill = 0xffee99; border = 0x0; stroke = 1; text = 0x0 };
+      constant = { fill = 0x99bbff; border = 0x0; stroke = 1; text = 0x0 };
+      condition = { fill = 0xffffff; border = 0xff7700; stroke = 2; text = 0x0 };
+      output = { fill = 0xffffff; border = 0x1; stroke = 2; text = 0x0 };
+    }
+
+  let width pixels =
+    let dpi = 96. in
+    let pt_per_inch = 72.28 in
+    float_of_int pixels /. dpi *. pt_per_inch
+end
+
 type flags = {
   with_conditions : bool;
   with_cleanup : bool;
   merge_level : int;
   format : [ `Dot | `Convert of string ];
+  theme : Style.theme;
   show : string option;
   output : Global.raw_file option;
   base_src_url : string;
+  line_format : string;
+  inline_module_usages : bool;
 }
 
 (* -- Definition of the lazy interpreter -- *)
@@ -171,6 +227,36 @@ let rec lazy_eval : decl_ctx -> Env.t -> laziness_level -> expr -> expr * Env.t
   let eval_to_value ?(eval_default = true) env e =
     lazy_eval ctx env { value_level with eval_default } e
   in
+  let is_zero env e =
+    let zero = Runtime.integer_of_int 0 in
+    let e, _env = eval_to_value env e in
+    let condition =
+      match Mark.remove e with
+      | ELit (LInt i) -> Runtime.o_eq_int_int zero i
+      | ELit (LRat r) ->
+        Runtime.o_eq_rat_rat (Runtime.decimal_of_integer zero) r
+      | ELit (LMoney m) ->
+        Runtime.o_eq_mon_mon (Runtime.money_of_cents_integer zero) m
+      | ELit (LDuration dt) ->
+        Runtime.duration_to_years_months_days dt = (0, 0, 0)
+      | _ -> false
+    in
+    if condition then Some (e, env) else None
+  in
+  let is_one env e =
+    let one = Runtime.integer_of_int 1 in
+    let e, env = eval_to_value env e in
+    let condition =
+      match Mark.remove e with
+      | ELit (LInt i) -> Runtime.o_eq_int_int one i
+      | ELit (LRat r) -> Runtime.o_eq_rat_rat (Runtime.decimal_of_integer one) r
+      | ELit (LMoney m) -> Runtime.o_eq_mon_mon (Runtime.money_of_units_int 1) m
+      | ELit (LDuration dt) ->
+        Runtime.duration_to_years_months_days dt = (0, 0, 1)
+      | _ -> false
+    in
+    if condition then Some (e, env) else None
+  in
   match e0 with
   | EVar v, _ ->
     if (not llevel.eval_default) || not (llevel.eval_vars v) then e0, env
@@ -188,11 +274,7 @@ let rec lazy_eval : decl_ctx -> Env.t -> laziness_level -> expr -> expr * Env.t
       env_elt.reduced <- r, env1;
       r, Env.join env env1
   | EAppOp { op = op, opos; args; tys }, m -> (
-    if
-      (not llevel.eval_default)
-      && not (List.equal Expr.equal args [ELit LUnit, m])
-      (* Applications to () encode thunked default terms *)
-    then e0, env
+    if not llevel.eval_default then e0, env
     else
       match op with
       | (Op.Map | Op.Filter | Op.Reduce | Op.Fold | Op.Length) as op -> (
@@ -266,7 +348,7 @@ let rec lazy_eval : decl_ctx -> Env.t -> laziness_level -> expr -> expr * Env.t
              evaluation may be needed to guarantee that [llevel] is reached *)
           lazy_eval ctx env { llevel with eval_match = true } e
         | _ -> (EAppOp { op = op, opos; args; tys }, m), env)
-      | _ ->
+      | _ -> (
         let env, args =
           List.fold_left_map
             (fun env e ->
@@ -274,44 +356,66 @@ let rec lazy_eval : decl_ctx -> Env.t -> laziness_level -> expr -> expr * Env.t
               env, e)
             env args
         in
-        if not llevel.eval_op then (EAppOp { op = op, opos; args; tys }, m), env
-        else
-          let renv = ref env in
-          (* Dirty workaround returning env and conds from evaluate_operator *)
-          let eval e =
-            let e, env = lazy_eval ctx !renv llevel e in
-            renv := env;
-            e
+        let are_zeroes = lazy (List.map (fun x -> x, is_zero env x) args) in
+        let are_ones = lazy (List.map (fun x -> x, is_one env x) args) in
+        match op, are_zeroes, are_ones with
+        (* First handle neutral elements: they are removed from the formula, but
+           added as conditions *)
+        | ( (Op.Mult_int_int | Op.Mult_rat_rat),
+            _,
+            (lazy
+              ( [(x_neutral, Some (neutral, env)); (not_neutral, None)]
+              | [(not_neutral, None); (x_neutral, Some (neutral, env))] )) )
+        (* Note: we could add [Op.Mult_mon_rat | Op.Mult_dur_int] here, but that
+           would require inserting a conversion operator instead *)
+        | ( ( Op.Add_dat_dur _ | Op.Add_dur_dur | Op.Add_int_int
+            | Op.Add_mon_mon | Op.Add_rat_rat ),
+            (lazy
+              ( [(x_neutral, Some (neutral, env)); (not_neutral, None)]
+              | [(not_neutral, None); (x_neutral, Some (neutral, env))] )),
+            _ )
+        | ( ( Op.Sub_dat_dur _ | Op.Sub_dur_dur | Op.Sub_int_int
+            | Op.Sub_mon_mon | Op.Sub_rat_rat ),
+            (lazy [(not_neutral, None); (x_neutral, Some (neutral, env))]),
+            _ ) ->
+          let annot = Custom { pos = opos; custom = { conditions = [] } } in
+          let condition =
+            ( ( EAppOp { op = Op.Eq, opos; args = [x_neutral; neutral]; tys },
+                annot ),
+              env )
           in
-          let e =
-            Interpreter.evaluate_operator eval (op, opos) m Global.En
-              (* Default language to English but this should not raise any error
-                 messages so we don't care. *)
-              args
-          in
-          e, !renv)
-  (* fixme: this forwards eempty *)
+          add_condition ~condition not_neutral, env
+        | _ ->
+          if not llevel.eval_op then
+            (EAppOp { op = op, opos; args; tys }, m), env
+          else
+            let renv = ref env in
+            (* Dirty workaround returning env and conds from
+               evaluate_operator *)
+            let eval e =
+              let e, env = lazy_eval ctx !renv llevel e in
+              renv := env;
+              e
+            in
+            let e =
+              Interpreter.evaluate_operator eval (op, opos) m Global.En
+                (* Default language to English but this should not raise any
+                   error messages so we don't care. *)
+                args
+            in
+            e, !renv))
   | EApp { f; args }, m -> (
-    if
-      (not llevel.eval_default)
-      && not (List.equal Expr.equal args [ELit LUnit, m])
-      (* Applications to () encode thunked default terms *)
-    then e0, env
+    if not llevel.eval_default then e0, env
     else
       match eval_to_value env f with
       | (EAbs { binder; _ }, _), env ->
         let vars, body = Bindlib.unmbind binder in
-        log "@[<v 2>@[<hov 4>{";
         let env =
           Seq.fold_left2
-            (fun env1 var e ->
-              log "@[<hov 2>LET %a = %a@]@ " Print.var_debug var Expr.format e;
-              Env.add var e env env1)
+            (fun env1 var e -> Env.add var e env env1)
             env (Array.to_seq vars) (List.to_seq args)
         in
-        log "@]@[<hov 4>IN [%a]@]" (Print.expr ~debug:true ()) body;
         let e, env = lazy_eval ctx env llevel body in
-        log "@]}";
         e, env
       | e, _ -> error e "Invalid apply on %a" Expr.format e)
   | (EAbs _ | ELit _ | EEmpty), _ -> e0, env (* these are values *)
@@ -524,7 +628,7 @@ end
 
 module E = struct
   type hand_side = Lhs of string | Rhs of string
-  type t = { side : hand_side option; condition : bool }
+  type t = { side : hand_side option; condition : bool; invisible : bool }
 
   let compare x y =
     match Bool.compare x.condition y.condition with
@@ -538,14 +642,14 @@ module E = struct
         x.side y.side
     | n -> n
 
-  let default = { side = None; condition = false }
+  let default = { side = None; condition = false; invisible = false }
 end
 
 module G = Graph.Persistent.Digraph.AbstractLabeled (V) (E)
 
 let op_kind = function
   | Op.Add_int_int | Add_rat_rat | Add_mon_mon | Add_dat_dur _ | Add_dur_dur
-  | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur
+  | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur _
   | Sub_dur_dur ->
     `Sum
   | Mult_int_int | Mult_rat_rat | Mult_mon_rat | Mult_dur_int | Div_int_int
@@ -624,7 +728,7 @@ let program_to_graph
               (Renaming.get_ctx
                  {
                    Renaming.reserved = [];
-                   sanitize_varname = String.to_snake_case;
+                   sanitize_varname = Fun.id;
                    skip_constant_binders = false;
                    constant_binder_name = None;
                  })
@@ -637,22 +741,49 @@ let program_to_graph
   in
   let scope_v, _scope_arg_struct = ScopeName.Map.find scope scopes in
   let e, env = (Env.find (Var.translate scope_v) all_env).base in
-  let e =
+  let rec find_tested_scope e acc =
+    if acc <> None then acc
+    else
+      match e with
+      | ( EApp
+            {
+              f = EVar vscope, _;
+              args = [(EStruct { name; fields }, _)];
+              tys = [_in_ty];
+            },
+          _ ) ->
+        Some (vscope, name, fields)
+      | e -> Expr.shallow_fold find_tested_scope e acc
+  in
+  let tested_scope_v, in_struct, in_fields =
+    Option.get (find_tested_scope e None)
+  in
+  log "The specified scope is detected to be testing scope %s"
+    (Bindlib.name_of tested_scope_v);
+  let e, env = (Env.find tested_scope_v all_env).base in
+  let in_var, e =
     match e with
     | EAbs { binder; _ }, _ ->
-      let _vars, e = Bindlib.unmbind binder in
-      e
+      let vars, e = Bindlib.unmbind binder in
+      vars.(0), e
     | _ -> assert false
   in
   let rec get_vars base_vars env = function
-    | EApp { f = EAbs { binder; _ }, _; args = [arg] }, _ ->
-      let vars, e = Bindlib.unmbind binder in
+    (* This assumes the scope body starts with the deconstruction and binding of
+       its input struct *)
+    | ( EApp
+          {
+            f = EAbs { binder; _ }, _;
+            args = [(EStructAccess { name; e = EVar vstruc, _; field; _ }, _)];
+            _;
+          },
+        _ )
+      when StructName.equal name in_struct ->
+      let vars, body = Bindlib.unmbind binder in
       let var = vars.(0) in
-      let base_vars =
-        if is_const arg then Var.Set.add var base_vars else base_vars
-      in
-      let env = Env.add var arg env env in
-      get_vars base_vars env e
+      let base_vars = Var.Set.add var base_vars in
+      let env = Env.add var (StructField.Map.find field in_fields) env env in
+      get_vars base_vars env body
     | e -> base_vars, env, e
   in
   let base_vars, env, e = get_vars Var.Set.empty env e in
@@ -662,7 +793,7 @@ let program_to_graph
       value_level with
       eval_struct = false;
       eval_op = false;
-      eval_match = false;
+      eval_match = true;
       eval_vars = (fun v -> false);
     }
   in
@@ -683,7 +814,9 @@ let program_to_graph
                 aux (Some parent) (g, var_vertices, env) econd
               in
               ( G.add_edge_e g
-                  (G.E.create parent { side = None; condition = true } vcond),
+                  (G.E.create parent
+                     { side = None; condition = true; invisible = false }
+                     vcond),
                 var_vertices,
                 Env.join env0 env ))
             (g, var_vertices, env0) conditions
@@ -754,7 +887,7 @@ let program_to_graph
         | Add_int_int | Add_rat_rat | Add_mon_mon | Add_dat_dur _ | Add_dur_dur
           ->
           Some (E.Lhs "⊕"), Some (E.Rhs "⊕")
-        | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur
+        | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur _
         | Sub_dur_dur ->
           Some (E.Lhs "⊕"), Some (E.Rhs "⊖")
         | Mult_int_int | Mult_rat_rat | Mult_mon_rat | Mult_dur_int ->
@@ -765,11 +898,15 @@ let program_to_graph
       in
       let g =
         G.add_edge_e g
-          (G.E.create v { side = lhs_label; condition = false } lhs)
+          (G.E.create v
+             { side = lhs_label; condition = false; invisible = false }
+             lhs)
       in
       let g =
         G.add_edge_e g
-          (G.E.create v { side = rhs_label; condition = false } rhs)
+          (G.E.create v
+             { side = rhs_label; condition = false; invisible = false }
+             rhs)
       in
       (g, var_vertices, env), v
     | EAppOp { op = _; args; _ }, _ ->
@@ -1019,6 +1156,48 @@ let rec graph_cleanup options g base_vars =
           g)
       emap g
   in
+  let g =
+    (* Merge formulas and subsequent variable affectation nodes *)
+    G.fold_edges_e
+      (fun e g ->
+        if (not (G.mem_edge_e g e)) || (G.E.label e).condition then g
+        else
+          match G.V.label (G.E.src e), G.V.label (G.E.dst e) with
+          | ((EVar _, _) as var), ((EAppOp _, m) as expr) ->
+            let pos = Expr.pos expr in
+            let v' =
+              G.V.create
+                ( EAppOp
+                    {
+                      op = Op.Eq, pos;
+                      args = [var; expr];
+                      tys = [TAny, pos; TAny, pos];
+                    },
+                  m )
+              (* This form is matched and displayed specifically below *)
+            in
+            let g =
+              G.fold_pred_e
+                (fun e1 g ->
+                  G.add_edge_e g (G.E.create (G.E.src e1) (G.E.label e1) v'))
+                g (G.E.src e) g
+            in
+            let g =
+              G.fold_succ_e
+                (fun e1 g ->
+                  G.add_edge_e g (G.E.create v' (G.E.label e1) (G.E.dst e1)))
+                g (G.E.src e) g
+            in
+            let g =
+              G.fold_succ_e
+                (fun e1 g ->
+                  G.add_edge_e g (G.E.create v' (G.E.label e1) (G.E.dst e1)))
+                g (G.E.dst e) g
+            in
+            G.remove_vertex (G.remove_vertex g (G.E.dst e)) (G.E.src e)
+          | _ -> g)
+      g g
+  in
   g
 
 let expr_to_dot_label0 :
@@ -1048,33 +1227,33 @@ let expr_to_dot_label0 :
           match o with
           | Eq_boo_boo | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dur_dur
           | Eq_dat_dat | Eq ->
-            "="
+            "＝"
           | Minus_int | Minus_rat | Minus_mon | Minus_dur | Minus -> "-"
           | ToRat_int | ToRat_mon | ToRat -> ""
-          | ToMoney_rat | ToMoney -> ""
+          | ToMoney_rat | ToMoney | ToInt | ToInt_rat -> ""
           | Add_int_int | Add_rat_rat | Add_mon_mon | Add_dat_dur _
           | Add_dur_dur | Add ->
             "+"
-          | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur
-          | Sub_dur_dur | Sub ->
+          | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat
+          | Sub_dat_dur _ | Sub_dur_dur | Sub ->
             "-"
           | Mult_int_int | Mult_rat_rat | Mult_mon_rat | Mult_dur_int | Mult ->
             "×"
           | Div_int_int | Div_rat_rat | Div_mon_mon | Div_mon_rat | Div_dur_dur
           | Div ->
-            "/"
+            "÷"
           | Lt_int_int | Lt_rat_rat | Lt_mon_mon | Lt_dur_dur | Lt_dat_dat | Lt
             ->
             "<"
           | Lte_int_int | Lte_rat_rat | Lte_mon_mon | Lte_dur_dur | Lte_dat_dat
           | Lte ->
-            "<="
+            "≤"
           | Gt_int_int | Gt_rat_rat | Gt_mon_mon | Gt_dur_dur | Gt_dat_dat | Gt
             ->
             ">"
           | Gte_int_int | Gte_rat_rat | Gte_mon_mon | Gte_dur_dur | Gte_dat_dat
           | Gte ->
-            ">="
+            "≥"
           | Concat -> "++"
           | Not -> xlang () ~en:"not" ~fr:"non"
           | Length -> xlang () ~en:"length" ~fr:"nombre"
@@ -1105,10 +1284,25 @@ let expr_to_dot_label0 :
 
       let bypass : type a t. Format.formatter -> (a, t) gexpr -> bool =
        fun ppf e ->
+        let percent_printer ppf = function
+          | ELit (LRat r), m
+            when Runtime.(o_lt_rat_rat r (Runtime.decimal_of_float 1.)) ->
+            Format.fprintf ppf "%a%%" aux_value
+              ( ELit
+                  (LRat
+                     (Runtime.o_mult_rat_rat r (Runtime.decimal_of_float 100.))),
+                m )
+          | e -> aux_value ppf e
+        in
         match Mark.remove e with
         | ELit _ | EArray _ | ETuple _ | EStruct _ | EInj _ | EEmpty | EAbs _
         | EExternal _ ->
           aux_value ppf e;
+          true
+        | EAppOp
+            { op = (Op.Mult_rat_rat | Op.Mult_mon_rat), _; args = [x1; x2]; _ }
+          ->
+          Format.fprintf ppf "%a × %a" percent_printer x1 percent_printer x2;
           true
         | EMatch { e; cases; _ } ->
           let cases =
@@ -1143,86 +1337,151 @@ let expr_to_dot_label0 :
   in
   aux_value
 
-let rec expr_to_dot_label lang ctx env ppf e =
-  let print_expr = expr_to_dot_label lang ctx env in
+let htmlencode =
+  let re = Re.(compile (set "&<>'\"@")) in
+  Re.replace re ~f:(fun g ->
+      match Re.Group.get g 0 with
+      | "&" -> "&amp;"
+      | "<" -> "&lt;"
+      | ">" -> "&gt;"
+      | "'" -> "&apos;"
+      | "\"" -> "&quot;"
+      | "@" -> "&commat;"
+      | _ -> assert false)
+
+let expr_to_dot_label0 lang ctx env ppf e =
+  Format.fprintf ppf "%s"
+    (htmlencode (Format.asprintf "%a" (expr_to_dot_label0 lang ctx env) e))
+
+let rec expr_to_dot_label (style : Style.theme) lang ctx env ppf e =
+  let print_expr ppf = function
+    | (EVar _, _) as e ->
+      let e, _ = lazy_eval ctx env value_level e in
+      expr_to_dot_label0 lang ctx env ppf e
+    | e -> expr_to_dot_label0 lang ctx env ppf e
+  in
   let e = Expr.skip_wrappers e in
   match e with
   | EVar v, _ ->
     let e, _ = lazy_eval ctx env value_level e in
-    Format.fprintf ppf "%a = %a" String.format (Bindlib.name_of v)
+    Format.fprintf ppf
+      "<table border=\"0\" cellborder=\"0\" cellspacing=\"1\"><tr><td \
+       align=\"left\"><b>%a</b></td></tr><tr><td align=\"right\"><b>= <font \
+       color=\"#007799\">@[<hv>%a@]</font></b></td></tr></table>"
+      String.format (Bindlib.name_of v)
       (expr_to_dot_label0 lang ctx env)
       e
+  | ( EAppOp { op = Op.Eq, _; args = [(EVar v, _); ((EAppOp _, _) as expr)]; _ },
+      _ ) ->
+    let value, _ = lazy_eval ctx env value_level expr in
+    Format.fprintf ppf
+      "<table border=\"0\" cellborder=\"0\" cellspacing=\"1\"><tr><td \
+       align=\"left\"><b>%a</b></td></tr><hr/><tr><td \
+       align=\"left\">@[<hv>%a@]</td></tr><tr><td align=\"right\"><b>= <font \
+       color=\"#0088aa\">@[<hv>%a@]</font></b></td></tr></table>"
+      String.format (Bindlib.name_of v)
+      (expr_to_dot_label0 lang ctx env)
+      expr
+      (expr_to_dot_label0 lang ctx env)
+      value
   | EStruct { name; fields }, _ ->
     let pr ppf =
-      Format.fprintf ppf "{ %a | { { %a } | { %a }}}" StructName.format name
+      Format.fprintf ppf
+        "<table border=\"%f\" cellborder=\"1\" cellspacing=\"0\" \
+         bgcolor=\"#%06x\" color=\"#%06x\"><tr><td \
+         colspan=\"2\">%a</td></tr><tr><td>%a</td><td>%a</td></tr></table>"
+        (float_of_int style.output.stroke)
+        style.output.fill style.output.border StructName.format name
         (Format.pp_print_list
            ~pp_sep:(fun ppf () -> Format.pp_print_string ppf " | ")
            (fun ppf fld ->
-             StructField.format ppf fld;
-             Format.pp_print_string ppf "\\l"))
+             StructField.format ppf
+               fld (* ; * Format.pp_print_string ppf "<vr/>" *)))
         (StructField.Map.keys fields)
         (Format.pp_print_list
            ~pp_sep:(fun ppf () -> Format.pp_print_string ppf " | ")
            (fun ppf -> function
              | ((EVar _ | ELit _ | EInj { e = (EVar _ | ELit _), _; _ }), _) as
                e ->
-               print_expr ppf e;
-               Format.pp_print_string ppf "\\l"
-             | _ -> Format.pp_print_string ppf "…\\l"))
+               print_expr ppf e (* ; * Format.pp_print_string ppf "\\l" *)
+             | _ -> Format.pp_print_string ppf "…"))
         (StructField.Map.values fields)
     in
     Format.pp_print_string ppf (Message.unformat pr)
   | EArray elts, _ ->
     let pr ppf =
-      Format.fprintf ppf "{ %a }"
-        (Format.pp_print_list
-           ~pp_sep:(fun ppf () -> Format.pp_print_string ppf " | ")
-           (fun ppf -> function
-             | ((EVar _ | ELit _), _) as e -> print_expr ppf e
-             | _ -> Format.pp_print_string ppf "…"))
+      Format.fprintf ppf
+        "<table border=\"0\" cellborder=\"1\" \
+         cellspacing=\"0\"><tr>%a</tr></table>"
+        (Format.pp_print_list (fun ppf -> function
+           | ((EVar _ | ELit _), _) as e ->
+             Format.fprintf ppf "<td>%a</td>" print_expr e
+           | _ -> Format.pp_print_string ppf "<td>…</td>"))
         elts
     in
     Format.pp_print_string ppf (Message.unformat pr)
   | e -> Format.fprintf ppf "%a@," (expr_to_dot_label0 lang ctx env) e
 
-let to_dot lang ppf ctx env base_vars g ~base_src_url =
+let to_dot lang ppf ctx env base_vars g ~base_src_url ~line_format ~theme =
   let module GPr = Graph.Graphviz.Dot (struct
     include G
 
     let print_expr env ctx lang ppf e =
-      let out_funs = Format.pp_get_formatter_out_functions ppf () in
-      Format.pp_set_formatter_out_functions ppf
-        {
-          out_funs with
-          Format.out_newline = (fun () -> out_funs.out_string "\\l" 0 2);
-        };
-      expr_to_dot_label env ctx lang ppf e;
-      Format.pp_print_flush ppf ();
-      Format.pp_set_formatter_out_functions ppf out_funs
+      (* let out_funs = Format.pp_get_formatter_out_functions ppf () in
+       * Format.pp_set_formatter_out_functions ppf
+       *   {
+       *     out_funs with
+       *     Format.out_newline = (fun () -> out_funs.out_string "<br/>" 0 2);
+       *   }; *)
+      expr_to_dot_label theme env ctx lang ppf e
+    (* ; * Format.pp_print_flush ppf (); * Format.pp_set_formatter_out_functions
+       ppf out_funs *)
 
-    let graph_attributes _ = [ (* `Rankdir `LeftToRight *) ]
+    let graph_attributes _ =
+      [
+        `BgcolorWithTransparency (Int32.of_int 0x00);
+        (* `Ratio (`Float 0.8); *)
+        (* `Concentrate true; *)
+        `Ratio `Compress;
+        (* `Size (8.3, 11.7); (* A4 in inches..... *) *)
+        (* `Rankdir `LeftToRight *)
+      ]
+
     let default_vertex_attributes _ = []
 
     let vertex_label v =
       let print_expr = print_expr lang ctx env in
-      match G.V.label v with
-      | (EVar v, _) as e ->
-        Format.asprintf "%a = %a" String.format (Bindlib.name_of v) print_expr
-          (fst (lazy_eval ctx env value_level e))
-      | e -> Format.asprintf "%a" print_expr e
+      (* match G.V.label v with
+       * | (EVar v, _) as e ->
+       *   Format.asprintf "%a = %a" String.format (Bindlib.name_of v) print_expr
+       *     (fst (lazy_eval ctx env value_level e))
+       * | e -> *)
+      Format.asprintf "%a" print_expr (G.V.label v)
 
     let vertex_name v = Printf.sprintf "x%03d" (G.V.hash v)
 
     let vertex_attributes v =
       let e = V.label v in
-      let pos = Expr.pos e in
+      let pos =
+        match e with
+        | EVar v, _ -> Expr.pos (fst (Env.find v env).reduced)
+        | e -> Expr.pos e
+      in
       let loc_text =
         Re.replace_string
           Re.(compile (char '\n'))
           ~by:"&#10;"
           (String.concat "\n» " (List.rev (Pos.get_law_info pos)) ^ "\n")
       in
-      `Label (vertex_label v (* ^ "\n" ^ loc_text *))
+      let url = base_src_url ^ "/" ^ Pos.get_file pos in
+      let line_suffix =
+        Re.(
+          replace_string ~all:true
+            (compile (str "NN"))
+            ~by:(string_of_int (Pos.get_start_line pos))
+            line_format)
+      in
+      `HtmlLabel (vertex_label v (* ^ "\n" ^ loc_text *))
       :: `Comment loc_text
          (* :: `Url
           *      ("http://localhost:8080/fr/examples/housing-benefits#"
@@ -1233,63 +1492,133 @@ let to_dot lang ppf ctx env base_vars g ~base_src_url =
           *            ~by:"/" (Pos.get_file pos))
           *      ^ "-"
           *      ^ string_of_int (Pos.get_start_line pos)) *)
-      :: `Url
-           (base_src_url
-           ^ "/"
-           ^ Pos.get_file pos
-           ^ "#L"
-           ^ string_of_int (Pos.get_start_line pos))
-      :: `Fontname "DejaVu Sans Mono"
+      :: `Url (url ^ line_suffix)
+      :: `Fontname "sans"
       ::
       (match G.V.label v with
       | EVar var, _ ->
         if Var.Set.mem var base_vars then
-          [`Style `Filled; `Fillcolor 0xffaa55; `Shape `Box]
+          [
+            `Style `Filled;
+            `Fillcolor theme.input.fill;
+            `Shape `Box;
+            `Penwidth (Style.width theme.input.stroke);
+            `Color theme.input.border;
+            `Fontcolor theme.input.text;
+          ]
         else if
           List.exists (fun e -> not (G.E.label e).condition) (G.succ_e g v)
         then
           (* non-constants *)
-          [`Style `Filled; `Fillcolor 0xffee99; `Shape `Box]
-        else (* Constants *)
-          [`Style `Filled; `Fillcolor 0x77aaff; `Shape `Note]
-      | EStruct _, _ | EArray _, _ -> [`Shape `Record]
-      | EAppOp { op = op, _; _ }, _ -> (
-        match op_kind op with
-        | `Sum | `Product | _ -> [`Shape `Box] (* | _ -> [] *))
-      | _ -> [])
+          [
+            `Style `Filled;
+            `Fillcolor theme.middle.fill;
+            `Shape `Box;
+            `Penwidth (Style.width theme.middle.stroke);
+            `Color theme.middle.border;
+            `Fontcolor theme.middle.text;
+          ]
+        else
+          (* Constants *)
+          [
+            `Style `Filled;
+            `Fillcolor theme.constant.fill;
+            `Shape `Box;
+            `Penwidth (Style.width theme.middle.stroke);
+            `Color theme.constant.border;
+            `Fontcolor theme.constant.text;
+          ]
+      | EAppOp { op = Op.Eq, _; args = [(EVar _, _); (EAppOp _, _)]; _ }, _ ->
+        [
+          `Style `Filled;
+          `Fillcolor theme.middle.fill;
+          `Shape `Box;
+          `Penwidth (Style.width theme.middle.stroke);
+          `Color theme.middle.border;
+          `Fontcolor theme.middle.text;
+        ]
+      | EStruct _, _ | EArray _, _ ->
+        [
+          `Style `Solid;
+          (* `Fillcolor theme.output.fill; *)
+          `Shape `Plaintext;
+          `Penwidth (Style.width theme.output.stroke);
+          `Color theme.output.border;
+          `Fontcolor theme.output.text;
+        ]
+      (* | EAppOp { op = op, _; _ }, _ -> (
+       *     match op_kind op with
+       *     | `Sum | `Product | _ -> [`Shape `Box; `Fillcolor 0xff0000] (* | _ -> [] *)) *)
+      | _ ->
+        [
+          `Style `Dashed;
+          `Style `Filled;
+          `Fillcolor theme.condition.fill;
+          `Shape `Box;
+          `Penwidth (Style.width theme.condition.stroke);
+          `Color theme.condition.border;
+          `Fontcolor theme.condition.text;
+        ])
 
     let get_subgraph v =
-      match G.V.label v with
-      | EVar var, _ -> (
-        if Var.Set.mem var base_vars then
-          Some
-            {
-              Graph.Graphviz.DotAttributes.sg_name = "inputs";
-              sg_attributes = [];
-              sg_parent = None;
-            }
-        else
-          match List.map G.V.label (G.succ g v) with
-          (* | [] | [ELit _, _] ->
-           *   Some
-           *     {
-           *       Graph.Graphviz.DotAttributes.sg_name = "constants";
-           *       sg_attributes = [`Shape `Box];
-           *       sg_parent = None;
-           *     } *)
-          | _ -> None)
-      | _ -> None
+      let is_input =
+        match G.V.label v with
+        | EVar var, _ -> Var.Set.mem var base_vars
+        | _ -> false
+      in
+      if is_input then
+        Some
+          {
+            Graph.Graphviz.DotAttributes.sg_name = "inputs";
+            sg_attributes =
+              [
+                `Style `Filled;
+                `FillcolorWithTransparency (Int32.of_int 0x0);
+                `ColorWithTransparency (Int32.of_int 0x0);
+              ];
+            sg_parent = None;
+          }
+      else None
 
     let default_edge_attributes _ = []
 
     let edge_attributes e =
       match E.label e with
+      | { invisible = true; _ } -> [`Style `Invis; `Weight 6]
       | { condition = true; _ } ->
-        [`Style `Dashed; `Penwidth 5.; `Color 0xff7700; `Arrowhead `Odot]
+        [
+          `Style `Dashed;
+          `Penwidth 2.;
+          `Color 0xff7700;
+          `Arrowhead `Odot;
+          `Weight 8;
+        ]
       | { side = Some (Lhs s | Rhs s); _ } ->
-        [ (* `Label s; `Color 0xbb7700 *) ]
-      | _ -> []
+        [`Color theme.arrows (* `Label s; `Color 0xbb7700 *); `Weight 10]
+      | { side = None; _ } ->
+        [`Color theme.arrows (* `Minlen 0; `Weight 10 *); `Weight 10]
   end) in
+  let g =
+    (* Add fake edges from everything towards the inputs to force ordering *)
+    G.fold_vertex
+      (fun v g ->
+        match G.V.label v with
+        | EVar var, _ when Var.Set.mem var base_vars ->
+          G.fold_vertex
+            (fun v0 g ->
+              if G.out_degree g v0 > 0 then g
+              else
+                match G.V.label v0 with
+                | EVar var, _ when Var.Set.mem var base_vars -> g
+                | _ ->
+                  G.add_edge_e g
+                    (G.E.create v0
+                       { invisible = true; condition = false; side = None }
+                       v))
+            g g
+        | _ -> g)
+      g g
+  in
   GPr.fprint_graph ppf (reverse_graph g)
 
 (* -- Plugin registration -- *)
@@ -1345,7 +1674,14 @@ let options =
             mkinfo "svg";
             mkinfo "png";
             mkinfo "pdf";
+            mkinfo "html";
           ])
+  in
+  let theme =
+    Arg.(
+      value
+      & opt (enum ["light", Style.light; "dark", Style.dark]) Style.light
+      & info ["theme"] ~doc:"Select the color theme for graphical outputs")
   in
   let show =
     Arg.(
@@ -1357,22 +1693,52 @@ let options =
   let base_src_url =
     Arg.(
       value
-      & opt string "https://github.com/CatalaLang/catala/blob/master"
+      & opt string
+          "https://github.com/CatalaLang/catala-examples/blob/exemple_explication"
       & info ["url-base"] ~docv:"URL"
           ~doc:
             "Base URL that can be used to browse the Catala code. Nodes will \
-             link to $(i,URL)/relative/filename.catala_xx#LNN where NN is the \
-             line number in the file")
+             link to $(i,URL)/relative/filename.catala_xx")
   in
-  let f with_conditions no_cleanup merge_level format show output base_src_url =
+  let line_format =
+    Arg.(
+      value
+      & opt string "#LNN"
+      & info ["line-format"] ~docv:"FORMAT"
+          ~doc:
+            "Format used to encode line position in URL's suffix. The sequence \
+             of characters 'NN' will be expanded using the actual positions. \
+             The default value '#LNN' matches github-like positions")
+  in
+  let inline_module_usages =
+    Arg.(
+      value
+      & flag
+      & info ["inline-mod-uses"]
+          ~doc:"Attempts to inline existing module usages using a heuristic.")
+  in
+  let f
+      with_conditions
+      no_cleanup
+      merge_level
+      format
+      theme
+      show
+      output
+      base_src_url
+      line_format
+      inline_module_usages =
     {
       with_conditions;
       with_cleanup = not no_cleanup;
       merge_level;
       format;
+      theme;
       show;
       output;
       base_src_url;
+      line_format;
+      inline_module_usages;
     }
   in
   Term.(
@@ -1381,14 +1747,106 @@ let options =
     $ no_cleanup
     $ merge_level
     $ format
+    $ theme
     $ show
     $ Cli.Flags.output
-    $ base_src_url)
+    $ base_src_url
+    $ line_format
+    $ inline_module_usages)
 
-let run includes optimize ex_scope explain_options global_options =
+let inline_used_modules global_options =
+  let prg =
+    Surface.Parser_driver.parse_top_level_file global_options.Global.input_src
+  in
+  let used_modules =
+    prg.Surface.Ast.program_used_modules
+    |> List.map (fun { Surface.Ast.mod_use_name; mod_use_alias; _ } ->
+           Mark.remove mod_use_name, Mark.remove mod_use_alias)
+  in
+  if used_modules = [] then ()
+  else
+    let find_module_file_in_input_directory mod_name =
+      let dir =
+        match global_options.Global.input_src with
+        | FileName f -> Filename.dirname f
+        | _ -> Sys.getcwd ()
+      in
+      let en_candidate = String.uncapitalize_ascii mod_name ^ ".catala_en" in
+      let fr_candidate = String.uncapitalize_ascii mod_name ^ ".catala_fr" in
+      Sys.readdir dir
+      |> Array.map (Filename.concat dir)
+      |> Array.find_map (fun path ->
+             let file = Filename.basename path in
+             if file = en_candidate then Some path
+             else if file = fr_candidate then Some path
+             else None)
+    in
+    let raw_prg, file =
+      match global_options.input_src with
+      | FileName s ->
+        ( Catala_utils.File.(contents (check_file s |> Option.value ~default:"")),
+          s )
+      | Contents (s, fname) -> s, fname
+      | Stdin _ -> Message.error "Cannot inline module usage from stdin"
+    in
+    let raw_prg =
+      (* let's assume it's in english *)
+      String.split_on_char '\n' raw_prg
+    in
+    let contents =
+      List.fold_left
+        (fun raw_prg (used_module, used_module_alias) ->
+          let mod_file_opt = find_module_file_in_input_directory used_module in
+          match mod_file_opt with
+          | None ->
+            Message.error
+              "Cannot find corresponding file for module '%s' required for \
+               module inlining"
+              used_module
+          | Some mod_file ->
+            let new_content =
+              let s =
+                Re.(
+                  replace_string
+                    (compile (str "> Module"))
+                    ~by:"< Module" (File.contents mod_file))
+              in
+              Global.Contents (s, mod_file)
+            in
+            Surface.Parser_driver.register_included_file_resolver
+              ~filename:mod_file ~new_content;
+            List.map
+              (fun s ->
+                let open Re in
+                let using_mod_re =
+                  compile (str (Format.sprintf "> Using %s" used_module))
+                in
+                if matches using_mod_re s <> [] then
+                  Format.sprintf "> Include: %s" (Filename.basename mod_file)
+                else
+                  replace_string
+                    (compile (str (used_module_alias ^ ".")))
+                    ~by:"" ~all:true s)
+              raw_prg)
+        raw_prg used_modules
+    in
+    let contents = String.concat "\n" contents in
+    Global.enforce_options ~input_src:(Global.Contents (contents, file)) ()
+    |> ignore
+
+let run
+    (includes : Global.raw_file list)
+    optimize
+    ex_scope
+    explain_options
+    global_options =
+  let () =
+    if explain_options.inline_module_usages then
+      inline_used_modules global_options
+  in
   let prg, _ =
     Driver.Passes.dcalc global_options ~includes ~optimize
-      ~check_invariants:false ~typed:Expr.typed
+      ~check_invariants:false ~autotest:false ~typed:Expr.typed
   in
   Interpreter.load_runtime_modules prg
     ~hashf:(Hash.finalise ~closure_conversion:false ~monomorphize_types:false);
@@ -1408,7 +1866,8 @@ let run includes optimize ex_scope explain_options global_options =
   in
   let dot_content =
     to_dot lang Format.str_formatter prg.decl_ctx env base_vars g
-      ~base_src_url:explain_options.base_src_url;
+      ~base_src_url:explain_options.base_src_url
+      ~line_format:explain_options.line_format ~theme:explain_options.theme;
     Format.flush_str_formatter ()
     |> Re.(replace_string (compile (seq [bow; str "comment="])) ~by:"tooltip=")
   in
@@ -1431,8 +1890,23 @@ let run includes optimize ex_scope explain_options global_options =
     let _, with_out =
       Driver.Commands.get_output global_options explain_options.output
     in
+    let wrap_html, fmt = if fmt = "html" then true, "svg" else false, fmt in
     with_out (fun oc ->
-        output_string oc (File.process_out "dot" ["-T" ^ fmt; dotfile]))
+        if wrap_html then (
+          output_string oc "<!DOCTYPE html>\n<html>\n<head>\n  <title>";
+          output_string oc (htmlencode ex_scope);
+          Printf.fprintf oc
+            "  </title>\n\
+            \  <style>\n\
+            \    body { background-color: #%06x }\n\
+            \    svg { max-width: 80rem; height: fit-content; }\n\
+            \  </style>\n\
+             </head>\n\
+             <body>\n"
+            explain_options.theme.page_background);
+        let contents = File.process_out "dot" ["-T" ^ fmt; dotfile] in
+        output_string oc contents;
+        if wrap_html then output_string oc "</body>\n</html>\n")
   | `Dot -> ());
   match explain_options.show with
   | None -> ()

@@ -140,9 +140,6 @@ module R = Re.Pcre
 #ifndef MR_ASSERTION
   #define MR_ASSERTION MS_ASSERTION
 #endif
-#ifndef MR_VARIES
-  #define MR_VARIES MS_VARIES
-#endif
 #ifndef MR_WITH_V
   #define MR_WITH_V MS_WITH_V
 #endif
@@ -154,12 +151,6 @@ module R = Re.Pcre
 #endif
 #ifndef MR_WE_HAVE
   #define MR_WE_HAVE MS_WE_HAVE
-#endif
-#ifndef MR_FIXED
-  #define MR_FIXED MS_FIXED
-#endif
-#ifndef MR_BY
-  #define MR_BY MS_BY
 #endif
 #ifndef MR_RULE
   #define MR_RULE MS_RULE
@@ -203,11 +194,17 @@ module R = Re.Pcre
 #ifndef MR_IS
   #define MR_IS MS_IS
 #endif
-#ifndef MR_LIST_EMPTY
-  #define MR_LIST_EMPTY MS_LIST_EMPTY
+#ifndef MR_OR_IF_LIST_EMPTY
+  #define MR_OR_IF_LIST_EMPTY MS_OR_IF_LIST_EMPTY
 #endif
 #ifndef MR_BUT_REPLACE
   #define MR_BUT_REPLACE MS_BUT_REPLACE
+#endif
+#ifndef MR_COMBINE
+  #define MR_COMBINE MS_COMBINE
+#endif
+#ifndef MR_INITIALLY
+  #define MR_INITIALLY MS_INITIALLY
 #endif
 #ifndef MR_CARDINAL
   #define MR_CARDINAL MS_CARDINAL
@@ -297,13 +294,10 @@ let token_list : (string * token) list =
     (MS_CONTENT, CONTENT);
     (MS_STRUCT, STRUCT);
     (MS_ASSERTION, ASSERTION);
-    (MS_VARIES, VARIES);
     (MS_WITH_V, WITH_V);
     (MS_FOR, FOR);
     (MS_ALL, ALL);
     (MS_WE_HAVE, WE_HAVE);
-    (MS_FIXED, FIXED);
-    (MS_BY, BY);
     (MS_RULE, RULE);
     (MS_LET, LET);
     (MS_EXISTS, EXISTS);
@@ -318,8 +312,10 @@ let token_list : (string * token) list =
     (MS_MAXIMUM, MAXIMUM);
     (MS_MINIMUM, MINIMUM);
     (MS_IS, IS);
-    (MS_LIST_EMPTY, LIST_EMPTY);
+    (MS_OR_IF_LIST_EMPTY, OR_IF_LIST_EMPTY);
     (MS_BUT_REPLACE, BUT_REPLACE);
+    (MS_COMBINE, COMBINE);
+    (MS_INITIALLY, INITIALLY);
     (MS_CARDINAL, CARDINAL);
     (MS_YEAR, YEAR);
     (MS_MONTH, MONTH);
@@ -362,6 +358,12 @@ let hspace = [%sedlex.regexp? Sub (white_space, Chars "\n\r")]
 (** Operator explicit typing suffix chars *)
 let op_kind_re = [%sedlex.regexp? "" | MR_MONEY_OP_SUFFIX | Chars "!.@^"]
 
+(** Regexp matching every character except newlines *)
+let any_but_eol = [%sedlex.regexp? (Sub (any, Chars "\n\r"))]
+
+(** Regexp matching newlines *)
+let eol = [%sedlex.regexp? Opt '\r', '\n' ]
+
 let op_kind = function
   | "" -> Ast.KPoly
   | "!" -> Ast.KInt
@@ -370,6 +372,16 @@ let op_kind = function
   | "@" -> Ast.KDate
   | "^" -> Ast.KDuration
   | _ -> invalid_arg "op_kind"
+
+let check_fence_space =
+  let trail_re =
+    Re.(compile @@ alt [ seq [bol; space]; seq [blank; opt (char '\r') ; eol] ])
+  in
+  fun lexbuf ->
+  let txt = Utf8.lexeme lexbuf in
+  if Re.execp trail_re txt then
+    Message.warning ~pos:(Pos.from_lpos (lexing_positions lexbuf))
+      "Extra leading or trailing space"
 
 (** Main lexing function used in code blocks *)
 let rec lex_code (lexbuf : lexbuf) : token =
@@ -380,14 +392,16 @@ let rec lex_code (lexbuf : lexbuf) : token =
       (* Whitespaces *)
       L.update_acc lexbuf;
       lex_code lexbuf
-  | '#', Star (Compl '\n'), '\n' ->
+  | '#', Star any_but_eol, eol ->
       (* Comments *)
       L.update_acc lexbuf;
       lex_code lexbuf
-  | "```" ->
+  | Star hspace, "```", Star hspace, (eol | eof) ->
+      check_fence_space lexbuf;
       (* End of code section *)
       L.context := Law;
-      END_CODE (Buffer.contents L.code_buffer)
+      L.context_start_pos := lexing_positions lexbuf;
+      END_CODE (L.flush_acc ())
   | MR_SCOPE ->
       L.update_acc lexbuf;
       SCOPE
@@ -508,9 +522,6 @@ let rec lex_code (lexbuf : lexbuf) : token =
   | MR_ASSERTION ->
       L.update_acc lexbuf;
       ASSERTION
-  | MR_VARIES ->
-      L.update_acc lexbuf;
-      VARIES
   | MR_WITH_V ->
       L.update_acc lexbuf;
       WITH_V
@@ -523,12 +534,6 @@ let rec lex_code (lexbuf : lexbuf) : token =
   | MR_WE_HAVE ->
       L.update_acc lexbuf;
       WE_HAVE
-  | MR_FIXED ->
-      L.update_acc lexbuf;
-      FIXED
-  | MR_BY ->
-      L.update_acc lexbuf;
-      BY
   | MR_RULE ->
       L.update_acc lexbuf;
       RULE
@@ -571,12 +576,18 @@ let rec lex_code (lexbuf : lexbuf) : token =
   | MR_IS ->
       L.update_acc lexbuf;
       IS
-  | MR_LIST_EMPTY ->
+  | MR_OR_IF_LIST_EMPTY ->
       L.update_acc lexbuf;
-      LIST_EMPTY
+      OR_IF_LIST_EMPTY
   | MR_BUT_REPLACE ->
       L.update_acc lexbuf;
       BUT_REPLACE
+  | MR_COMBINE ->
+      L.update_acc lexbuf;
+      COMBINE
+  | MR_INITIALLY ->
+      L.update_acc lexbuf;
+      INITIALLY
   | MR_CARDINAL ->
       L.update_acc lexbuf;
       CARDINAL
@@ -744,8 +755,9 @@ let rec lex_directive_args (lexbuf : lexbuf) : token =
   | MR_EXTERNAL -> MODULE_EXTERNAL
   | Plus (Compl white_space) -> DIRECTIVE_ARG (Utf8.lexeme lexbuf)
   | Plus hspace -> lex_directive_args lexbuf
-  | '\n' | eof ->
+  | eol | eof ->
       L.context := Law;
+      L.context_start_pos := lexing_positions lexbuf;
       END_DIRECTIVE
   | _ -> L.raise_lexer_error (Pos.from_lpos prev_pos) prev_lexeme
 
@@ -755,13 +767,21 @@ let rec lex_directive (lexbuf : lexbuf) : token =
   match%sedlex lexbuf with
   | Plus hspace -> lex_directive lexbuf
   | MR_LAW_INCLUDE -> LAW_INCLUDE
-  | MR_MODULE_DEF -> L.context := Directive_args; MODULE_DEF
-  | MR_MODULE_USE -> L.context := Directive_args; MODULE_USE
+  | MR_MODULE_DEF ->
+      L.context := Directive_args;
+      L.context_start_pos := lexing_positions lexbuf;
+      MODULE_DEF
+  | MR_MODULE_USE ->
+      L.context := Directive_args;
+      L.context_start_pos := lexing_positions lexbuf;
+      MODULE_USE
   | ":" ->
       L.context := Directive_args;
+      L.context_start_pos := lexing_positions lexbuf;
       COLON
-  | '\n' | eof ->
+  | eol | eof ->
       L.context := Law;
+      L.context_start_pos := lexing_positions lexbuf;
       END_DIRECTIVE
   | _ -> L.raise_lexer_error (Pos.from_lpos prev_pos) prev_lexeme
 
@@ -772,20 +792,24 @@ let lex_raw (lexbuf : lexbuf) : token =
   if at_bol then
     match%sedlex lexbuf with
     | eof -> EOF
-    | "```", Star hspace, ('\n' | eof) ->
+    | Star hspace, "```", Star hspace, (eol | eof) ->
+        check_fence_space lexbuf;
         L.context := Law;
+      L.context_start_pos := lexing_positions lexbuf;
         LAW_TEXT (Utf8.lexeme lexbuf)
     | _ -> (
         (* Nested match for lower priority; `_` matches length 0 so we effectively retry the
            sub-match at the same point *)
         match%sedlex lexbuf with
-        | Star (Compl '\n'), ('\n' | eof) -> LAW_TEXT (Utf8.lexeme lexbuf)
+        | Star (any_but_eol), (eol | eof) ->
+          LAW_TEXT (Utf8.lexeme lexbuf)
         | _ -> L.raise_lexer_error (Pos.from_lpos prev_pos) prev_lexeme)
   else
     match%sedlex lexbuf with
     | eof -> EOF
-    | Star (Compl '\n'), ('\n' | eof) -> LAW_TEXT (Utf8.lexeme lexbuf)
+    | Star any_but_eol, (eol | eof) -> LAW_TEXT (Utf8.lexeme lexbuf)
     | _ -> L.raise_lexer_error (Pos.from_lpos prev_pos) prev_lexeme
+
 
 (** Main lexing function used outside code blocks *)
 let lex_law (lexbuf : lexbuf) : token =
@@ -795,32 +819,37 @@ let lex_law (lexbuf : lexbuf) : token =
   if at_bol then
     match%sedlex lexbuf with
     | eof -> EOF
-    | "```catala", Star white_space, ('\n' | eof) ->
+    | Star hspace, "```catala", Star hspace, (eol | eof) ->
+        check_fence_space lexbuf;
         L.context := Code;
-        Buffer.clear L.code_buffer;
+        L.context_start_pos := lexing_positions lexbuf;
         BEGIN_CODE
-    | "```catala-metadata", Star white_space, ('\n' | eof) ->
+    | Star hspace, "```catala-metadata", Star hspace, (eol | eof) ->
+        check_fence_space lexbuf;
         L.context := Code;
-        Buffer.clear L.code_buffer;
+        L.context_start_pos := lexing_positions lexbuf;
         BEGIN_METADATA
-    | "```", Star (idchar | '-') ->
+    | Star hspace, "```", Star (idchar | '-') ->
+        check_fence_space lexbuf;
         L.context := Raw;
+        L.context_start_pos := lexing_positions lexbuf;
         LAW_TEXT (Utf8.lexeme lexbuf)
     | '>' ->
         L.context := Directive;
+        L.context_start_pos := lexing_positions lexbuf;
         BEGIN_DIRECTIVE
-    | Plus '#', Star hspace, Plus (Compl '\n'), Star hspace, ('\n' | eof) ->
+    | Plus '#', Star hspace, Plus any_but_eol, Star hspace, (eol | eof) ->
         L.get_law_heading lexbuf
     | _ -> (
         (* Nested match for lower priority; `_` matches length 0 so we effectively retry the
            sub-match at the same point *)
         match%sedlex lexbuf with
-        | Star (Compl '\n'), ('\n' | eof) -> LAW_TEXT (Utf8.lexeme lexbuf)
+        | Star any_but_eol, (eol | eof) -> LAW_TEXT (Utf8.lexeme lexbuf)
         | _ -> L.raise_lexer_error (Pos.from_lpos prev_pos) prev_lexeme)
   else
     match%sedlex lexbuf with
     | eof -> EOF
-    | Star (Compl '\n'), ('\n' | eof) -> LAW_TEXT (Utf8.lexeme lexbuf)
+    | Star any_but_eol, (eol | eof) -> LAW_TEXT (Utf8.lexeme lexbuf)
     | _ -> L.raise_lexer_error (Pos.from_lpos prev_pos) prev_lexeme
 
 (** Entry point of the lexer, distributes to {!val: lex_code} or {!val:lex_law}
@@ -832,7 +861,8 @@ let lexer (lexbuf : lexbuf) : token =
   | Code -> lex_code lexbuf
   | Directive -> lex_directive lexbuf
   | Directive_args -> lex_directive_args lexbuf
-
+  | Inactive ->
+    Message.error ~internal:true "Lexer started outside of an initialised context."
 
 (* -- Shallow lexing for dependency extraction -- *)
 
@@ -868,9 +898,9 @@ let line_dir_arg_upcase_re =
 let lex_line (lexbuf : lexbuf) : (string * L.line_token) option =
   match%sedlex lexbuf with
   | eof -> None
-  | "```catala-test-inline", Star hspace, ('\n' | eof) ->
+  | "```catala-test-inline", Star hspace, (eol | eof) ->
     Some (Utf8.lexeme lexbuf, LINE_INLINE_TEST)
-  | "```catala-test", Star (Compl '\n'), ('\n' | eof) ->
+  | "```catala-test", Star (any_but_eol), (eol | eof) ->
     let str = Utf8.lexeme lexbuf in
     (try
        let id = Re.Group.get (Re.exec line_test_id_re str) 1 in
@@ -880,10 +910,10 @@ let lex_line (lexbuf : lexbuf) : (string * L.line_token) option =
          "Ignored invalid test section, must have an explicit \
           `{ id = \"name\" }` specification";
        Some (str, LINE_ANY))
-  | "```", Star hspace, ('\n' | eof) ->
+  | "```", Star hspace, (eol | eof) ->
     Some (Utf8.lexeme lexbuf, LINE_BLOCK_END)
-  | '>', Star hspace, MR_LAW_INCLUDE, Star hspace, ':', Plus (Compl '\n'),
-    ('\n' | eof)  ->
+  | '>', Star hspace, MR_LAW_INCLUDE, Star hspace, ':', Plus any_but_eol,
+    (eol | eof)  ->
     let str = Utf8.lexeme lexbuf in
     (try
        let file = Re.Group.get (Re.exec line_dir_arg_re str) 1 in
@@ -891,25 +921,25 @@ let lex_line (lexbuf : lexbuf) : (string * L.line_token) option =
      with Not_found -> Some (str, LINE_ANY))
   | '>', Star hspace, MR_MODULE_DEF, Plus hspace,
     uppercase, Star (Compl white_space), Plus hspace,
-    MR_EXTERNAL, Star hspace, ('\n' | eof)  ->
+    MR_EXTERNAL, Star hspace, (eol | eof)  ->
     let str = Utf8.lexeme lexbuf in
     (try
        let mdl = Re.Group.get (Re.exec line_dir_arg_upcase_re str) 1 in
        Some (str, LINE_MODULE_DEF (mdl, true))
      with Not_found -> Some (str, LINE_ANY))
-  | '>', Star hspace, MR_MODULE_DEF, Plus hspace, uppercase, Star (Compl '\n'),
-    ('\n' | eof)  ->
+  | '>', Star hspace, MR_MODULE_DEF, Plus hspace, uppercase, Star any_but_eol,
+    (eol | eof)  ->
     let str = Utf8.lexeme lexbuf in
     (try
        let mdl = Re.Group.get (Re.exec line_dir_arg_upcase_re str) 1 in
        Some (str, LINE_MODULE_DEF (mdl, false))
      with Not_found -> Some (str, LINE_ANY))
-  | '>', Star hspace, MR_MODULE_USE, Plus hspace, uppercase, Star (Compl '\n'),
-    ('\n' | eof)  ->
+  | '>', Star hspace, MR_MODULE_USE, Plus hspace, uppercase, Star (any_but_eol),
+    (eol | eof)  ->
     let str = Utf8.lexeme lexbuf in
     (try
        let mdl = Re.Group.get (Re.exec line_dir_arg_upcase_re str) 1 in
        Some (str, LINE_MODULE_USE mdl)
      with Not_found -> Some (str, LINE_ANY))
-  | Star (Compl '\n'), ('\n' | eof) -> Some (Utf8.lexeme lexbuf, LINE_ANY)
+  | Star any_but_eol, (eol | eof) -> Some (Utf8.lexeme lexbuf, LINE_ANY)
   | _ -> assert false

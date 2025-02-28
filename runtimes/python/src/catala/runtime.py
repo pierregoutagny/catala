@@ -76,6 +76,11 @@ class DivisionByZero(CatalaError):
     def __init__(self, source_position: SourcePosition) -> None:
         super().__init__("division by zero", source_position)
 
+class ListEmpty(CatalaError):
+    def __init__(self, source_position: SourcePosition) -> None:
+        super().__init__("the list was empty",
+                         source_position)
+
 class NotSameLength(CatalaError):
     def __init__(self, source_position: SourcePosition) -> None:
         super().__init__("traversing multiple lists of different lengths",
@@ -98,8 +103,11 @@ class IndivisibleDurations(CatalaError):
 
 
 class Integer:
-    def __init__(self, value: Union[str, int]) -> None:
-        self.value = mpz(value)
+    def __init__(self, value: Union[str, int, Decimal]) -> None:
+        if isinstance(value, Decimal):
+            self.value = t_div(value.value.numerator, value.value.denominator)
+        else:
+            self.value = mpz(value)
 
     def __add__(self, other: Integer) -> Integer:
         return Integer(self.value + other.value)
@@ -387,6 +395,12 @@ def add_date_duration(rounding: DateRounding):
         return dat + dur
     return add
 
+# TODO: use rounding mode
+def sub_date_duration(rounding: DateRounding):
+    def add(pos: SourcePosition, dat: Date, dur: Duration):
+        return dat - dur
+    return add
+
 def lt_duration(pos: SourcePosition, x: Duration, y: Duration) -> bool:
     x = self.value.normalized()
     y = other.value.normalized()
@@ -484,9 +498,11 @@ def decimal_of_float(d: float) -> Decimal:
     return Decimal(d)
 
 
+def integer_of_decimal(d: Decimal) -> Integer:
+    return Integer(d.value)
+
 def decimal_of_integer(d: Integer) -> Decimal:
     return Decimal(d.value)
-
 
 def decimal_to_string(precision: int, i: Decimal) -> str:
     return "{1:.{0}}".format(precision, mpfr(i.value, precision * 10 // 2))
@@ -599,9 +615,9 @@ def list_map(f: Callable[[Alpha], Beta], l: List[Alpha]) -> List[Beta]:
 def list_map2(f: Callable[[Alpha, Beta], Gamma], l1: List[Alpha], l2: List[Beta]) -> List[Gamma]:
     return [f(i, j) for i, j in zip(l1, l2, strict=True)]
 
-def list_reduce(f: Callable[[Alpha, Alpha], Alpha], dft: Alpha, l: List[Alpha]) -> Alpha:
+def list_reduce(f: Callable[[Alpha, Alpha], Alpha], dft: Callable[[Unit], Alpha], l: List[Alpha]) -> Alpha:
     if l == []:
-        return dft
+        return dft(Unit())
     else:
         return reduce(f, l)
 

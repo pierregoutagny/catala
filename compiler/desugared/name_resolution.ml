@@ -67,7 +67,7 @@ type typedef =
   | TScope of ScopeName.t * scope_info  (** Implicitly defined output struct *)
 
 type module_context = {
-  path : Uid.Path.t;
+  current_module : ModuleName.t option;
   typedefs : typedef Ident.Map.t;
       (** Gathers the names of the scopes, structs and enums *)
   field_idmap : StructField.t StructName.Map.t Ident.Map.t;
@@ -144,7 +144,7 @@ let get_subscope_uid
     ((y, pos) : Ident.t Mark.pos) : ScopeVar.t =
   let scope = get_scope_context ctxt scope_uid in
   match Ident.Map.find_opt y scope.var_idmap with
-  | Some (SubScope (sub_uid, _sub_id, _)) -> sub_uid
+  | Some (SubScope (sub_uid, _sub_id)) -> sub_uid
   | _ -> raise_unknown_identifier "for a subscope of this scope" (y, pos)
 
 (** [is_subscope_uid scope_uid ctxt y] returns true if [y] belongs to the
@@ -234,14 +234,22 @@ let get_modname ctxt (id, pos) =
   | None -> Message.error ~pos "Module \"@{<blue>%s@}\" not found" id
   | Some modname -> modname
 
-let get_module_ctx ctxt id =
-  let modname = get_modname ctxt id in
+let get_module_ctx ctxt modname =
   { ctxt with local = ModuleName.Map.find modname ctxt.modules }
 
-let rec module_ctx ctxt path0 =
-  match path0 with
-  | [] -> ctxt
-  | mod_id :: path -> module_ctx (get_module_ctx ctxt mod_id) path
+let module_ctx ctxt path0 =
+  let rec loop acc ctxt = function
+    | [] -> List.rev acc, ctxt
+    | mod_id :: path ->
+      let modname = get_modname ctxt mod_id in
+      let ctxt = get_module_ctx ctxt modname in
+      loop (modname :: acc) ctxt path
+  in
+  loop [] ctxt path0
+
+let get_module_ctx ctxt id =
+  let modname = get_modname ctxt id in
+  get_module_ctx ctxt modname
 
 (** {1 Declarations pass} *)
 
@@ -251,9 +259,15 @@ let process_subscope_decl
     (ctxt : context)
     (decl : Surface.Ast.scope_decl_context_scope) : context =
   let name, name_pos = decl.scope_decl_context_scope_name in
-  let forward_output =
-    decl.Surface.Ast.scope_decl_context_scope_attribute
-      .scope_decl_context_io_output
+  let subscope_io =
+    {
+      Surface.Ast.scope_decl_context_io_output =
+        decl.Surface.Ast.scope_decl_context_scope_attribute
+          .scope_decl_context_io_output;
+      scope_decl_context_io_input =
+        decl.Surface.Ast.scope_decl_context_scope_attribute
+          .scope_decl_context_io_input;
+    }
   in
   let (path, subscope), s_pos = decl.scope_decl_context_scope_sub_scope in
   let scope_ctxt = get_scope_context ctxt scope in
@@ -262,7 +276,7 @@ let process_subscope_decl
     let info =
       match use with
       | ScopeVar v -> ScopeVar.get_info v
-      | SubScope (ssc, _, _) -> ScopeVar.get_info ssc
+      | SubScope (ssc, _) -> ScopeVar.get_info ssc
     in
     Message.error
       ~extra_pos:["first use", Mark.get info; "second use", s_pos]
@@ -270,7 +284,7 @@ let process_subscope_decl
   | None ->
     let sub_scope_uid = ScopeVar.fresh (name, name_pos) in
     let original_subscope_uid =
-      let ctxt = module_ctx ctxt path in
+      let _, ctxt = module_ctx ctxt path in
       get_scope ctxt subscope
     in
     let scope_ctxt =
@@ -278,13 +292,34 @@ let process_subscope_decl
         scope_ctxt with
         var_idmap =
           Ident.Map.add name
-            (SubScope (sub_scope_uid, original_subscope_uid, forward_output))
+            (SubScope (sub_scope_uid, original_subscope_uid))
             scope_ctxt.var_idmap;
         sub_scopes =
           ScopeName.Set.add original_subscope_uid scope_ctxt.sub_scopes;
       }
     in
-    { ctxt with scopes = ScopeName.Map.add scope scope_ctxt ctxt.scopes }
+    let subscope_ctxt = get_scope_context ctxt original_subscope_uid in
+    {
+      ctxt with
+      scopes = ScopeName.Map.add scope scope_ctxt ctxt.scopes;
+      var_typs =
+        ScopeVar.Map.add sub_scope_uid
+          {
+            var_sig_typ =
+              ( TArrow
+                  ( [TStruct subscope_ctxt.scope_in_struct, name_pos],
+                    (TStruct subscope_ctxt.scope_out_struct, name_pos) ),
+                name_pos );
+            var_sig_is_condition = false;
+            var_sig_parameters = None;
+            (* We do not populate the parameter field for sub-scopes as the
+               parameters are the scope's input variables. *)
+            var_sig_io = subscope_io;
+            var_sig_states_idmap = Shared_ast.Ident.Map.empty;
+            var_sig_states_list = [];
+          }
+          ctxt.var_typs;
+    }
 
 let is_type_cond ((typ, _) : Surface.Ast.typ) =
   match typ with
@@ -295,19 +330,22 @@ let is_type_cond ((typ, _) : Surface.Ast.typ) =
 
 (** Process a basic type (all types except function types) *)
 let rec process_base_typ
+    ?(rev_named_path_acc = [])
     (ctxt : context)
     ((typ, typ_pos) : Surface.Ast.base_typ Mark.pos) : typ =
   match typ with
   | Surface.Ast.Condition -> TLit TBool, typ_pos
   | Surface.Ast.Data (Surface.Ast.Collection t) ->
     ( TArray
-        (process_base_typ ctxt (Surface.Ast.Data (Mark.remove t), Mark.get t)),
+        (process_base_typ ~rev_named_path_acc ctxt
+           (Surface.Ast.Data (Mark.remove t), Mark.get t)),
       typ_pos )
   | Surface.Ast.Data (Surface.Ast.TTuple tl) ->
     ( TTuple
         (List.map
            (fun t ->
-             process_base_typ ctxt (Surface.Ast.Data (Mark.remove t), Mark.get t))
+             process_base_typ ~rev_named_path_acc ctxt
+               (Surface.Ast.Data (Mark.remove t), Mark.get t))
            tl),
       typ_pos )
   | Surface.Ast.Data (Surface.Ast.Primitive prim) -> (
@@ -320,11 +358,19 @@ let rec process_base_typ
     | Surface.Ast.Boolean -> TLit TBool, typ_pos
     | Surface.Ast.Text -> raise_unsupported_feature "text type" typ_pos
     | Surface.Ast.Named ([], (ident, _pos)) -> (
+      let path = List.rev rev_named_path_acc in
       match Ident.Map.find_opt ident ctxt.local.typedefs with
-      | Some (TStruct s_uid) -> TStruct s_uid, typ_pos
-      | Some (TEnum e_uid) -> TEnum e_uid, typ_pos
+      | Some (TStruct s_uid) ->
+        let s_uid = StructName.map_info (fun (_, x) -> path, x) s_uid in
+        TStruct s_uid, typ_pos
+      | Some (TEnum e_uid) ->
+        let e_uid = EnumName.map_info (fun (_, x) -> path, x) e_uid in
+        TEnum e_uid, typ_pos
       | Some (TScope (_, scope_str)) ->
-        TStruct scope_str.out_struct_name, typ_pos
+        let s_uid =
+          StructName.map_info (fun (_, x) -> path, x) scope_str.out_struct_name
+        in
+        TStruct s_uid, typ_pos
       | None ->
         Message.error ~pos:typ_pos
           "Unknown type @{<yellow>\"%s\"@}, not a struct or enum previously \
@@ -337,7 +383,14 @@ let rec process_base_typ
           "This refers to module @{<blue>%s@}, which was not found" modul
       | Some mname ->
         let mod_ctxt = ModuleName.Map.find mname ctxt.modules in
-        process_base_typ
+        let rev_named_path_acc : Uid.Path.t =
+          match mod_ctxt.current_module with
+          | Some mname ->
+            ModuleName.map_info (fun (s, _) -> s, mpos) mname
+            :: rev_named_path_acc
+          | None -> rev_named_path_acc
+        in
+        process_base_typ ~rev_named_path_acc
           { ctxt with local = mod_ctxt }
           Surface.Ast.(Data (Primitive (Named (path, id))), typ_pos)))
 
@@ -365,7 +418,7 @@ let process_data_decl
     let info =
       match use with
       | ScopeVar v -> ScopeVar.get_info v
-      | SubScope (ssc, _, _) -> ScopeVar.get_info ssc
+      | SubScope (ssc, _) -> ScopeVar.get_info ssc
     in
     Message.error
       ~extra_pos:["First use:", Mark.get info; "Second use:", pos]
@@ -529,8 +582,14 @@ let process_topdef ?(visibility = Public) ctxt def =
   {
     ctxt with
     topdefs =
-      TopdefName.Map.add uid
-        (process_type ctxt def.Surface.Ast.topdef_type, visibility)
+      TopdefName.Map.update uid
+        (fun prev_def ->
+          let visibility =
+            match prev_def, visibility with
+            | Some (_, Private), Private | None, Private -> Private
+            | Some (_, Public), _ | _, Public -> Public
+          in
+          Some (process_type ctxt def.Surface.Ast.topdef_type, visibility))
         ctxt.topdefs;
   }
 
@@ -616,15 +675,17 @@ let process_scope_decl
       Ident.Map.fold
         (fun id var svmap ->
           match var with
-          | SubScope (_, _, (false, _)) -> svmap
-          | ScopeVar v | SubScope (v, _, (true, _)) -> (
-            try
-              let field =
-                StructName.Map.find str
-                  (Ident.Map.find id ctxt.local.field_idmap)
-              in
-              ScopeVar.Map.add v field svmap
-            with StructName.Map.Not_found _ | Ident.Map.Not_found _ -> svmap))
+          | ScopeVar v | SubScope (v, _) ->
+            let is_output = (get_var_io ctxt v).scope_decl_context_io_output in
+            if Mark.remove is_output then
+              try
+                let field =
+                  StructName.Map.find str
+                    (Ident.Map.find id ctxt.local.field_idmap)
+                in
+                ScopeVar.Map.add v field svmap
+              with StructName.Map.Not_found _ | Ident.Map.Not_found _ -> svmap
+            else svmap)
         sco.var_idmap ScopeVar.Map.empty
     in
     let typedefs =
@@ -668,6 +729,9 @@ let process_name_item
         ]
       "%s name @{<yellow>\"%s\"@} already defined" msg name
   in
+  let path =
+    match ctxt.local.current_module with None -> [] | Some p -> [p]
+  in
   match Mark.remove item with
   | ScopeDecl decl ->
     let name, pos = decl.scope_decl_name in
@@ -676,9 +740,9 @@ let process_name_item
       (fun use ->
         raise_already_defined_error (typedef_info use) name pos "scope")
       (Ident.Map.find_opt name ctxt.local.typedefs);
-    let scope_uid = ScopeName.fresh ctxt.local.path (name, pos) in
-    let in_struct_name = StructName.fresh ctxt.local.path (name ^ "_in", pos) in
-    let out_struct_name = StructName.fresh ctxt.local.path (name, pos) in
+    let scope_uid = ScopeName.fresh path (name, pos) in
+    let in_struct_name = StructName.fresh path (name ^ "_in", pos) in
+    let out_struct_name = StructName.fresh path (name, pos) in
     let typedefs =
       Ident.Map.add name
         (TScope
@@ -710,7 +774,7 @@ let process_name_item
       (fun use ->
         raise_already_defined_error (typedef_info use) name pos "struct")
       (Ident.Map.find_opt name ctxt.local.typedefs);
-    let s_uid = StructName.fresh ctxt.local.path sdecl.struct_decl_name in
+    let s_uid = StructName.fresh path sdecl.struct_decl_name in
     let typedefs =
       Ident.Map.add
         (Mark.remove sdecl.struct_decl_name)
@@ -723,7 +787,7 @@ let process_name_item
       (fun use ->
         raise_already_defined_error (typedef_info use) name pos "enum")
       (Ident.Map.find_opt name ctxt.local.typedefs);
-    let e_uid = EnumName.fresh ctxt.local.path edecl.enum_decl_name in
+    let e_uid = EnumName.fresh path edecl.enum_decl_name in
     let typedefs =
       Ident.Map.add
         (Mark.remove edecl.enum_decl_name)
@@ -735,7 +799,7 @@ let process_name_item
     let name, _ = def.topdef_name in
     let uid =
       match Ident.Map.find_opt name ctxt.local.topdefs with
-      | None -> TopdefName.fresh ctxt.local.path def.topdef_name
+      | None -> TopdefName.fresh path def.topdef_name
       | Some uid -> uid
       (* Topdef declaration may appear multiple times as long as their types
          match and only one contains an expression defining it *)
@@ -829,7 +893,7 @@ let get_def_key
   | [y; x] ->
     let (subscope_var, name) : ScopeVar.t * ScopeName.t =
       match Ident.Map.find_opt (Mark.remove y) scope_ctxt.var_idmap with
-      | Some (SubScope (v, u, _)) -> v, u
+      | Some (SubScope (v, u)) -> v, u
       | Some _ ->
         Message.error ~pos "Invalid definition,@ %a@ is@ not@ a@ subscope"
           Print.lit_style (Mark.remove y)
@@ -985,7 +1049,7 @@ let process_use_item (ctxt : context) (item : Surface.Ast.code_item Mark.pos) :
 
 let empty_module_ctxt =
   {
-    path = [];
+    current_module = None;
     typedefs = Ident.Map.empty;
     field_idmap = Ident.Map.empty;
     constructor_idmap = Ident.Map.empty;
@@ -1024,7 +1088,7 @@ let form_context (surface, mod_uses) surface_modules : context =
                 {
                   ctxt.local with
                   used_modules = mod_uses;
-                  path = [m];
+                  current_module = Some m;
                   is_external = intf.Surface.Ast.intf_modname.module_external;
                 };
             }

@@ -38,6 +38,10 @@ You can join the Catala community on [Zulip][chat-link]!
 * [Usage](#usage)
   * [Catala](#catala)
   * [Clerk](#clerk)
+* [Tooling](#tooling)
+  * [Syntax highlighting](#syntax-highlighting)
+  * [Catala VScode extension](#catala-vscode-extension)
+  * [Code formatting](#code-formatting)
 * [Documentation](#documentation)
   * [Syntax cheat sheet](#syntax-cheat-sheet)
   * [Formal semantics](#formal-semantics)
@@ -119,6 +123,11 @@ However, if you wish to get the latest developments of the compiler, you probabl
 want to compile it from the sources of this repository or use nix. For that, see
 [the dedicated readme](INSTALL.md).
 
+Note: the `--locked` flag can be added to the above commands to more closely
+mimic known working dev setups. Conversely, `opam lock` should be called to
+regenerate the `catala.opam.locked` file upon modifications of the main opam
+file.
+
 ## Usage
 
 ### Catala
@@ -157,13 +166,41 @@ Catleg is a command line utility providing useful integration with
 legal documentation. See the [decidated
 repository](https://github.com/catalaLang/catleg) for more information.
 
+## Tooling
+
+### Syntax highlighting
+
+Syntax highlighting is available for several text-editors. Scripts can
+be found
+[here](https://github.com/CatalaLang/catala/tree/master/syntax_highlighting).
+
+### Catala VSCode Extension
+
+A VSCode extension for Catala is available [on the
+marketplace](https://marketplace.visualstudio.com/items?itemName=catalalang.catala).
+It bundles a syntax highlighter and a dedicated LSP server which
+offers support for code navigation, auto-completion along with a UX
+for test suites. See the [dedicated
+repository](https://github.com/catalaLang/catala-language-server) for
+more details.
+
+### Code formatting
+
+A code formatting tool, `catala-format` is available alongside the LSP
+server. If installed, code formatting is directly available in VSCode.
+This tool is based on a [`tree-sitter`
+grammar](https://github.com/CatalaLang/tree-sitter-catala) for
+Catala. See the [dedicated
+repository](https://github.com/catalaLang/catala-format) for more
+details.
+
 ## Documentation
 
 ### Syntax cheat sheet
 
-A complete and handy reference of the Catala syntax can be found in the [cheat
-sheet](https://catalalang.github.io/catala/syntax.pdf) (for French and English
-versions of the syntax).
+A complete and handy reference of the Catala syntax can be found in
+the [cheat sheet](https://catalalang.github.io/catala/syntax.pdf) (for
+French and English versions of the syntax).
 
 ### Formal semantics
 

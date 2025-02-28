@@ -47,6 +47,7 @@ module type Id = sig
 
   val fresh : info -> t
   val get_info : t -> info
+  val map_info : (info -> info) -> t -> t
   val compare : t -> t -> int
   val equal : t -> t -> bool
   val format : Format.formatter -> t -> unit
@@ -96,14 +97,20 @@ module Path : sig
       with [pfx], it is returned unchanged *)
 end
 
-(** Same as [Gen] but also registers path information *)
-module Gen_qualified (_ : Style) () : sig
+module type Qualified = sig
   include Id with type info = Path.t * MarkedString.info
 
   val fresh : Path.t -> MarkedString.info -> t
   val path : t -> Path.t
   val get_info : t -> MarkedString.info
 
+  val base : t -> string
+  (** Returns only the base ident name, while [to_string] includes the path
+      prefix *)
+
   val hash : strip:Path.t -> t -> Hash.t
   (** [strip] strips that prefix from the start of the path before hashing *)
 end
+
+(** Same as [Gen] but also registers path information *)
+module Gen_qualified (_ : Style) () : Qualified

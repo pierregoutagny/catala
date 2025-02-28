@@ -82,7 +82,7 @@ let rec resolve_eq ctx pos ty args m =
               (fun cstr2 ty ->
                 if EnumConstructor.equal cstr cstr2 then
                   let v2 = Var.make "v2" in
-                  Expr.make_abs [| v2 |]
+                  Expr.make_ghost_abs [v2]
                     (resolve_eq ctx pos ty
                        [
                          Expr.evar v1 (Expr.with_ty m ty);
@@ -91,43 +91,57 @@ let rec resolve_eq ctx pos ty args m =
                        m)
                     [ty] pos
                 else
-                  Expr.make_abs
-                    [| Var.make "_" |]
+                  Expr.make_ghost_abs
+                    [Var.make "_"]
                     (Expr.elit (LBool false) m)
                     [ty] pos)
               constrs
           in
-          Expr.make_abs [| v1 |] (Expr.ematch ~name ~e:arg2 ~cases m) [ty] pos)
+          Expr.make_ghost_abs [v1] (Expr.ematch ~name ~e:arg2 ~cases m) [ty] pos)
         constrs
     in
     Expr.ematch ~name ~e:arg1 ~cases m
-  | TArray ty ->
+  | TArray ty1 ->
     let tbool = TLit TBool, pos in
+    let same_length =
+      resolve_eq ctx pos (TLit TInt, pos)
+        (List.map
+           (fun e ->
+             Expr.eappop ~op:(Length, pos) ~args:[e] ~tys:[ty]
+               (Expr.with_ty m (TLit TInt, pos)))
+           args)
+        m
+    in
     let map2_f =
       let x = Var.make "x" in
       let y = Var.make "y" in
-      Expr.make_abs [| x; y |]
-        (resolve_eq ctx pos ty
-           [Expr.evar x (Expr.with_ty m ty); Expr.evar y (Expr.with_ty m ty)]
+      Expr.make_ghost_abs [x; y]
+        (resolve_eq ctx pos ty1
+           [Expr.evar x (Expr.with_ty m ty1); Expr.evar y (Expr.with_ty m ty1)]
            m)
-        [ty; ty] pos
+        [ty1; ty1] pos
     in
     let fold_f =
       let acc = Var.make "acc" in
       let x = Var.make "x" in
-      Expr.make_abs [| acc; x |]
+      Expr.make_ghost_abs [acc; x]
         (conjunction [Expr.evar acc m; Expr.evar x m])
         [tbool; tbool] pos
     in
     let bool_list =
       Expr.eappop ~op:(Map2, pos) ~args:(map2_f :: args)
-        ~tys:[TArrow ([ty; ty], tbool), pos; TArray ty, pos; TArray ty, pos]
+        ~tys:[TArrow ([ty1; ty1], tbool), pos; TArray ty1, pos; TArray ty1, pos]
         (Expr.with_ty m (TArray tbool, pos))
     in
-    Expr.eappop ~op:(Fold, pos)
-      ~args:[fold_f; Expr.elit (LBool true) m; bool_list]
-      ~tys:[TArrow ([tbool; tbool], tbool), pos; tbool; TArray tbool, pos]
-      m
+    let same_elements =
+      Expr.eappop ~op:(Fold, pos)
+        ~args:[fold_f; Expr.elit (LBool true) m; bool_list]
+        ~tys:[TArrow ([tbool; tbool], tbool), pos; tbool; TArray tbool, pos]
+        m
+    in
+    Expr.eappop ~op:(And, pos)
+      ~args:[same_length; same_elements]
+      ~tys:[tbool; tbool] m
   | TOption _ | TDefault _ -> assert false
   | TAny -> Message.error ~internal:true "Unknown type for equality resolution"
 

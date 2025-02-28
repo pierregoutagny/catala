@@ -31,8 +31,6 @@ let is_empty_error : type a. (a, 'm) gexpr -> bool =
 (* TODO: we should provide a generic way to print logs, that work across the
    different backends: python, ocaml, javascript, and interpreter *)
 
-let indent_str = ref ""
-
 (** {1 Evaluation} *)
 
 let rec format_runtime_value lang ppf = function
@@ -60,36 +58,49 @@ let rec format_runtime_value lang ppf = function
          ~pp_sep:(fun ppf () -> Format.fprintf ppf ";@ ")
          (format_runtime_value lang))
       (Array.to_list elts)
+  | Runtime.Tuple elts ->
+    Format.fprintf ppf "@[<hv 2>(@,@[<hov>%a@]@;<0 -2>)@]"
+      (Format.pp_print_list
+         ~pp_sep:(fun ppf () -> Format.fprintf ppf ",@ ")
+         (format_runtime_value lang))
+      (Array.to_list elts)
   | Runtime.Unembeddable -> Format.pp_print_string ppf "<object>"
 
-let print_log lang entry =
+let print_log ppf lang level entry =
   let pp_infos =
     Format.(
-      pp_print_list
-        ~pp_sep:(fun ppf () -> Format.fprintf ppf ".@,")
-        pp_print_string)
+      pp_print_list ~pp_sep:(fun ppf () -> fprintf ppf ".@,") pp_print_string)
+  in
+  let logprintf level entry fmt =
+    if ppf == Message.std_ppf () then Format.fprintf ppf "[@{<bold;grey>LOG@}] ";
+    Format.fprintf ppf
+      ("@[<hov>%*s%a" ^^ fmt ^^ "@]@,")
+      (level * 2) "" Print.log_entry entry
   in
   match entry with
   | Runtime.BeginCall infos ->
-    Message.log "%s%a %a" !indent_str Print.log_entry BeginCall pp_infos infos;
-    indent_str := !indent_str ^ "  "
+    logprintf level BeginCall " %a" pp_infos infos;
+    level + 1
   | Runtime.EndCall infos ->
-    indent_str := String.sub !indent_str 0 (String.length !indent_str - 2);
-    Message.log "%s%a %a" !indent_str Print.log_entry EndCall pp_infos infos
+    let level = max 0 (level - 1) in
+    logprintf level EndCall " %a" pp_infos infos;
+    level
   | Runtime.VariableDefinition (infos, io, value) ->
-    Message.log "%s%a %a: @{<green>%s@}" !indent_str Print.log_entry
+    logprintf level
       (VarDef
          {
            log_typ = TAny;
            log_io_input = io.Runtime.io_input;
            log_io_output = io.Runtime.io_output;
          })
-      pp_infos infos
-      (Message.unformat (fun ppf -> format_runtime_value lang ppf value))
+      " %a: @{<green>%s@}" pp_infos infos
+      (Message.unformat (fun ppf -> format_runtime_value lang ppf value));
+    level
   | Runtime.DecisionTaken rtpos ->
     let pos = Expr.runtime_to_pos rtpos in
-    Message.log "%s@[<v>%a@{<green>Definition applied@}:@,%a@]" !indent_str
-      Print.log_entry PosRecordIfTrueBool Pos.format_loc_text pos
+    logprintf level PosRecordIfTrueBool
+      "@[<v -2>@{<green>Definition applied@}:@,%a@]@," Pos.format_loc_text pos;
+    level
 
 let rec value_to_runtime_embedded = function
   | ELit LUnit -> Runtime.Unit
@@ -115,6 +126,10 @@ let rec value_to_runtime_embedded = function
     Runtime.Array
       (Array.of_list
          (List.map (fun e -> value_to_runtime_embedded (Mark.remove e)) el))
+  | ETuple el ->
+    Runtime.Tuple
+      (Array.of_list
+         (List.map (fun e -> value_to_runtime_embedded (Mark.remove e)) el))
   | _ -> Runtime.Unembeddable
 
 (* Todo: this should be handled early when resolving overloads. Here we have
@@ -132,7 +147,7 @@ let handle_eq pos evaluate_operator m lang e1 e2 =
   | ELit (LDuration x1), ELit (LDuration x2) ->
     o_eq_dur_dur (Expr.pos_to_runtime (Expr.mark_pos m)) x1 x2
   | ELit (LDate x1), ELit (LDate x2) -> o_eq_dat_dat x1 x2
-  | EArray es1, EArray es2 -> (
+  | EArray es1, EArray es2 | ETuple es1, ETuple es2 -> (
     try
       List.for_all2
         (fun e1 e2 ->
@@ -238,7 +253,7 @@ let rec evaluate_operator
   match op, args with
   | Length, [(EArray es, _)] ->
     ELit (LInt (Runtime.integer_of_int (List.length es)))
-  | Log (entry, infos), [(e, _)] when Global.options.trace -> (
+  | Log (entry, infos), [(e, _)] when Global.options.trace <> None -> (
     let rtinfos = List.map Uid.MarkedString.to_string infos in
     match entry with
     | BeginCall -> Runtime.log_begin_call rtinfos e
@@ -269,7 +284,10 @@ let rec evaluate_operator
       (List.map2
          (fun e1 e2 -> eval_application evaluate_expr f [e1; e2])
          es1 es2)
-  | Reduce, [_; default; (EArray [], _)] -> Mark.remove default
+  | Reduce, [_; default; (EArray [], _)] ->
+    Mark.remove
+      (eval_application evaluate_expr default
+         [ELit LUnit, Expr.with_ty m (TLit TUnit, pos)])
   | Reduce, [f; _; (EArray (x0 :: xn), _)] ->
     Mark.remove
       (List.fold_left
@@ -316,6 +334,7 @@ let rec evaluate_operator
   | Minus_rat, [(ELit (LRat x), _)] -> ELit (LRat (o_minus_rat x))
   | Minus_mon, [(ELit (LMoney x), _)] -> ELit (LMoney (o_minus_mon x))
   | Minus_dur, [(ELit (LDuration x), _)] -> ELit (LDuration (o_minus_dur x))
+  | ToInt_rat, [(ELit (LRat x), _)] -> ELit (LInt (o_toint_rat x))
   | ToRat_int, [(ELit (LInt i), _)] -> ELit (LRat (o_torat_int i))
   | ToRat_mon, [(ELit (LMoney i), _)] -> ELit (LRat (o_torat_mon i))
   | ToMoney_rat, [(ELit (LRat i), _)] -> ELit (LMoney (o_tomoney_rat i))
@@ -339,8 +358,8 @@ let rec evaluate_operator
     ELit (LMoney (o_sub_mon_mon x y))
   | Sub_dat_dat, [(ELit (LDate x), _); (ELit (LDate y), _)] ->
     ELit (LDuration (o_sub_dat_dat x y))
-  | Sub_dat_dur, [(ELit (LDate x), _); (ELit (LDuration y), _)] ->
-    ELit (LDate (o_sub_dat_dur x y))
+  | Sub_dat_dur r, [(ELit (LDate x), _); (ELit (LDuration y), _)] ->
+    ELit (LDate (o_sub_dat_dur r (rpos ()) x y))
   | Sub_dur_dur, [(ELit (LDuration x), _); (ELit (LDuration y), _)] ->
     ELit (LDuration (o_sub_dur_dur x y))
   | Mult_int_int, [(ELit (LInt x), _); (ELit (LInt y), _)] ->
@@ -434,17 +453,18 @@ let rec evaluate_operator
         Runtime.(
           Error (Conflict, List.map Expr.(fun e -> pos_to_runtime (pos e)) excs))
     )
-  | ( ( Minus_int | Minus_rat | Minus_mon | Minus_dur | ToRat_int | ToRat_mon
-      | ToMoney_rat | Round_rat | Round_mon | Add_int_int | Add_rat_rat
-      | Add_mon_mon | Add_dat_dur _ | Add_dur_dur | Sub_int_int | Sub_rat_rat
-      | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur | Sub_dur_dur | Mult_int_int
-      | Mult_rat_rat | Mult_mon_rat | Mult_dur_int | Div_int_int | Div_rat_rat
-      | Div_mon_mon | Div_mon_rat | Div_dur_dur | Lt_int_int | Lt_rat_rat
-      | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur | Lte_int_int | Lte_rat_rat
-      | Lte_mon_mon | Lte_dat_dat | Lte_dur_dur | Gt_int_int | Gt_rat_rat
-      | Gt_mon_mon | Gt_dat_dat | Gt_dur_dur | Gte_int_int | Gte_rat_rat
-      | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur | Eq_boo_boo | Eq_int_int
-      | Eq_rat_rat | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur | HandleExceptions ),
+  | ( ( Minus_int | Minus_rat | Minus_mon | Minus_dur | ToInt_rat | ToRat_int
+      | ToRat_mon | ToMoney_rat | Round_rat | Round_mon | Add_int_int
+      | Add_rat_rat | Add_mon_mon | Add_dat_dur _ | Add_dur_dur | Sub_int_int
+      | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur _ | Sub_dur_dur
+      | Mult_int_int | Mult_rat_rat | Mult_mon_rat | Mult_dur_int | Div_int_int
+      | Div_rat_rat | Div_mon_mon | Div_mon_rat | Div_dur_dur | Lt_int_int
+      | Lt_rat_rat | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur | Lte_int_int
+      | Lte_rat_rat | Lte_mon_mon | Lte_dat_dat | Lte_dur_dur | Gt_int_int
+      | Gt_rat_rat | Gt_mon_mon | Gt_dat_dat | Gt_dur_dur | Gte_int_int
+      | Gte_rat_rat | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur | Eq_boo_boo
+      | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur
+      | HandleExceptions ),
       _ ) ->
     err ()
 
@@ -660,8 +680,8 @@ let rec evaluate_expr :
     let runtime_path =
       ( List.map ModuleName.to_string path,
         match Mark.remove name with
-        | External_value name -> Mark.remove (TopdefName.get_info name)
-        | External_scope name -> Mark.remove (ScopeName.get_info name) )
+        | External_value name -> TopdefName.base name
+        | External_scope name -> ScopeName.base name )
       (* we have the guarantee that the two cases won't collide because they
          have different capitalisation rules inherited from the input *)
     in
@@ -792,11 +812,28 @@ let rec evaluate_expr :
     match Mark.remove e with
     | ELit (LBool true) -> Mark.add m (ELit LUnit)
     | ELit (LBool false) ->
-      Message.warning "Assertion failed:@ %a"
-        (Print.UserFacing.expr lang)
-        (partially_evaluate_expr_for_assertion_failure_message ctx lang
-           (Expr.skip_wrappers e'));
-      raise Runtime.(Error (AssertionFailed, [Expr.pos_to_runtime pos]))
+      if Global.options.stop_on_error then
+        raise Runtime.(Error (AssertionFailed, [Expr.pos_to_runtime pos]))
+      else
+        let partially_evaluated_assertion_failure_expr =
+          partially_evaluate_expr_for_assertion_failure_message ctx lang
+            (Expr.skip_wrappers e')
+        in
+        (match Mark.remove partially_evaluated_assertion_failure_expr with
+        | ELit (LBool false) ->
+          if Global.options.no_fail_on_assert then
+            Message.warning ~pos "Assertion failed:"
+          else Message.delayed_error ~kind:Generic () ~pos "Assertion failed:"
+        | _ ->
+          if Global.options.no_fail_on_assert then
+            Message.warning ~pos "Assertion failed:@ %a"
+              (Print.UserFacing.expr lang)
+              partially_evaluated_assertion_failure_expr
+          else
+            Message.delayed_error ~kind:Generic () ~pos "Assertion failed:@ %a"
+              (Print.UserFacing.expr lang)
+              partially_evaluated_assertion_failure_expr);
+        Mark.add m (ELit LUnit)
     | _ ->
       Message.error ~pos:(Expr.pos e') "%a" Format.pp_print_text
         "Expected a boolean literal for the result of this assertion (should \
@@ -871,6 +908,8 @@ and partially_evaluate_expr_for_assertion_failure_message :
             ];
         },
       Mark.get e )
+  (* TODO: improve this heuristic, because if the assertion is not [e1 <op> e2],
+     the error message merely displays [false]... *)
   | _ -> evaluate_expr ctx lang e
 
 let evaluate_expr_trace :
@@ -880,14 +919,37 @@ let evaluate_expr_trace :
     ((d, yes) interpr_kind, 't) gexpr ->
     ((d, yes) interpr_kind, 't) gexpr =
  fun ctx lang e ->
+  Runtime.reset_log ();
   Fun.protect
     (fun () -> evaluate_expr ctx lang e)
     ~finally:(fun () ->
-      if Global.options.trace then
+      match Global.options.trace with
+      | None -> ()
+      | Some (lazy ppf) ->
         let trace = Runtime.retrieve_log () in
-        List.iter (print_log lang) trace
-        (* TODO: [Runtime.pp_events ~is_first_call:true Format.err_formatter
-           (Runtime.EventParser.parse_raw_events trace)] fais here, check why *))
+        if trace = [] then
+          (* FIXME: we call evaluate twice: once to generate the scope function
+             and once for the actual call scope call. A proper fix would be to
+             disable the trace for the the first pass. *)
+          ()
+        else
+          let output_trace fmt =
+            match Global.options.trace_format with
+            | Human ->
+              Format.pp_open_vbox ppf 0;
+              ignore @@ List.fold_left (print_log ppf lang) 0 trace;
+              Format.pp_close_box ppf ()
+            | JSON ->
+              Format.fprintf fmt "@[<v 2>[@,";
+              Format.pp_print_list
+                ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@,")
+                Format.pp_print_string fmt
+                (List.map Runtime.Json.raw_event trace);
+              Format.fprintf fmt "]@]@."
+          in
+          Fun.protect
+            (fun () -> output_trace ppf)
+            ~finally:(fun () -> Format.pp_print_flush ppf ()))
 
 let evaluate_expr_safe :
     type d.
@@ -960,197 +1022,217 @@ let delcustom e =
 
 let interpret_program_lcalc p s : (Uid.MarkedString.info * ('a, 'm) gexpr) list
     =
-  let e = Expr.unbox @@ Program.to_expr p s in
-  let ctx = p.decl_ctx in
-  match evaluate_expr_safe ctx p.lang (addcustom e) with
-  | (EAbs { tys = [((TStruct s_in, _) as _targs)]; _ }, mark_e) as e -> begin
-    (* At this point, the interpreter seeks to execute the scope but does not
-       have a way to retrieve input values from the command line. [taus] contain
-       the types of the scope arguments. For [context] arguments, we can provide
-       an empty thunked term. But for [input] arguments of another type, we
-       cannot provide anything so we have to fail. *)
-    let taus = StructName.Map.find s_in ctx.ctx_structs in
-    let application_term =
-      let pos = Expr.mark_pos mark_e in
-      StructField.Map.map
-        (fun ty ->
-          match Mark.remove ty with
-          | TArrow (ty_in, (TOption _, _)) ->
-            (* Context args should return an option *)
-            Expr.make_abs
-              (Array.of_list @@ List.map (fun _ -> Var.make "_") ty_in)
-              (Expr.einj ~e:(Expr.elit LUnit mark_e) ~cons:Expr.none_constr
-                 ~name:Expr.option_enum mark_e
-                : (_, _) boxed_gexpr)
-              ty_in pos
-          | TTuple ((TArrow (ty_in, (TOption _, _)), _) :: _) ->
-            (* ... or a closure if closure conversion is enabled *)
-            Expr.make_tuple
-              [
+  Message.with_delayed_errors (fun () ->
+      let e = Expr.unbox @@ Program.to_expr p s in
+      let ctx = p.decl_ctx in
+      match evaluate_expr_safe ctx p.lang (addcustom e) with
+      | (EAbs { tys = [((TStruct s_in, _) as _targs)]; _ }, mark_e) as e ->
+        begin
+        (* At this point, the interpreter seeks to execute the scope but does
+           not have a way to retrieve input values from the command line. [taus]
+           contain the types of the scope arguments. For [context] arguments, we
+           can provide an empty thunked term. But for [input] arguments of
+           another type, we cannot provide anything so we have to fail. *)
+        let taus = StructName.Map.find s_in ctx.ctx_structs in
+        let application_term =
+          let pos = Expr.mark_pos mark_e in
+          StructField.Map.map
+            (fun ty ->
+              match Mark.remove ty with
+              | TArrow (ty_in, (TOption _, _)) ->
+                (* Context args should return an option *)
                 Expr.make_abs
-                  (Array.of_list @@ List.map (fun _ -> Var.make "_") ty_in)
+                  (List.map (fun _ -> Mark.ghost (Var.make "_")) ty_in)
                   (Expr.einj ~e:(Expr.elit LUnit mark_e) ~cons:Expr.none_constr
-                     ~name:Expr.option_enum mark_e)
-                  ty_in (Expr.mark_pos mark_e);
-                Expr.eappop
-                  ~op:(Operator.ToClosureEnv, pos)
-                  ~args:[Expr.etuple [] mark_e]
-                  ~tys:[TClosureEnv, pos]
-                  mark_e;
-              ]
-              mark_e
-          | _ ->
-            Message.error ~pos:(Mark.get ty)
-              "This scope needs an input argument of type@ %a@ %a"
-              Print.typ_debug ty Format.pp_print_text
-              "to be executed. But the Catala built-in interpreter does not \
-               have a way to retrieve input values from the command line, so \
-               it cannot execute this scope. Please create another scope that \
-               provides the input arguments to this one and execute it \
-               instead.")
-        taus
-    in
-    let to_interpret =
-      Expr.make_app (Expr.box e)
-        [
-          Expr.estruct ~name:s_in ~fields:application_term
-            (Expr.map_ty (fun (_, pos) -> TStruct s_in, pos) mark_e);
-        ]
-        [TStruct s_in, Expr.pos e]
-        (Expr.pos e)
-    in
-    match
-      Mark.remove (evaluate_expr_safe ctx p.lang (Expr.unbox to_interpret))
-    with
-    | EStruct { fields; _ } ->
-      List.map
-        (fun (fld, e) -> StructField.get_info fld, e)
-        (StructField.Map.bindings fields)
-    | exception Runtime.Error (err, rpos) ->
-      Message.error
-        ~extra_pos:(List.map (fun rp -> "", Expr.runtime_to_pos rp) rpos)
-        "%a" Format.pp_print_text
-        (Runtime.error_message err)
-    | _ ->
-      Message.error ~pos:(Expr.pos e) ~internal:true "%a" Format.pp_print_text
-        "The interpretation of the program doesn't yield a struct \
-         corresponding to the scope variables"
-  end
-  | _ ->
-    Message.error ~pos:(Expr.pos e) "%a" Format.pp_print_text
-      "The interpreter can only interpret terms starting with functions having \
-       thunked arguments"
+                     ~name:Expr.option_enum mark_e
+                    : (_, _) boxed_gexpr)
+                  ty_in pos
+              | TTuple ((TArrow (ty_in, (TOption _, _)), _) :: _) ->
+                (* ... or a closure if closure conversion is enabled *)
+                Expr.make_tuple
+                  [
+                    Expr.make_abs
+                      (List.map (fun _ -> Mark.ghost (Var.make "_")) ty_in)
+                      (Expr.einj ~e:(Expr.elit LUnit mark_e)
+                         ~cons:Expr.none_constr ~name:Expr.option_enum mark_e)
+                      ty_in (Expr.mark_pos mark_e);
+                    Expr.eappop
+                      ~op:(Operator.ToClosureEnv, pos)
+                      ~args:[Expr.etuple [] mark_e]
+                      ~tys:[TClosureEnv, pos]
+                      mark_e;
+                  ]
+                  mark_e
+              | TOption ty ->
+                Expr.einj ~cons:Expr.none_constr ~name:Expr.option_enum
+                  ~e:
+                    (Expr.elit LUnit
+                       (Expr.with_ty mark_e (TLit TUnit, Expr.pos e)))
+                  (Expr.with_ty mark_e (TOption ty, Expr.pos e))
+              | _ ->
+                Message.error ~pos:(Mark.get ty)
+                  "This scope needs an input argument of type@ %a@ %a"
+                  Print.typ_debug ty Format.pp_print_text
+                  "to be executed. But the Catala built-in interpreter does \
+                   not have a way to retrieve input values from the command \
+                   line, so it cannot execute this scope. Please create \
+                   another scope that provides the input arguments to this one \
+                   and execute it instead.")
+            taus
+        in
+        let to_interpret =
+          Expr.make_app (Expr.box e)
+            [
+              Expr.estruct ~name:s_in ~fields:application_term
+                (Expr.map_ty (fun (_, pos) -> TStruct s_in, pos) mark_e);
+            ]
+            [TStruct s_in, Expr.pos e]
+            (Expr.pos e)
+        in
+        match
+          Mark.remove (evaluate_expr_safe ctx p.lang (Expr.unbox to_interpret))
+        with
+        | EStruct { fields; _ } ->
+          List.map
+            (fun (fld, e) -> StructField.get_info fld, e)
+            (StructField.Map.bindings fields)
+        | exception Runtime.Error (err, rpos) ->
+          Message.error
+            ~extra_pos:(List.map (fun rp -> "", Expr.runtime_to_pos rp) rpos)
+            "%a" Format.pp_print_text
+            (Runtime.error_message err)
+        | _ ->
+          Message.error ~pos:(Expr.pos e) ~internal:true "%a"
+            Format.pp_print_text
+            "The interpretation of the program doesn't yield a struct \
+             corresponding to the scope variables"
+      end
+      | _ ->
+        Message.error ~pos:(Expr.pos e) "%a" Format.pp_print_text
+          "The interpreter can only interpret terms starting with functions \
+           having thunked arguments")
 
 (** {1 API} *)
 let interpret_program_dcalc p s : (Uid.MarkedString.info * ('a, 'm) gexpr) list
     =
-  let ctx = p.decl_ctx in
-  let e = Expr.unbox (Program.to_expr p s) in
-  match evaluate_expr_safe p.decl_ctx p.lang (addcustom e) with
-  | (EAbs { tys = [((TStruct s_in, _) as _targs)]; _ }, mark_e) as e -> begin
-    (* At this point, the interpreter seeks to execute the scope but does not
-       have a way to retrieve input values from the command line. [taus] contain
-       the types of the scope arguments. For [context] arguments, we can provide
-       an empty thunked term. But for [input] arguments of another type, we
-       cannot provide anything so we have to fail. *)
-    let taus = StructName.Map.find s_in ctx.ctx_structs in
-    let application_term =
-      StructField.Map.map
-        (fun ty ->
-          match Mark.remove ty with
-          | TArrow (ty_in, ty_out) ->
-            Expr.make_abs
-              (Array.of_list @@ List.map (fun _ -> Var.make "_") ty_in)
-              (Bindlib.box EEmpty, Expr.with_ty mark_e ty_out)
-              ty_in (Expr.mark_pos mark_e)
-          | _ ->
-            Message.error ~pos:(Mark.get ty) "%a" Format.pp_print_text
-              "This scope needs input arguments to be executed. But the Catala \
-               built-in interpreter does not have a way to retrieve input \
-               values from the command line, so it cannot execute this scope. \
-               Please create another scope that provides the input arguments \
-               to this one and execute it instead.")
-        taus
-    in
-    let to_interpret =
-      Expr.make_app (Expr.box e)
-        [
-          Expr.estruct ~name:s_in ~fields:application_term
-            (Expr.map_ty (fun (_, pos) -> TStruct s_in, pos) mark_e);
-        ]
-        [TStruct s_in, Expr.pos e]
-        (Expr.pos e)
-    in
-    match
-      Mark.remove (evaluate_expr_safe ctx p.lang (Expr.unbox to_interpret))
-    with
-    | EStruct { fields; _ } ->
-      List.map
-        (fun (fld, e) -> StructField.get_info fld, e)
-        (StructField.Map.bindings fields)
-    | _ ->
-      Message.error ~pos:(Expr.pos e) "%a" Format.pp_print_text
-        "The interpretation of a program should always yield a struct \
-         corresponding to the scope variables"
-  end
-  | _ ->
-    Message.error ~pos:(Expr.pos e) "%a" Format.pp_print_text
-      "The interpreter can only interpret terms starting with functions having \
-       thunked arguments"
+  Message.with_delayed_errors (fun () ->
+      let ctx = p.decl_ctx in
+      let e = Expr.unbox (Program.to_expr p s) in
+      match evaluate_expr_safe p.decl_ctx p.lang (addcustom e) with
+      | (EAbs { tys = [((TStruct s_in, _) as _targs)]; _ }, mark_e) as e ->
+        begin
+        (* At this point, the interpreter seeks to execute the scope but does
+           not have a way to retrieve input values from the command line. [taus]
+           contain the types of the scope arguments. For [context] arguments, we
+           can provide an empty thunked term. But for [input] arguments of
+           another type, we cannot provide anything so we have to fail. *)
+        let taus = StructName.Map.find s_in ctx.ctx_structs in
+        let application_term =
+          StructField.Map.map
+            (fun ty0 ->
+              match Mark.remove ty0 with
+              | TArrow (ty_in, ty_out) ->
+                Expr.make_abs
+                  (List.map (fun _ -> Mark.ghost (Var.make "_")) ty_in)
+                  (Bindlib.box EEmpty, Expr.with_ty mark_e ty_out)
+                  ty_in (Expr.mark_pos mark_e)
+              | TDefault _ -> Bindlib.box EEmpty, Expr.with_ty mark_e ty0
+              | _ ->
+                Message.error ~pos:(Mark.get ty0) "%a" Format.pp_print_text
+                  "This scope needs input arguments to be executed. But the \
+                   Catala built-in interpreter does not have a way to retrieve \
+                   input values from the command line, so it cannot execute \
+                   this scope. Please create another scope that provides the \
+                   input arguments to this one and execute it instead.")
+            taus
+        in
+        let to_interpret =
+          Expr.make_app (Expr.box e)
+            [
+              Expr.estruct ~name:s_in ~fields:application_term
+                (Expr.map_ty (fun (_, pos) -> TStruct s_in, pos) mark_e);
+            ]
+            [TStruct s_in, Expr.pos e]
+            (Expr.pos e)
+        in
+        match
+          Mark.remove (evaluate_expr_safe ctx p.lang (Expr.unbox to_interpret))
+        with
+        | EStruct { fields; _ } ->
+          List.map
+            (fun (fld, e) -> StructField.get_info fld, e)
+            (StructField.Map.bindings fields)
+        | _ ->
+          Message.error ~pos:(Expr.pos e) "%a" Format.pp_print_text
+            "The interpretation of a program should always yield a struct \
+             corresponding to the scope variables"
+      end
+      | _ ->
+        Message.error ~pos:(Expr.pos e) "%a" Format.pp_print_text
+          "The interpreter can only interpret terms starting with functions \
+           having thunked arguments")
 
 (* Evaluation may introduce intermediate custom terms ([ECustom], pointers to
    external functions), straying away from the DCalc and LCalc ASTS. [addcustom]
    and [delcustom] are needed to expand and shrink the type of the terms to
    reflect that. *)
-let evaluate_expr ctx lang e = evaluate_expr ctx lang (addcustom e)
+let evaluate_expr ctx lang e =
+  Fun.protect ~finally:Runtime.reset_log
+  @@ fun () -> evaluate_expr ctx lang (addcustom e)
+
+let loaded_modules = Hashtbl.create 17
 
 let load_runtime_modules ~hashf prg =
   let load (mname, intf_id) =
     let hash = hashf intf_id.hash in
-    let expect_hash =
-      if intf_id.is_external then Hash.external_placeholder
-      else Hash.to_string hash
-    in
-    let obj_file =
-      Dynlink.adapt_filename
-        File.(Pos.get_file (Mark.get (ModuleName.get_info mname)) -.- "cmo")
-    in
-    (if not (Sys.file_exists obj_file) then
-       Message.error
-         ~pos_msg:(fun ppf -> Format.pp_print_string ppf "Module defined here")
-         ~pos:(Mark.get (ModuleName.get_info mname))
-         "Compiled OCaml object %a@ not@ found.@ Make sure it has been \
-          suitably compiled."
-         File.format obj_file
-     else
-       try Dynlink.loadfile obj_file
-       with Dynlink.Error dl_err ->
+    if Hashtbl.mem loaded_modules mname then ()
+    else
+      let expect_hash =
+        if intf_id.is_external then Hash.external_placeholder
+        else Hash.to_string hash
+      in
+      let obj_file =
+        let src = Pos.get_file (Mark.get (ModuleName.get_info mname)) in
+        Dynlink.adapt_filename
+          File.((dirname src / ModuleName.to_string mname) ^ ".cmo")
+      in
+      (if not (Sys.file_exists obj_file) then
          Message.error
-           "While loading compiled module from %a:@;<1 2>@[<hov>%a@]"
-           File.format obj_file Format.pp_print_text
-           (Dynlink.error_message dl_err));
-    match Runtime.check_module (ModuleName.to_string mname) expect_hash with
-    | Ok () -> ()
-    | Error bad_hash ->
-      Message.debug
-        "Module hash mismatch for %a:@ @[<v>Expected: %a@,Found:    %a@]"
-        ModuleName.format mname Hash.format hash
-        (fun ppf h ->
-          try Hash.format ppf (Hash.of_string h)
-          with Failure _ ->
-            if h = Hash.external_placeholder then
-              Format.fprintf ppf "@{<cyan>%s@}" Hash.external_placeholder
-            else Format.fprintf ppf "@{<red><invalid>@}")
-        bad_hash;
-      Message.error
-        "Module %a@ needs@ recompiling:@ %a@ was@ likely@ compiled@ from@ an@ \
-         older@ version@ or@ with@ incompatible@ flags."
-        ModuleName.format mname File.format obj_file
-    | exception Not_found ->
-      Message.error
-        "Module %a@ was loaded from file %a but did not register properly, \
-         there is something wrong in its code."
-        ModuleName.format mname File.format obj_file
+           ~pos_msg:(fun ppf ->
+             Format.pp_print_string ppf "Module defined here")
+           ~pos:(Mark.get (ModuleName.get_info mname))
+           "Compiled OCaml object %a@ not@ found.@ Make sure it has been \
+            suitably compiled."
+           File.format obj_file
+       else
+         try Dynlink.loadfile obj_file
+         with Dynlink.Error dl_err ->
+           Message.error
+             "While loading compiled module from %a:@;<1 2>@[<hov>%a@]"
+             File.format obj_file Format.pp_print_text
+             (Dynlink.error_message dl_err));
+      match Runtime.check_module (ModuleName.to_string mname) expect_hash with
+      | Ok () -> Hashtbl.add loaded_modules mname hash
+      | Error bad_hash ->
+        Message.debug
+          "Module hash mismatch for %a:@ @[<v>Expected: %a@,Found:    %a@]"
+          ModuleName.format mname Hash.format hash
+          (fun ppf h ->
+            try Hash.format ppf (Hash.of_string h)
+            with Failure _ ->
+              if h = Hash.external_placeholder then
+                Format.fprintf ppf "@{<cyan>%s@}" Hash.external_placeholder
+              else Format.fprintf ppf "@{<red><invalid>@}")
+          bad_hash;
+        Message.error
+          "Module %a@ needs@ recompiling:@ %a@ was@ likely@ compiled@ from@ \
+           an@ older@ version@ or@ with@ incompatible@ flags."
+          ModuleName.format mname File.format obj_file
+      | exception Not_found ->
+        Message.error
+          "Module %a@ was loaded from file %a but did not register properly, \
+           there is something wrong in its code."
+          ModuleName.format mname File.format obj_file
   in
   let modules_list_topo = Program.modules_to_list prg.decl_ctx.ctx_modules in
   if modules_list_topo <> [] then

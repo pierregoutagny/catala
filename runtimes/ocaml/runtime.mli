@@ -74,6 +74,7 @@ type error =
   | NoValue  (** No computation with valid conditions found *)
   | Conflict  (** Two different valid computations at that point *)
   | DivisionByZero  (** The denominator happened to be 0 here *)
+  | ListEmpty  (** Element access on an empty list *)
   | NotSameLength  (** Traversing multiple lists of different lengths *)
   | UncomparableDurations
       (** Comparing durations in different units (e.g. months vs. days) *)
@@ -103,6 +104,7 @@ type runtime_value =
   | Enum of string * (string * runtime_value)
   | Struct of string * (string * runtime_value) list
   | Array of runtime_value Array.t
+  | Tuple of runtime_value Array.t
   | Unembeddable
 
 val unembeddable : 'a -> runtime_value
@@ -251,6 +253,7 @@ module Json : sig
 
   (* val information: information -> string *)
   val event : event -> string
+  val raw_event : raw_event -> string
 end
 
 val pp_events : ?is_first_call:bool -> Format.formatter -> event list -> unit
@@ -305,6 +308,7 @@ val integer_of_string : string -> integer
 val integer_to_string : integer -> string
 val integer_to_int : integer -> int
 val integer_of_int : int -> integer
+val integer_of_decimal : decimal -> integer
 val integer_log2 : integer -> int
 val integer_exponentiation : integer -> int -> integer
 
@@ -348,6 +352,7 @@ module Oper : sig
      added first argument [pos] for any operator that might trigger an error. *)
   val o_not : bool -> bool
   val o_length : 'a array -> integer
+  val o_toint_rat : decimal -> integer
   val o_torat_int : integer -> decimal
   val o_torat_mon : money -> decimal
   val o_tomoney_rat : decimal -> money
@@ -372,7 +377,7 @@ module Oper : sig
     source_position -> ('a -> 'b -> 'c) -> 'a array -> 'b array -> 'c array
   (** @raise [NotSameLength] *)
 
-  val o_reduce : ('a -> 'a -> 'a) -> 'a -> 'a array -> 'a
+  val o_reduce : ('a -> 'a -> 'a) -> (unit -> 'a) -> 'a array -> 'a
   val o_concat : 'a array -> 'a array -> 'a array
   val o_filter : ('a -> bool) -> 'a array -> 'a array
   val o_add_int_int : integer -> integer -> integer
@@ -387,7 +392,10 @@ module Oper : sig
   val o_sub_rat_rat : decimal -> decimal -> decimal
   val o_sub_mon_mon : money -> money -> money
   val o_sub_dat_dat : date -> date -> duration
-  val o_sub_dat_dur : date -> duration -> date (* TODO: rounding mode!? *)
+
+  val o_sub_dat_dur :
+    date_rounding -> source_position -> date -> duration -> date
+
   val o_sub_dur_dur : duration -> duration -> duration
   val o_mult_int_int : integer -> integer -> integer
   val o_mult_rat_rat : decimal -> decimal -> decimal

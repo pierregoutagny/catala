@@ -201,6 +201,8 @@ let operator_to_string : type a. a Op.t -> string =
   | GetYear -> "get_year"
   | FirstDayOfMonth -> "first_day_of_month"
   | LastDayOfMonth -> "last_day_of_month"
+  | ToInt -> "to_int"
+  | ToInt_rat -> "to_int_rat"
   | ToRat -> "to_rat"
   | ToRat_int -> "to_rat_int"
   | ToRat_mon -> "to_rat_mon"
@@ -237,7 +239,9 @@ let operator_to_string : type a. a Op.t -> string =
   | Sub_rat_rat -> "-."
   | Sub_mon_mon -> "-$"
   | Sub_dat_dat -> "-@"
-  | Sub_dat_dur -> "-@^"
+  | Sub_dat_dur AbortOnRound -> "-@"
+  | Sub_dat_dur RoundUp -> "-@^u"
+  | Sub_dat_dur RoundDown -> "-@d"
   | Sub_dur_dur -> "-^"
   | Mult -> "*"
   | Mult_int_int -> "*!"
@@ -295,6 +299,7 @@ let operator_to_shorter_string : type a. a Op.t -> string =
   | GetYear -> "get_year"
   | FirstDayOfMonth -> "first_day_of_month"
   | LastDayOfMonth -> "last_day_of_month"
+  | ToInt | ToInt_rat -> "to_int"
   | ToRat_int | ToRat_mon | ToRat -> "to_rat"
   | ToMoney_rat | ToMoney -> "to_mon"
   | Round_rat | Round_mon | Round -> "round"
@@ -314,7 +319,7 @@ let operator_to_shorter_string : type a. a Op.t -> string =
   | Add_int_int | Add_rat_rat | Add_mon_mon | Add_dat_dur _ | Add_dur_dur | Add
     ->
     "+"
-  | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur
+  | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur _
   | Sub_dur_dur | Sub ->
     "-"
   | Mult_int_int | Mult_rat_rat | Mult_mon_rat | Mult_dur_int | Mult -> "*"
@@ -374,8 +379,8 @@ module Precedence = struct
       match Mark.remove op with
       | Not | GetDay | GetMonth | GetYear | FirstDayOfMonth | LastDayOfMonth
       | Length | Log _ | Minus | Minus_int | Minus_rat | Minus_mon | Minus_dur
-      | ToRat | ToRat_int | ToRat_mon | ToMoney | ToMoney_rat | Round
-      | Round_rat | Round_mon ->
+      | ToInt | ToInt_rat | ToRat | ToRat_int | ToRat_mon | ToMoney
+      | ToMoney_rat | Round | Round_rat | Round_mon ->
         App
       | And -> Op And
       | Or -> Op Or
@@ -397,7 +402,7 @@ module Precedence = struct
       | Add_dur_dur ->
         Op Add
       | Sub | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat
-      | Sub_dat_dur | Sub_dur_dur ->
+      | Sub_dat_dur _ | Sub_dur_dur ->
         Op Sub
       | Mult | Mult_int_int | Mult_rat_rat | Mult_mon_rat | Mult_dur_int ->
         Op Mul
@@ -531,7 +536,7 @@ module ExprGen (C : EXPR_PARAM) = struct
       | ELit l -> C.lit fmt l
       | EApp { f = EAbs _, _; _ } ->
         let rec pr bnd_ctx colors fmt = function
-          | EApp { f = EAbs { binder; tys }, _; args; _ }, _ ->
+          | EApp { f = EAbs { binder; pos = _; tys }, _; args; _ }, _ ->
             let xs, body, bnd_ctx = Bindlib.unmbind_in bnd_ctx binder in
             let xs_tau = List.mapi (fun i tau -> xs.(i), tau) tys in
             let xs_tau_arg =
@@ -551,7 +556,7 @@ module ExprGen (C : EXPR_PARAM) = struct
         Format.pp_open_vbox fmt 0;
         pr bnd_ctx colors fmt e;
         Format.pp_close_box fmt ()
-      | EAbs { binder; tys } ->
+      | EAbs { binder; pos = _; tys } ->
         let xs, body, bnd_ctx = Bindlib.unmbind_in bnd_ctx binder in
         let expr = exprb bnd_ctx in
         let xs_tau = List.mapi (fun i tau -> xs.(i), tau) tys in
@@ -736,7 +741,7 @@ module ExprGen (C : EXPR_PARAM) = struct
         punctuation fmt "{";
         ScopeVar.Map.format_bindings
           ~pp_sep:(fun fmt () -> Format.fprintf fmt "%a@ " punctuation ";")
-          (fun fmt pp_field_name field_expr ->
+          (fun fmt pp_field_name (_, field_expr) ->
             Format.fprintf fmt "%a%t%a%a@ %a" punctuation "\"" pp_field_name
               punctuation "\"" punctuation "=" (rhs exprc) field_expr)
           fmt args;
@@ -1114,13 +1119,13 @@ module UserFacing = struct
       Format.fprintf ppf "@[<hov 2>%a@ %a@]" EnumConstructor.format cons
         (value ~fallback lang) e
     | EEmpty -> Format.pp_print_string ppf "ø"
-    | EAbs _ -> Format.pp_print_string ppf "<function>"
+    | ECustom _ | EAbs _ -> Format.pp_print_string ppf "<function>"
     | EExternal _ -> Format.pp_print_string ppf "<external>"
     | EGenericError -> Format.pp_print_string ppf "↯"
     | EApp _ | EAppOp _ | EVar _ | EIfThenElse _ | EMatch _ | ETupleAccess _
     | EStructAccess _ | EAssert _ | EFatalError _ | EDefault _ | EPureDefault _
     | EErrorOnEmpty _ | ELocation _ | EScopeCall _ | EDStructAmend _
-    | EDStructAccess _ | ECustom _ ->
+    | EDStructAccess _ ->
       fallback ppf e
 
   let expr :

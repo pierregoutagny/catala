@@ -110,8 +110,18 @@ let etupleaccess ~e ~index ~size =
 let earray args = Box.appn args @@ fun args -> EArray args
 let elit l mark = Mark.add mark (Bindlib.box (ELit l))
 
-let eabs binder tys mark =
-  Bindlib.box_apply (fun binder -> EAbs { binder; tys }) binder, mark
+let eabs binder pos tys mark =
+  Bindlib.box_apply (fun binder -> EAbs { binder; pos; tys }) binder, mark
+
+let eabs_ghost binder tys mark =
+  ( Bindlib.box_apply
+      (fun binder ->
+        let pos =
+          List.init (Bindlib.mbinder_arity binder) (fun _ -> Pos.no_pos)
+        in
+        EAbs { binder; pos; tys })
+      binder,
+    mark )
 
 let eapp ~f ~args ~tys = Box.app1n f args @@ fun f args -> EApp { f; args; tys }
 let eassert e1 = Box.app1 e1 @@ fun e1 -> EAssert e1
@@ -174,7 +184,10 @@ let escopecall ~scope ~args mark =
   Mark.add mark
   @@ Bindlib.box_apply
        (fun args -> EScopeCall { scope; args })
-       (Box.lift_scope_vars (ScopeVar.Map.map Box.lift args))
+       (Box.lift_scope_vars
+          (ScopeVar.Map.map
+             (fun (pos, e) -> Bindlib.box_apply (fun e -> pos, e) (Box.lift e))
+             args))
 
 (* - Manipulation of marks - *)
 
@@ -307,12 +320,12 @@ let map
   | EArray args -> earray (List.map f args) m
   | EVar v -> evar (Var.translate v) m
   | EExternal { name } -> eexternal ~name m
-  | EAbs { binder; tys } ->
+  | EAbs { binder; pos; tys } ->
     let vars, body = Bindlib.unmbind binder in
     let body = f body in
     let binder = bind (Array.map Var.translate vars) body in
     let tys = List.map typ tys in
-    eabs binder tys m
+    eabs binder pos tys m
   | EIfThenElse { cond; etrue; efalse } ->
     eifthenelse (f cond) (f etrue) (f efalse) m
   | ETuple args -> etuple (List.map f args) m
@@ -339,7 +352,7 @@ let map
     let cases = EnumConstructor.Map.map f cases in
     ematch ~name ~e:(f e) ~cases m
   | EScopeCall { scope; args } ->
-    let args = ScopeVar.Map.map f args in
+    let args = ScopeVar.Map.map (fun (p, e) -> p, f e) args in
     escopecall ~scope ~args m
   | EGenericError -> egenericerror m
   | ECustom { obj; targs; tret } ->
@@ -361,7 +374,7 @@ let shallow_fold
   | EApp { f = e; args; _ } -> acc |> f e |> lfold args
   | EAppOp { args; _ } -> acc |> lfold args
   | EArray args -> acc |> lfold args
-  | EAbs { binder; tys = _ } ->
+  | EAbs { binder; pos = _; tys = _ } ->
     let _, body = Bindlib.unmbind binder in
     acc |> f body
   | EIfThenElse { cond; etrue; efalse } -> acc |> f cond |> f etrue |> f efalse
@@ -379,7 +392,8 @@ let shallow_fold
   | EStructAccess { e; _ } -> acc |> f e
   | EMatch { e; cases; _ } ->
     acc |> f e |> EnumConstructor.Map.fold (fun _ -> f) cases
-  | EScopeCall { args; _ } -> acc |> ScopeVar.Map.fold (fun _ -> f) args
+  | EScopeCall { args; _ } ->
+    acc |> ScopeVar.Map.fold (fun _ (_p, e) -> f e) args
   | ECustom _ -> acc
 
 (* Like [map], but also allows to gather a result bottom-up. *)
@@ -414,11 +428,11 @@ let map_gather
     acc, earray args m
   | EVar v -> acc, evar (Var.translate v) m
   | EExternal { name } -> acc, eexternal ~name m
-  | EAbs { binder; tys } ->
+  | EAbs { binder; pos; tys } ->
     let vars, body = Bindlib.unmbind binder in
     let acc, body = f body in
     let binder = bind (Array.map Var.translate vars) body in
-    acc, eabs binder tys m
+    acc, eabs binder pos tys m
   | EIfThenElse { cond; etrue; efalse } ->
     let acc1, cond = f cond in
     let acc2, etrue = f etrue in
@@ -490,9 +504,9 @@ let map_gather
   | EScopeCall { scope; args } ->
     let acc, args =
       ScopeVar.Map.fold
-        (fun var e (acc, args) ->
+        (fun var (p, e) (acc, args) ->
           let acc1, e = f e in
-          join acc acc1, ScopeVar.Map.add var e args)
+          join acc acc1, ScopeVar.Map.add var (p, e) args)
         args (acc, ScopeVar.Map.empty)
     in
     acc, escopecall ~scope ~args m
@@ -628,7 +642,8 @@ and equal : type a. (a, 't) gexpr -> (a, 't) gexpr -> bool =
     s1 = s2 && equal e1 e2 && id1 = id2
   | EArray es1, EArray es2 -> equal_list es1 es2
   | ELit l1, ELit l2 -> l1 = l2
-  | EAbs { binder = b1; tys = tys1 }, EAbs { binder = b2; tys = tys2 } ->
+  | ( EAbs { binder = b1; pos = _; tys = tys1 },
+      EAbs { binder = b2; pos = _; tys = tys2 } ) ->
     Type.equal_list tys1 tys2 && Bindlib.eq_mbinder equal b1 b2
   | ( EApp { f = e1; args = args1; tys = tys1 },
       EApp { f = e2; args = args2; tys = tys2 } ) ->
@@ -675,7 +690,8 @@ and equal : type a. (a, 't) gexpr -> (a, 't) gexpr -> bool =
     && EnumConstructor.Map.equal equal cases1 cases2
   | ( EScopeCall { scope = s1; args = fields1 },
       EScopeCall { scope = s2; args = fields2 } ) ->
-    ScopeName.equal s1 s2 && ScopeVar.Map.equal equal fields1 fields2
+    ScopeName.equal s1 s2
+    && ScopeVar.Map.equal (fun (_, e) (_, e') -> equal e e') fields1 fields2
   | EGenericError, EGenericError -> true
   | ( ECustom { obj = obj1; targs = targs1; tret = tret1 },
       ECustom { obj = obj2; targs = targs2; tret = tret2 } ) ->
@@ -711,8 +727,8 @@ let rec compare : type a. (a, _) gexpr -> (a, _) gexpr -> int =
     Bindlib.compare_vars v1 v2
   | EExternal { name = n1 }, EExternal { name = n2 } ->
     Mark.compare compare_external_ref n1 n2
-  | EAbs {binder=binder1; tys=typs1},
-    EAbs {binder=binder2; tys=typs2} ->
+  | EAbs {binder=binder1; pos = _; tys=typs1},
+    EAbs {binder=binder2; pos = _; tys=typs2} ->
     List.compare Type.compare typs1 typs2 @@< fun () ->
     let _, e1, e2 = Bindlib.unmbind2 binder1 binder2 in
     compare e1 e2
@@ -750,7 +766,7 @@ let rec compare : type a. (a, _) gexpr -> (a, _) gexpr -> int =
   | EScopeCall {scope=name1; args=field_map1},
     EScopeCall {scope=name2; args=field_map2} ->
     ScopeName.compare name1 name2 @@< fun () ->
-    ScopeVar.Map.compare compare field_map1 field_map2
+    ScopeVar.Map.compare (fun (_, e) (_, e') -> compare e e') field_map1 field_map2
   | ETuple es1, ETuple es2 ->
     List.compare compare es1 es2
   | ETupleAccess {e=e1; index=n1; size=s1},
@@ -866,20 +882,27 @@ let rec size : type a. (a, 't) gexpr -> int =
   | EMatch { e; cases; _ } ->
     EnumConstructor.Map.fold (fun _ e acc -> acc + 1 + size e) cases (size e)
   | EScopeCall { args; _ } ->
-    ScopeVar.Map.fold (fun _ e acc -> acc + 1 + size e) args 1
+    ScopeVar.Map.fold (fun _ (_, e) acc -> acc + 1 + size e) args 1
 
 (* - Expression building helpers - *)
 
 let make_var v mark = evar v mark
 
-let make_abs xs e taus pos =
+let make_abs m_xs e taus pos =
+  let mark_split v = Mark.get v, Mark.remove v in
+  let pos_xs, xs = List.map mark_split m_xs |> List.split in
+  let xs = Array.of_list xs in
   let mark =
     map_mark
       (fun _ -> pos)
       (fun ety -> Mark.add pos (TArrow (taus, ety)))
       (Mark.get e)
   in
-  eabs (bind xs e) taus mark
+  eabs (bind xs e) pos_xs taus mark
+
+let make_ghost_abs xs e taus pos =
+  let xs = List.map (Mark.add Pos.no_pos) xs in
+  make_abs xs e taus pos
 
 let make_tuple el m0 =
   match el with
@@ -948,18 +971,18 @@ let make_erroronempty e =
 let thunk_term term =
   let silent = Var.make "_" in
   let pos = mark_pos (Mark.get term) in
-  make_abs [| silent |] term [TLit TUnit, pos] pos
+  make_abs [silent, Pos.no_pos] term [TLit TUnit, pos] pos
 
 let empty_thunked_term mark = thunk_term (Bindlib.box EEmpty, mark)
 
 let unthunk_term_nobox = function
-  | EAbs { binder; tys = [(TLit TUnit, _)] }, _ ->
+  | EAbs { binder; tys = [(TLit TUnit, _)]; pos = _ }, _ ->
     let _v, e = Bindlib.unmbind binder in
     e
   | _ -> invalid_arg "unthunk_term_nobox"
 
 let make_let_in x tau e1 e2 mpos =
-  make_app (make_abs [| x |] e2 [tau] mpos) [e1] [tau] (pos e2)
+  make_app (make_abs [x] e2 [tau] mpos) [e1] [tau] (pos e2)
 
 let make_multiple_let_in xs taus e1s e2 mpos =
   make_app (make_abs xs e2 taus mpos) e1s taus (pos e2)
@@ -972,4 +995,4 @@ let make_puredefault e =
 
 let fun_id ?(var_name : string = "x") mark : ('a any, 'm) boxed_gexpr =
   let x = Var.make var_name in
-  make_abs [| x |] (evar x mark) [TAny, mark_pos mark] (mark_pos mark)
+  make_abs [x, Pos.no_pos] (evar x mark) [TAny, mark_pos mark] (mark_pos mark)

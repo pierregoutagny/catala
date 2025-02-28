@@ -38,8 +38,11 @@ module DefaultBindlibCtxRename : Bindlib.Renaming = struct
       done;
       !first_non_0
     in
-    if i = len then name, 0
-    else String.sub name 0 i, int_of_string (String.sub name i (len - i))
+    if
+      i = len || not (i >= 2 && name.[i - 1] = '_' && name.[i - 2] = '_')
+      (* The || clause is a Catala addition *)
+    then name, 0
+    else String.sub name 0 (i - 2), int_of_string (String.sub name i (len - i))
 
   let get_suffix : string -> int -> ctxt -> int * ctxt =
    fun name suffix ctxt ->
@@ -49,7 +52,9 @@ module DefaultBindlibCtxRename : Bindlib.Renaming = struct
 
   let merge_name : string -> int -> string =
    fun prefix suffix ->
-    if suffix > 0 then prefix ^ string_of_int suffix else prefix
+    if suffix > 0 then
+      prefix ^ "__" ^ string_of_int suffix (* The "__" is a Catala addition *)
+    else prefix
 
   let new_name : string -> ctxt -> string * ctxt =
    fun name ctxt ->
@@ -95,7 +100,7 @@ let default_config =
   {
     reserved = [];
     sanitize_varname = Fun.id;
-    skip_constant_binders = true;
+    skip_constant_binders = false;
     constant_binder_name = None;
   }
 
@@ -115,15 +120,15 @@ let patch_mbinder_names fname b =
   let msubst = Bindlib.msubst b in
   Bindlib.raw_mbinder names occurs rank mkfree msubst
 
-let unbind_in ctx ?fname b =
+let unbind_in ctx b =
   let module BindCtx = (val ctx.bindCtx) in
-  let b = match fname with Some fn -> patch_binder_name fn b | None -> b in
+  let b = patch_binder_name ctx.vars b in
   let v, e, bcontext = BindCtx.unbind_in ctx.bcontext b in
   v, e, { ctx with bcontext }
 
-let unmbind_in ctx ?fname b =
+let unmbind_in ctx b =
   let module BindCtx = (val ctx.bindCtx) in
-  let b = match fname with Some fn -> patch_mbinder_names fn b | None -> b in
+  let b = patch_mbinder_names ctx.vars b in
   let vs, e, bcontext = BindCtx.unmbind_in ctx.bcontext b in
   vs, e, { ctx with bcontext }
 
@@ -139,6 +144,8 @@ let new_id ctx name =
     BindCtx.new_var_in ctx.bcontext (fun _ -> assert false) name
   in
   Bindlib.name_of var, { ctx with bcontext }
+
+let new_var_id ctx name = new_id ctx (ctx.vars name)
 
 let reserve_name ctx name =
   { ctx with bcontext = DefaultBindlibCtxRename.reserve_name name ctx.bcontext }
@@ -180,11 +187,22 @@ let rec expr : type k. context -> (k, 'm) gexpr -> (k, 'm) gexpr boxed =
     Expr.eexternal ~name:(External_scope (ctx.scopes s), pos) (fm m)
   | EExternal { name = External_value d, pos }, m ->
     Expr.eexternal ~name:(External_value (ctx.topdefs d), pos) (fm m)
-  | EAbs { binder; tys }, m ->
-    let vars, body, ctx = unmbind_in ctx ~fname:ctx.vars binder in
+  | EAbs { binder; tys; pos }, m ->
+    let vars, body, ctx = unmbind_in ctx binder in
     let body = expr ctx body in
     let binder = Expr.bind vars body in
-    Expr.eabs binder (List.map (typ ctx) tys) (fm m)
+    Expr.eabs binder pos (List.map (typ ctx) tys) (fm m)
+  | ( EApp { f = EAbs { binder; pos; tys = tyabs }, mabs; args; tys = tyapp },
+      mapp ) ->
+    (* let-in: forward the context to not reuse the name being defined *)
+    let vars, body, ctx = unmbind_in ctx binder in
+    let body = expr ctx body in
+    let binder = Expr.bind vars body in
+    Expr.eapp
+      ~f:(Expr.eabs binder pos (List.map (typ ctx) tyabs) (fm mabs))
+      ~args:(List.map (expr ctx) args)
+      ~tys:(List.map (typ ctx) tyapp)
+      (fm mapp)
   | EStruct { name; fields }, m ->
     Expr.estruct ~name:(ctx.structs name)
       ~fields:
@@ -216,19 +234,19 @@ let enum_name ctx e = ctx.enums e
 (* {2 Handling scopes} *)
 
 (** Maps carrying around a naming context, enriched at each [unbind] *)
-let rec boundlist_map_ctx ~f ~fname ~last ~ctx = function
+let rec boundlist_map_ctx ~f ~last ~ctx = function
   | Last l -> Bindlib.box_apply (fun l -> Last l) (last ctx l)
   | Cons (item, next_bind) ->
+    let var, next, ctx = unbind_in ctx next_bind in
     let item = f ctx item in
-    let var, next, ctx = unbind_in ctx ~fname next_bind in
-    let next = boundlist_map_ctx ~f ~fname ~last ~ctx next in
+    let next = boundlist_map_ctx ~f ~last ~ctx next in
     let next_bind = Bindlib.bind_var var next in
     Bindlib.box_apply2
       (fun item next_bind -> Cons (item, next_bind))
       item next_bind
 
 let rename_vars_in_lets ctx scope_body_expr =
-  boundlist_map_ctx scope_body_expr ~ctx ~fname:String.to_snake_case
+  boundlist_map_ctx scope_body_expr ~ctx
     ~last:(fun ctx e -> Expr.Box.lift (expr ctx e))
     ~f:(fun ctx scope_let ->
       Bindlib.box_apply
@@ -253,7 +271,7 @@ let code_items ctx fty (items : 'e code_item_list) =
     | Cons (ScopeDef (name, body), next_bind) ->
       let scope_body =
         let scope_input_var, scope_lets, ctx =
-          unbind_in ctx ~fname:String.to_snake_case body.scope_body_expr
+          unbind_in ctx body.scope_body_expr
         in
         let scope_lets = rename_vars_in_lets ctx scope_lets in
         let scope_body_expr = Bindlib.bind_var scope_input_var scope_lets in
@@ -279,7 +297,7 @@ let code_items ctx fty (items : 'e code_item_list) =
           v, next, ctx
         | Private ->
           (* Otherwise, it is treated as a normal variable *)
-          unbind_in ctx ~fname:ctx.vars next_bind
+          unbind_in ctx next_bind
       in
       let next_body, ctx = aux ctx next in
       let next_bind = Bindlib.bind_var scope_var next_body in
@@ -300,7 +318,7 @@ let code_items ctx fty (items : 'e code_item_list) =
           v, next, ctx
         | Private ->
           (* Otherwise, it is treated as a normal variable *)
-          unbind_in ctx ~fname:ctx.vars next_bind
+          unbind_in ctx next_bind
       in
       let next_body, ctx = aux ctx next in
       let next_bind = Bindlib.bind_var topdef_var next_body in
@@ -318,18 +336,29 @@ module PathMap = Map.Make (Uid.Path)
 (* Intermediate structure used by function [Renaming.program] *)
 type type_renaming_ctx = {
   path_ctx : context PathMap.t;
+  toplevel_module : ModuleName.t option;
+  prefix_module : bool;
   structs_map : StructName.t StructName.Map.t;
   fields_map : StructField.t StructField.Map.t;
   enums_map : EnumName.t EnumName.Map.t;
   constrs_map : EnumConstructor.t EnumConstructor.Map.t;
   ctx_structs : struct_ctx;
   ctx_enums : enum_ctx;
-  namespaced_fields_constrs : bool;
+  namespaced_fields : bool;
+  namespaced_constrs : bool;
   f_struct : string -> string;
   f_field : string -> string;
   f_enum : string -> string;
   f_constr : string -> string;
 }
+
+let add_module_prefix ctx path str =
+  let pfx =
+    match List.rev path, ctx.toplevel_module with
+    | [], None -> []
+    | [], Some md | md :: _, _ -> [ModuleName.to_string md]
+  in
+  String.concat "." (pfx @ [str])
 
 let process_type_ident
     (decl_ctx : decl_ctx)
@@ -340,7 +369,15 @@ let process_type_ident
   | TypeIdent.Struct name ->
     let fields = StructName.Map.find name decl_ctx.ctx_structs in
     let path = StructName.path name in
+    let add_prefix =
+      if
+        tctx.prefix_module
+        && TypeIdent.Set.mem (Struct name) decl_ctx.ctx_public_types
+      then add_module_prefix tctx path
+      else Fun.id
+    in
     let str, pos = StructName.get_info name in
+    let str = add_prefix str in
     let path_ctx, ctx =
       try tctx.path_ctx, PathMap.find path tctx.path_ctx
       with PathMap.Not_found _ -> PathMap.add path ctx0 tctx.path_ctx, ctx0
@@ -351,17 +388,18 @@ let process_type_ident
       StructField.Map.fold
         (fun name ty (ctx, fields_map, ctx_fields) ->
           let str, pos = StructField.get_info name in
+          let str = add_prefix str in
           let id, ctx = new_id ctx (tctx.f_field str) in
           let new_name = StructField.fresh (id, pos) in
           ( ctx,
             StructField.Map.add name new_name fields_map,
             StructField.Map.add new_name ty ctx_fields ))
         fields
-        ( (if tctx.namespaced_fields_constrs then ctx0 else ctx),
+        ( (if tctx.namespaced_fields then ctx0 else ctx),
           tctx.fields_map,
           StructField.Map.empty )
     in
-    let ctx = if tctx.namespaced_fields_constrs then ctx else ctx1 in
+    let ctx = if tctx.namespaced_fields then ctx else ctx1 in
     {
       tctx with
       path_ctx = PathMap.add path ctx path_ctx;
@@ -382,10 +420,9 @@ let process_type_ident
           let ctx = reserve_name ctx str in
           ctx, EnumConstructor.Map.add name name constrs_map)
         constrs
-        ( (if tctx.namespaced_fields_constrs then ctx0 else ctx),
-          tctx.constrs_map )
+        ((if tctx.namespaced_constrs then ctx0 else ctx), tctx.constrs_map)
     in
-    let ctx = if tctx.namespaced_fields_constrs then ctx else ctx1 in
+    let ctx = if tctx.namespaced_constrs then ctx else ctx1 in
     {
       tctx with
       path_ctx = PathMap.add [] ctx tctx.path_ctx;
@@ -393,10 +430,18 @@ let process_type_ident
       constrs_map;
       ctx_enums = EnumName.Map.add name Expr.option_enum_config tctx.ctx_enums;
     }
-  | TypeIdent.Enum name ->
-    let constrs = EnumName.Map.find name decl_ctx.ctx_enums in
-    let path = EnumName.path name in
-    let str, pos = EnumName.get_info name in
+  | TypeIdent.Enum ename ->
+    let constrs = EnumName.Map.find ename decl_ctx.ctx_enums in
+    let path = EnumName.path ename in
+    let add_prefix =
+      if
+        tctx.prefix_module
+        && TypeIdent.Set.mem (Enum ename) decl_ctx.ctx_public_types
+      then add_module_prefix tctx path
+      else Fun.id
+    in
+    let str, pos = EnumName.get_info ename in
+    let str = add_prefix str in
     let path_ctx, ctx =
       try tctx.path_ctx, PathMap.find path tctx.path_ctx
       with PathMap.Not_found _ -> PathMap.add path ctx0 tctx.path_ctx, ctx0
@@ -407,27 +452,32 @@ let process_type_ident
       EnumConstructor.Map.fold
         (fun name ty (ctx, constrs_map, ctx_constrs) ->
           let str, pos = EnumConstructor.get_info name in
+          let str =
+            if tctx.namespaced_constrs then str
+            else EnumName.base ename ^ "." ^ str
+          in
+          let str = add_prefix str in
           let id, ctx = new_id ctx (tctx.f_constr str) in
           let new_name = EnumConstructor.fresh (id, pos) in
           ( ctx,
             EnumConstructor.Map.add name new_name constrs_map,
             EnumConstructor.Map.add new_name ty ctx_constrs ))
         constrs
-        ( (if tctx.namespaced_fields_constrs then ctx0 else ctx),
+        ( (if tctx.namespaced_constrs then ctx0 else ctx),
           tctx.constrs_map,
           EnumConstructor.Map.empty )
     in
-    let ctx = if tctx.namespaced_fields_constrs then ctx else ctx1 in
+    let ctx = if tctx.namespaced_constrs then ctx else ctx1 in
     {
       tctx with
       path_ctx = PathMap.add path ctx path_ctx;
-      enums_map = EnumName.Map.add name new_name tctx.enums_map;
+      enums_map = EnumName.Map.add ename new_name tctx.enums_map;
       constrs_map;
       ctx_enums = EnumName.Map.add new_name ctx_constrs tctx.ctx_enums;
     }
 
-let cap s = String.to_ascii s |> String.capitalize_ascii
-let uncap s = String.to_ascii s |> String.uncapitalize_ascii
+let cap s = String.to_id s |> String.capitalize_ascii
+let uncap s = String.to_id s |> String.uncapitalize_ascii
 
 (* Todo? - handle separate namespaces ? (e.g. allow a field and var to have the
    same name for backends that support it) - register module names as reserved
@@ -436,7 +486,9 @@ let program
     ~reserved
     ~skip_constant_binders
     ~constant_binder_name
-    ~namespaced_fields_constrs
+    ~namespaced_fields
+    ~namespaced_constrs
+    ~prefix_module
     ?(f_var = String.to_snake_case)
     ?(f_struct = cap)
     ?(f_field = uncap)
@@ -458,13 +510,16 @@ let program
   let type_renaming_ctx =
     {
       path_ctx = PathMap.singleton [] ctx;
+      toplevel_module = Option.map fst p.module_name;
+      prefix_module;
       structs_map = StructName.Map.empty;
       fields_map = StructField.Map.empty;
       enums_map = EnumName.Map.empty;
       constrs_map = EnumConstructor.Map.empty;
       ctx_structs = StructName.Map.empty;
       ctx_enums = EnumName.Map.empty;
-      namespaced_fields_constrs;
+      namespaced_fields;
+      namespaced_constrs;
       f_struct;
       f_field;
       f_enum;
@@ -497,6 +552,10 @@ let program
              when coming from other modules, they are referred to through their
              uids *)
           let str, pos = ScopeName.get_info name in
+          let str =
+            if prefix_module then add_module_prefix type_renaming_ctx path str
+            else str
+          in
           let path_ctx, ctx =
             try path_ctx, PathMap.find path path_ctx
             with PathMap.Not_found _ -> PathMap.add path ctx path_ctx, ctx
@@ -521,6 +580,10 @@ let program
           (* [typ] is rewritten later on *)
         else
           let str, pos = TopdefName.get_info name in
+          let str =
+            if prefix_module then add_module_prefix type_renaming_ctx path str
+            else str
+          in
           let path_ctx, ctx =
             try path_ctx, PathMap.find path path_ctx
             with PathMap.Not_found _ -> PathMap.add path ctx path_ctx, ctx
@@ -596,6 +659,14 @@ let program
       ~constrs:(fun n ->
         EnumConstructor.Map.find n type_renaming_ctx.constrs_map)
   in
+  let ctx_public_types =
+    TypeIdent.Set.map
+      (function
+        | Struct s ->
+          Struct (StructName.Map.find s type_renaming_ctx.structs_map)
+        | Enum s -> Enum (EnumName.Map.find s type_renaming_ctx.enums_map))
+      p.decl_ctx.ctx_public_types
+  in
   let decl_ctx =
     {
       p.decl_ctx with
@@ -603,6 +674,7 @@ let program
       ctx_structs = type_renaming_ctx.ctx_structs;
       ctx_scopes;
       ctx_topdefs;
+      ctx_public_types;
     }
   in
   let decl_ctx = Program.map_decl_ctx ~f:(typ ctx) decl_ctx in
@@ -624,7 +696,9 @@ let program
     ~reserved
     ~skip_constant_binders
     ~constant_binder_name
-    ~namespaced_fields_constrs
+    ~namespaced_fields
+    ~namespaced_constrs
+    ~prefix_module
     ?f_var
     ?f_struct
     ?f_field
@@ -634,13 +708,15 @@ let program
   let module M = struct
     let apply p =
       program ~reserved ~skip_constant_binders ~constant_binder_name
-        ~namespaced_fields_constrs ?f_var ?f_struct ?f_field ?f_enum ?f_constr p
+        ~namespaced_fields ~namespaced_constrs ~prefix_module ?f_var ?f_struct
+        ?f_field ?f_enum ?f_constr p
   end in
   (module M : Renaming)
 
 let default =
   program () ~reserved:default_config.reserved
     ~skip_constant_binders:default_config.skip_constant_binders
-    ~constant_binder_name:default_config.constant_binder_name ~f_var:Fun.id
-    ~f_struct:Fun.id ~f_field:Fun.id ~f_enum:Fun.id ~f_constr:Fun.id
-    ~namespaced_fields_constrs:true
+    ~constant_binder_name:default_config.constant_binder_name
+    ~f_var:String.to_snake_case ~f_struct:Fun.id ~f_field:Fun.id ~f_enum:Fun.id
+    ~f_constr:Fun.id ~namespaced_fields:true ~namespaced_constrs:true
+    ~prefix_module:false

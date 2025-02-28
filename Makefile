@@ -44,6 +44,7 @@ $(PY_VENV_DIR)/stamp: \
 	test -d $(PY_VENV_DIR) || python3 -m venv $(PY_VENV_DIR)
 	$(PY_VENV_ACTIVATE) python3 -m pip install -U pip
 	$(PY_VENV_ACTIVATE) python3 -m pip install -U \
+	  -e $$(ocamlfind query dates_calc)/python \
 	  -e runtimes/python \
 	  -e syntax_highlighting/en/pygments \
 	  -e syntax_highlighting/fr/pygments \
@@ -236,13 +237,10 @@ testsuite: unit-tests
 reset-tests: .FORCE $(CLERK_BIN)
 	$(CLERK_TEST) tests doc --reset
 
-# tests/%: .FORCE
-# 	$(CLERK_TEST) test $@
+%.c.exe: %.catala_en $(CLERK_BIN) .FORCE
+	$(CLERK_BIN) build _build/$@
+	_build/$@
 
-%.c.exe: %.catala_en $(CATALA_BIN) .FORCE
-	$(CATALA_BIN) c $<
-	gcc --std=c89 -Wall -pedantic -I runtimes/c/ $*.c -lgmp -Wno-unused-but-set-variable -o $*.c.exe
-	$@
 .FORCE:
 
 ##########################################

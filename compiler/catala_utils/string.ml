@@ -17,29 +17,42 @@
 include Stdlib.String
 
 let to_ascii : string -> string = Ubase.from_utf8
+
+let to_id s =
+  to_ascii s
+  |> map (function
+       | ('a' .. 'z' | 'A' .. 'Z' | '0' .. '9') as c -> c
+       | _ -> '_')
+
 let is_uppercase_ascii = function 'A' .. 'Z' -> true | _ -> false
 
 let begins_with_uppercase (s : string) : bool =
-  "" <> s && is_uppercase_ascii (get (to_ascii s) 0)
+  "" <> s
+  && is_uppercase_ascii
+       (get
+          (to_ascii (sub s 0 (Uchar.utf_decode_length (get_utf_8_uchar s 0))))
+          0)
 
 let to_snake_case (s : string) : string =
   let out = Buffer.create (2 * length s) in
-  s
-  |> to_ascii
-  |> iteri (fun i c ->
-         if is_uppercase_ascii c && 0 <> i && get s (i - 1) <> '_' then
-           Buffer.add_char out '_';
-         Buffer.add_char out (Char.lowercase_ascii c));
+  let s = to_id s in
+  iteri
+    (fun i c ->
+      if is_uppercase_ascii c && 0 <> i && get s (i - 1) <> '_' then
+        Buffer.add_char out '_';
+      Buffer.add_char out (Char.lowercase_ascii c))
+    s;
   Buffer.contents out
 
 let to_camel_case (s : string) : string =
   let last_was_underscore = ref true in
   let out = Buffer.create (length s) in
   s
-  |> to_ascii
+  |> to_id
   |> iter (function
        | '_' -> last_was_underscore := true
        | c ->
+         let c = if c = '-' then '_' else c in
          Buffer.add_char out
            (if !last_was_underscore then Char.uppercase_ascii c else c);
          last_was_underscore := false);

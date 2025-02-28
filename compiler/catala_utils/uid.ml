@@ -30,6 +30,7 @@ module type Id = sig
 
   val fresh : info -> t
   val get_info : t -> info
+  val map_info : (info -> info) -> t -> t
   val compare : t -> t -> int
   val equal : t -> t -> bool
   val format : Format.formatter -> t -> unit
@@ -70,6 +71,7 @@ module Make (X : Info) (S : Style) () : Id with type info = X.info = struct
     { id = !counter; info }
 
   let get_info (uid : t) : X.info = uid.info
+  let map_info f { id; info } = { id; info = f info }
   let id (x : t) : int = x.id
   let to_string t = X.to_string t.info
   let hash t = X.hash t.info
@@ -144,7 +146,19 @@ module QualifiedMarkedString = struct
     Hash.list Module.hash p % MarkedString.hash i
 end
 
-module Gen_qualified (S : Style) () = struct
+module type Qualified = sig
+  include Id with type info = Path.t * MarkedString.info
+
+  val fresh : Path.t -> MarkedString.info -> t
+  val path : t -> Path.t
+  val get_info : t -> MarkedString.info
+  val base : t -> string
+
+  val hash : strip:Path.t -> t -> Hash.t
+  (** [strip] strips that prefix from the start of the path before hashing *)
+end
+
+module Gen_qualified (S : Style) () : Qualified = struct
   include Make (QualifiedMarkedString) (S) ()
 
   let fresh path t = fresh (path, t)
@@ -155,4 +169,5 @@ module Gen_qualified (S : Style) () = struct
 
   let path t = fst (get_info t)
   let get_info t = snd (get_info t)
+  let base t = Mark.remove (get_info t)
 end

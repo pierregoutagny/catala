@@ -21,11 +21,14 @@ let () =
          let options =
            Global.enforce_options
              ~input_src:(Contents (contents, "-inline-"))
-             ~language:(Some language) ~debug:false ~color:Never ~trace ()
+             ~language:(Some language) ~debug:false ~color:Never
+             ~trace:(if trace then Some (lazy Format.std_formatter) else None)
+             ()
          in
          let prg, _type_order =
            Passes.dcalc options ~includes:[] ~optimize:false
-             ~check_invariants:false ~typed:Shared_ast.Expr.typed
+             ~check_invariants:false ~autotest:false
+             ~typed:Shared_ast.Expr.typed
          in
          Shared_ast.Interpreter.interpret_program_dcalc prg
            (Commands.get_scope_uid prg.decl_ctx scope)

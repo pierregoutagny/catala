@@ -112,6 +112,7 @@ and unop = Not | Minus of op_kind
 
 and builtin_expression =
   | Cardinal
+  | ToInteger
   | ToDecimal
   | ToMoney
   | GetDay
@@ -154,11 +155,15 @@ and collection_op =
   (* it would be nice to remove the need for specifying the and here like for
      extremums, but we need an additionl overload for "neutral element for
      addition across types" *)
-  | AggregateExtremum of { max : bool; default : expression }
+  | AggregateExtremum of { max : bool; default : expression option }
   | AggregateArgExtremum of {
       max : bool;
-      default : expression;
+      default : expression option;
       f : lident Mark.pos list * expression;
+    }
+  | Fold of {
+      f : lident Mark.pos list * lident Mark.pos list * expression;
+      init : expression;
     }
 
 and explicit_match_case = {

@@ -49,6 +49,7 @@ let format_op (fmt : Format.formatter) (op : operator Mark.pos) : unit =
   (* Todo: use the names from [Operator.name] *)
   | Not -> Format.pp_print_string fmt "not"
   | Length -> Format.pp_print_string fmt "list_length"
+  | ToInt_rat -> Format.pp_print_string fmt "integer_of_decimal"
   | ToRat_int -> Format.pp_print_string fmt "decimal_of_integer"
   | ToRat_mon -> Format.pp_print_string fmt "decimal_of_money"
   | ToMoney_rat -> Format.pp_print_string fmt "money_of_decimal"
@@ -67,9 +68,14 @@ let format_op (fmt : Format.formatter) (op : operator Mark.pos) : unit =
       | RoundUp -> "DateRounding.RoundUp"
       | RoundDown -> "DateRounding.RoundDown"
       | AbortOnRound -> "DateRounding.AbortOnRound")
-  | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur
-  | Sub_dur_dur ->
+  | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dur_dur ->
     Format.pp_print_string fmt "-"
+  | Sub_dat_dur rounding ->
+    Format.fprintf fmt "sub_date_duration(%s)"
+      (match rounding with
+      | RoundUp -> "DateRounding.RoundUp"
+      | RoundDown -> "DateRounding.RoundDown"
+      | AbortOnRound -> "DateRounding.AbortOnRound")
   | Mult_int_int | Mult_rat_rat | Mult_mon_rat | Mult_dur_int ->
     Format.pp_print_string fmt "*"
   | Div_int_int | Div_rat_rat | Div_mon_mon | Div_mon_rat | Div_dur_dur ->
@@ -168,8 +174,25 @@ let renaming =
     ~reserved:python_keywords
       (* TODO: add catala runtime built-ins as reserved as well ? *)
     ~skip_constant_binders:false ~constant_binder_name:None
-    ~namespaced_fields_constrs:true ~f_struct:String.to_camel_case
+    ~namespaced_fields:true ~namespaced_constrs:true ~prefix_module:false
+    ~f_var:String.to_snake_case ~f_struct:String.to_camel_case
     ~f_enum:String.to_camel_case
+
+let format_qualified
+    (type id)
+    (module Id : Uid.Qualified with type t = id)
+    ctx
+    ppf
+    (s : id) =
+  match List.rev (Id.path s) with
+  | [] -> Format.pp_print_string ppf (Id.base s)
+  | m :: _ ->
+    Format.fprintf ppf "%a.%s" VarName.format
+      (ModuleName.Map.find m ctx.modules)
+      (Id.base s)
+
+let format_struct = format_qualified (module StructName)
+let format_enum = format_qualified (module EnumName)
 
 let typ_needs_parens (e : typ) : bool =
   match Mark.remove e with TArrow _ | TArray _ -> true | _ -> false
@@ -194,12 +217,12 @@ let rec format_typ ctx (fmt : Format.formatter) (typ : typ) : unit =
          ~pp_sep:(fun fmt () -> Format.fprintf fmt ", ")
          (fun fmt t -> Format.fprintf fmt "%a" format_typ_with_parens t))
       ts
-  | TStruct s -> StructName.format fmt s
+  | TStruct s -> format_struct ctx fmt s
   | TOption some_typ ->
     (* We translate the option type with an overloading by Python's [None] *)
     Format.fprintf fmt "Optional[%a]" format_typ some_typ
   | TDefault t -> format_typ fmt t
-  | TEnum e -> EnumName.format fmt e
+  | TEnum e -> format_enum ctx fmt e
   | TArrow (t1, t2) ->
     Format.fprintf fmt "Callable[[%a], %a]"
       (Format.pp_print_list
@@ -218,7 +241,7 @@ let rec format_expression ctx (fmt : Format.formatter) (e : expr) : unit =
   | EVar v -> VarName.format fmt v
   | EFunc f -> FuncName.format fmt f
   | EStruct { fields = es; name = s } ->
-    Format.fprintf fmt "%a(%a)" StructName.format s
+    Format.fprintf fmt "%a(%a)" (format_struct ctx) s
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ")
          (fun fmt (struct_field, e) ->
@@ -239,8 +262,8 @@ let rec format_expression ctx (fmt : Format.formatter) (e : expr) : unit =
     (* We translate the option type with an overloading by Python's [None] *)
     format_expression ctx fmt e
   | EInj { e1 = e; cons; name = enum_name; _ } ->
-    Format.fprintf fmt "%a(%a_Code.%a,@ %a)" EnumName.format enum_name
-      EnumName.format enum_name EnumConstructor.format cons
+    Format.fprintf fmt "%a(%a_Code.%a,@ %a)" (format_enum ctx) enum_name
+      (format_enum ctx) enum_name EnumConstructor.format cons
       (format_expression ctx) e
   | EArray es ->
     Format.fprintf fmt "[%a]"
@@ -274,11 +297,11 @@ let rec format_expression ctx (fmt : Format.formatter) (e : expr) : unit =
         f = EAppOp { op = Log (BeginCall, info), _; args = [f]; _ }, _;
         args = [arg];
       }
-    when Global.options.trace ->
+    when Global.options.trace <> None ->
     Format.fprintf fmt "log_begin_call(%a,@ %a,@ %a)" format_uid_list info
       (format_expression ctx) f (format_expression ctx) arg
   | EAppOp { op = Log (VarDef var_def_info, info), _; args = [arg1]; _ }
-    when Global.options.trace ->
+    when Global.options.trace <> None ->
     Format.fprintf fmt
       "log_variable_definition(%a,@ LogIO(input_io=InputIO.%s,@ \
        output_io=%s),@ %a)"
@@ -290,7 +313,7 @@ let rec format_expression ctx (fmt : Format.formatter) (e : expr) : unit =
       (if var_def_info.log_io_output then "True" else "False")
       (format_expression ctx) arg1
   | EAppOp { op = Log (PosRecordIfTrueBool, _), _; args = [arg1]; _ }
-    when Global.options.trace ->
+    when Global.options.trace <> None ->
     let pos = Mark.get e in
     Format.fprintf fmt
       "log_decision_taken(SourcePosition(filename=\"%s\",@ start_line=%d,@ \
@@ -299,7 +322,7 @@ let rec format_expression ctx (fmt : Format.formatter) (e : expr) : unit =
       (Pos.get_end_line pos) (Pos.get_end_column pos) format_string_list
       (Pos.get_law_info pos) (format_expression ctx) arg1
   | EAppOp { op = Log (EndCall, info), _; args = [arg1]; _ }
-    when Global.options.trace ->
+    when Global.options.trace <> None ->
     Format.fprintf fmt "log_end_call(%a,@ %a)" format_uid_list info
       (format_expression ctx) arg1
   | EAppOp { op = Log _, _; args = [arg1]; _ } ->
@@ -371,18 +394,25 @@ let rec format_statement ctx (fmt : Format.formatter) (s : stmt Mark.pos) : unit
         switch_cases =
           [
             { case_block = case_none; _ };
-            { case_block = case_some; payload_var_name = case_some_var; _ };
+            {
+              case_block = case_some;
+              payload_var_name = case_some_var;
+              payload_var_typ;
+            };
           ];
         _;
       }
     when EnumName.equal e_name Expr.option_enum ->
     (* We translate the option type with an overloading by Python's [None] *)
+    let pos = Mark.get s in
     Format.fprintf fmt "@[<v 4>if %a is None:@ %a@]@," VarName.format switch_var
       (format_block ctx) case_none;
-    Format.fprintf fmt "@[<v 4>else:@ %a = %a@,%a@]" VarName.format
-      case_some_var VarName.format switch_var (format_block ctx) case_some
+    Format.fprintf fmt "@[<v 4>else:@ %a@]" (format_block ctx)
+      (Utils.subst_block case_some_var (EVar switch_var, pos) payload_var_typ
+         pos case_some)
   | SSwitch { switch_var; enum_name = e_name; switch_cases = cases; _ } ->
     let cons_map = EnumName.Map.find e_name ctx.decl_ctx.ctx_enums in
+    let pos = Mark.get s in
     let cases =
       List.map2
         (fun x (cons, _) -> x, cons)
@@ -392,11 +422,21 @@ let rec format_statement ctx (fmt : Format.formatter) (s : stmt Mark.pos) : unit
     Format.fprintf fmt "@[<hov 4>if %a@]"
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.fprintf fmt "@]@\n@[<hov 4>elif ")
-         (fun fmt ({ case_block; payload_var_name; _ }, cons_name) ->
-           Format.fprintf fmt "%a.code == %a_Code.%a:@\n%a = %a.value@\n%a"
-             VarName.format switch_var EnumName.format e_name
-             EnumConstructor.format cons_name VarName.format payload_var_name
-             VarName.format switch_var (format_block ctx) case_block))
+         (fun fmt (case, cons_name) ->
+           Format.fprintf fmt "%a.code == %a_Code.%a:@," VarName.format
+             switch_var (format_enum ctx) e_name EnumConstructor.format
+             cons_name;
+           format_block ctx fmt
+             (Utils.subst_block case.payload_var_name
+                (* Not a real catala struct, but will print as <var>.value *)
+                ( EStructFieldAccess
+                    {
+                      e1 = EVar switch_var, pos;
+                      field = StructField.fresh ("value", pos);
+                      name = StructName.fresh [] ("Dummy", pos);
+                    },
+                  pos )
+                case.payload_var_typ pos case.case_block)))
       cases
   | SReturn e1 ->
     Format.fprintf fmt "@[<hov 4>return %a@]" (format_expression ctx) e1
@@ -533,10 +573,10 @@ let format_ctx (type_ordering : TypeIdent.t list) (fmt : Format.formatter) ctx :
     (type_ordering @ scope_structs)
 
 let format_code_item ctx fmt = function
-  | SVar { var; expr; typ = _ } ->
+  | SVar { var; expr; typ = _; visibility = _ } ->
     Format.fprintf fmt "@[<hv 4>%a = (@,%a@;<0 -4>)@]@," VarName.format var
       (format_expression ctx) expr
-  | SFunc { var; func }
+  | SFunc { var; func; visibility = _ }
   | SScope { scope_body_var = var; scope_body_func = func; _ } ->
     let { Ast.func_params; Ast.func_body; _ } = func in
     Format.fprintf fmt "@[<v 4>@[<hov 2>def %a(@,%a@;<0 -2>):@]@ %a@]@,"
@@ -547,6 +587,49 @@ let format_code_item ctx fmt = function
            Format.fprintf fmt "%a:%a" VarName.format (Mark.remove var)
              (format_typ ctx) typ))
       func_params (format_block ctx) func_body
+
+let format_scope_calls ppf (p : Ast.program) =
+  let scopes_with_no_input =
+    List.fold_left
+      (fun acc -> function
+        | SScope
+            {
+              scope_body_func = { func_params = [(_, (TStruct ts, _))]; _ };
+              scope_body_var = var;
+              scope_body_name = name;
+              scope_body_visibility = _;
+            } ->
+          let input_struct =
+            StructName.Map.find ts p.ctx.decl_ctx.ctx_structs
+          in
+          if StructField.Map.is_empty input_struct then (var, name, ts) :: acc
+          else acc
+        | SVar _ | SFunc _ | SScope _ -> acc)
+      [] p.code_items
+    |> List.rev
+  in
+  if scopes_with_no_input = [] then ()
+  else
+    let () =
+      Message.debug "Generating entry points for scopes:@ %a"
+        (Format.pp_print_list ~pp_sep:Format.pp_print_space
+           (fun ppf (_, s, _) -> ScopeName.format ppf s))
+        scopes_with_no_input
+    in
+    Format.fprintf ppf "@,# Automatic Catala tests@,";
+    Format.fprintf ppf "@[<v 2>if __name__ == \"__main__\":";
+    List.iter
+      (fun (var, name, ts) ->
+        Format.fprintf ppf "@,print(\"Executing scope %a...\")" ScopeName.format
+          name;
+        Format.fprintf ppf "@,%a (%a());" FuncName.format var StructName.format
+          ts;
+        Format.fprintf ppf
+          "@,\
+           print(\"\\x1b[32m[RESULT]\\x1b[m Scope %a executed successfully.\")"
+          ScopeName.format name)
+      scopes_with_no_input;
+    Format.fprintf ppf "@]@,"
 
 let format_program
     (fmt : Format.formatter)
@@ -573,4 +656,5 @@ let format_program
   format_ctx type_ordering fmt p.ctx;
   Format.pp_print_cut fmt ();
   Format.pp_print_list (format_code_item p.ctx) fmt p.code_items;
+  format_scope_calls fmt p;
   Format.pp_print_flush fmt ()

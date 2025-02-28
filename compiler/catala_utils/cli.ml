@@ -26,7 +26,8 @@ let language_code =
   let rl = List.map (fun (a, b) -> b, a) languages in
   fun l -> List.assoc l rl
 
-let message_format_opt = ["human", Human; "gnu", GNU]
+let message_format_opt = ["human", (Human : message_format_enum); "gnu", GNU]
+let trace_format_opt = ["human", (Human : trace_format_enum); "json", JSON]
 
 open Cmdliner
 
@@ -146,13 +147,41 @@ module Flags = struct
              standards."
 
     let trace =
+      let converter =
+        conv ~docv:"FILE"
+          ( (fun s ->
+              if s = "-" then Ok `Stdout
+              else if
+                Filename.extension s |> String.starts_with ~prefix:".catala"
+              then
+                Error (`Msg "Output trace file cannot have a .catala extension")
+              else Ok (`FileName (Global.raw_file s))),
+            fun ppf -> function
+              | `Stdout -> Format.pp_print_string ppf "-"
+              | `FileName f -> Format.pp_print_string ppf (f :> string) )
+      in
       value
-      & flag
-      & info ["trace"; "t"]
+      & opt (some converter) None ~vopt:(Some `Stdout)
+      & info ["trace"; "t"] ~docv:"FILE"
           ~env:(Cmd.Env.info "CATALA_TRACE")
           ~doc:
             "Displays a trace of the interpreter's computation or generates \
-             logging instructions in translate programs."
+             logging instructions in translate programs. If set as a flag, \
+             outputs\n\
+            \             trace to stdout. If $(docv) is defined, outputs the \
+             trace to a file while interpreting.\n\
+            \             Defining a filename does not affect code generation. \
+             Cannot use .catala extension."
+
+    let trace_format =
+      value
+      & opt (some (enum trace_format_opt)) None
+      & info ["trace-format"]
+          ~doc:
+            "Selects the format of trace logs emitted by the interpreter. If \
+             set to $(i,human), the messages will be nicely displayed and \
+             meant to be read by a human. If set to $(i, json), the messages \
+             will be emitted as a JSON structured object."
 
     let plugins_dirs =
       let doc = "Set the given directory to be searched for backend plugins." in
@@ -208,6 +237,14 @@ module Flags = struct
       & info ["x"; "stop-on-error"]
           ~doc:"Stops the compilation as soon as an error is encountered."
 
+    let no_fail_on_assert =
+      value
+      & flag
+      & info ["no-fail-on-assert"]
+          ~doc:
+            "Instead of reporting an error on assertion failure, reports a \
+             warning and carry on with the interpretation as usual."
+
     let flags =
       let make
           language
@@ -215,11 +252,13 @@ module Flags = struct
           color
           message_format
           trace
+          trace_format
           plugins_dirs
           disable_warnings
           max_prec_digits
           directory
-          stop_on_error : options =
+          stop_on_error
+          no_fail_on_assert : options =
         if debug then Printexc.record_backtrace true;
         let path_rewrite =
           match directory with
@@ -230,11 +269,34 @@ module Flags = struct
               | "-" -> "-"
               | f -> File.reverse_path ~to_dir f)
         in
+        let trace, trace_format =
+          match trace, trace_format with
+          | None, _ -> None, trace_format
+          | Some `Stdout, _ -> Some (lazy (Message.std_ppf ())), trace_format
+          | Some (`FileName f), Some _ ->
+            ( Some
+                (lazy
+                  (Message.formatter_of_out_channel
+                     (open_out (path_rewrite f))
+                     ())),
+              trace_format )
+          | Some (`FileName f), None ->
+            let trace_format =
+              if Filename.extension (f :> file) = ".json" then JSON else Human
+            in
+            ( Some
+                (lazy
+                  (Message.formatter_of_out_channel
+                     (open_out (path_rewrite f))
+                     ())),
+              Some trace_format )
+        in
+        let trace_format = Option.value trace_format ~default:Human in
         (* This sets some global refs for convenience, but most importantly
            returns the options record. *)
         Global.enforce_options ~language ~debug ~color ~message_format ~trace
-          ~plugins_dirs ~disable_warnings ~max_prec_digits ~path_rewrite
-          ~stop_on_error ()
+          ~trace_format ~plugins_dirs ~disable_warnings ~max_prec_digits
+          ~path_rewrite ~stop_on_error ~no_fail_on_assert ()
       in
       Term.(
         const make
@@ -243,11 +305,13 @@ module Flags = struct
         $ color
         $ message_format
         $ trace
+        $ trace_format
         $ plugins_dirs
         $ disable_warnings
         $ max_prec_digits
         $ directory
-        $ stop_on_error)
+        $ stop_on_error
+        $ no_fail_on_assert)
 
     let options =
       let make input_src name directory options : options =
@@ -285,6 +349,20 @@ module Flags = struct
     value
     & flag
     & info ["check-invariants"] ~doc:"Check structural invariants on the AST."
+
+  let autotest =
+    value
+    & flag
+    & info ["autotest"]
+        ~env:(Cmd.Env.info "CATALA_AUTOTEST")
+        ~doc:
+          "Insert automatic test assertions in the compiled program. This \
+           detects all scopes that have no input or context variables, runs \
+           the interpreter to pre-compute their values, then adds runtime \
+           assertions to the program that ensure that the actual output of the \
+           scopes match their pre-computed values. If used on a testing \
+           program with a given backend, this guarantees consistency between \
+           the backend and the interpreter."
 
   let no_typing =
     value

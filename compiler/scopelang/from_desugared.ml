@@ -37,7 +37,7 @@ let tag_with_log_entry
     (e : untyped Ast.expr boxed)
     (l : log_entry)
     (markings : Uid.MarkedString.info list) : untyped Ast.expr boxed =
-  if Global.options.trace then
+  if Global.options.trace <> None then
     Expr.eappop
       ~op:(Log (l, markings), Expr.pos e)
       ~tys:[TAny, Expr.pos e]
@@ -48,7 +48,7 @@ let rec translate_expr (ctx : ctx) (e : D.expr) : untyped Ast.expr boxed =
   let m = Mark.get e in
   match Mark.remove e with
   | EVar v -> Expr.evar (Var.Map.find v ctx.var_mapping) m
-  | EAbs { binder; tys } ->
+  | EAbs { binder; pos; tys } ->
     let vars, body = Bindlib.unmbind binder in
     let new_vars = Array.map (fun var -> Var.make (Bindlib.name_of var)) vars in
     let ctx =
@@ -57,7 +57,7 @@ let rec translate_expr (ctx : ctx) (e : D.expr) : untyped Ast.expr boxed =
           { ctx with var_mapping = Var.Map.add var new_var ctx.var_mapping })
         ctx (Array.to_list vars) (Array.to_list new_vars)
     in
-    Expr.eabs (Expr.bind new_vars (translate_expr ctx body)) tys m
+    Expr.eabs (Expr.bind new_vars (translate_expr ctx body)) pos tys m
   | ELocation (DesugaredScopeVar { name; state = None }) ->
     Expr.elocation
       (ScopelangScopeVar
@@ -121,7 +121,7 @@ let rec translate_expr (ctx : ctx) (e : D.expr) : untyped Ast.expr boxed =
           | None -> Expr.estructaccess ~name ~field ~e:orig_e m)
         str_fields
     in
-    Expr.make_let_in orig_var
+    Expr.make_let_in (Mark.ghost orig_var)
       (TStruct name, Expr.pos e)
       (translate_expr ctx e)
       (Expr.estruct ~name ~fields m)
@@ -132,7 +132,7 @@ let rec translate_expr (ctx : ctx) (e : D.expr) : untyped Ast.expr boxed =
     Expr.escopecall ~scope
       ~args:
         (ScopeVar.Map.fold
-           (fun v e args' ->
+           (fun v (p, e) args' ->
              let v' =
                match ScopeVar.Map.find v ctx.scope_var_mapping with
                | WholeVar v' -> v'
@@ -151,7 +151,7 @@ let rec translate_expr (ctx : ctx) (e : D.expr) : untyped Ast.expr boxed =
                     their return type *)
                  let arg = Var.make "arg" in
                  let pos = Expr.mark_pos m in
-                 Expr.make_abs [| arg |]
+                 Expr.make_ghost_abs [arg]
                    (Expr.edefault ~excepts:[] ~just:(Expr.elit (LBool true) m)
                       ~cons:
                         (Expr.epuredefault
@@ -162,7 +162,7 @@ let rec translate_expr (ctx : ctx) (e : D.expr) : untyped Ast.expr boxed =
                | Some _ -> Expr.epuredefault e' m
                | None -> e'
              in
-             ScopeVar.Map.add v' e' args')
+             ScopeVar.Map.add v' (p, e') args')
            args ScopeVar.Map.empty)
       m
   | EApp { f; tys; args } -> (
@@ -188,7 +188,7 @@ let rec translate_expr (ctx : ctx) (e : D.expr) : untyped Ast.expr boxed =
       let args =
         List.init size (fun index -> Expr.etupleaccess ~e ~size ~index m)
       in
-      Expr.make_let_in v (TTuple ts, pos) (translate_expr ctx arg)
+      Expr.make_let_in (Mark.ghost v) (TTuple ts, pos) (translate_expr ctx arg)
         (Expr.eapp ~f ~tys m ~args)
         pos
     | args, tys ->
@@ -493,10 +493,8 @@ let rec rule_tree_to_expr
          dealing with a context variable which is reentrant (either in the
          caller or callee). In this case the ErrorOnEmpty will be added later in
          the scopelang->dcalc translation. *)
-      Expr.make_abs
-        (new_params
-        |> List.map (fun x -> Var.Map.find x ctx.var_mapping)
-        |> Array.of_list)
+      Expr.make_ghost_abs
+        (new_params |> List.map (fun x -> Var.Map.find x ctx.var_mapping))
         default tys def_pos
     else default
   | _ -> (* should not happen *) assert false
@@ -564,8 +562,7 @@ let translate_def
     | Some (ps, _) ->
       let labels, tys = List.split ps in
       Expr.make_abs
-        (Array.of_list
-           (List.map (fun lbl -> Var.make (Mark.remove lbl)) labels))
+        (List.map (fun lbl -> Mark.map Var.make lbl) labels)
         empty tys (Expr.mark_pos m)
     | _ -> empty
   else
@@ -681,7 +678,7 @@ let translate_rule
                   (String.concat "."
                      [
                        Mark.remove (ScopeVar.get_info (Mark.remove v));
-                       Mark.remove (ScopeVar.get_info var_within_origin_scope);
+                       ScopeVar.to_string var_within_origin_scope;
                      ])
               in
               let typ =
@@ -699,7 +696,7 @@ let translate_rule
           scope.scope_defs ScopeVar.Map.empty
       in
       let subscope_param_map =
-        ScopeVar.Map.map (fun (_, _, _, expr) -> expr) subscope_params
+        ScopeVar.Map.map (fun (_, p, _, expr) -> p, expr) subscope_params
       in
       let subscope_expr =
         Expr.escopecall ~scope:subscope ~args:subscope_param_map
@@ -863,7 +860,7 @@ let translate_program
                   match states with
                   | D.WholeVar -> WholeVar (ScopeVar.fresh (var_name, var_pos))
                   | States states ->
-                    let var_prefix = var_name ^ "_" in
+                    let var_prefix = var_name ^ "#" in
                     let state_var state =
                       ScopeVar.fresh
                         (Mark.map (( ^ ) var_prefix) (StateName.get_info state))

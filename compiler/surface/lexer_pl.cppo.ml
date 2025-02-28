@@ -1,5 +1,3 @@
-(* -*- coding: iso-latin-1 -*- *)
-
 (* This file is part of the Catala compiler, a specification language for tax and social benefits
    computation rules. Copyright (C) 2020 Inria, contributors: Denis Merigoux
    <denis.merigoux@inria.fr>, Emile Rolley <emile.rolley@tuta.io>
@@ -67,16 +65,11 @@
 #define MS_CONTENT "typu"
 #define MS_STRUCT "struktura"
 #define MS_ASSERTION "asercja"
-#define MS_VARIES "różna"
-#define MR_VARIES "r", 0xf3, 0x017C, "na"
 #define MS_WITH_V "wraz z"
 #define MR_WITH_V "wraz", space_plus, "z"
 #define MS_FOR "dla"
 #define MS_ALL "wszystkie"
 #define MS_WE_HAVE "mamy"
-#define MS_FIXED "stałoprzecinkowa"
-#define MR_FIXED "sta", 0x0142, "oprzecinkowa"
-#define MS_BY "przez"
 #define MS_RULE "zasada"
 #define MS_LET "niech"
 #define MS_EXISTS "istnieje"
@@ -93,10 +86,14 @@
 #define MS_MAXIMUM "maksimum"
 #define MS_MINIMUM "minimum"
 #define MS_IS "jest"
-#define MS_LIST_EMPTY "lista pusta"
-#define MR_LIST_EMPTY "lista", space_plus, "pusta"
+#define MS_OR_IF_LIST_EMPTY "lub jeżeli lista pusta"
+#define MR_OR_IF_LIST_EMPTY "lub", space_plus, "je", 0x017C, "eli", space_plus, "lista", space_plus, "pusta"
 #define MS_BUT_REPLACE "ale zastąpić"
 #define MR_BUT_REPLACE "ale", space_plus, "zast", 0x0105, "pi", 0x0107
+#define MS_COMBINE "łączyć"
+#define MR_COMBINE 0x0142, 0x0105, "czy", 0x0107
+#define MS_INITIALLY "początkowo"
+#define MR_INITIALLY "pocz", 0X0105, "tkowo"
 #define MS_CARDINAL "liczba"
 #define MS_YEAR "rok"
 #define MS_MONTH "miesiąc"

@@ -97,8 +97,7 @@ module ScopeVar =
 
 type scope_var_or_subscope =
   | ScopeVar of ScopeVar.t
-  | SubScope of ScopeVar.t * ScopeName.t * bool Mark.pos
-(* The bool is true if the output of the subscope is to be forwarded *)
+  | SubScope of ScopeVar.t * ScopeName.t
 
 module StateName =
   Uid.Gen
@@ -342,6 +341,8 @@ module Op = struct
     | Minus_rat : < resolved ; .. > t
     | Minus_mon : < resolved ; .. > t
     | Minus_dur : < resolved ; .. > t
+    | ToInt : < overloaded ; .. > t
+    | ToInt_rat : < resolved ; .. > t
     | ToRat : < overloaded ; .. > t
     | ToRat_int : < resolved ; .. > t
     | ToRat_mon : < resolved ; .. > t
@@ -373,7 +374,7 @@ module Op = struct
     | Sub_rat_rat : < resolved ; .. > t
     | Sub_mon_mon : < resolved ; .. > t
     | Sub_dat_dat : < resolved ; .. > t
-    | Sub_dat_dur : < resolved ; .. > t
+    | Sub_dat_dur : date_rounding -> < resolved ; .. > t
     | Sub_dur_dur : < resolved ; .. > t
     | Mult : < overloaded ; .. > t
     | Mult_int_int : < resolved ; .. > t
@@ -531,6 +532,7 @@ and ('a, 'b, 'm) base_gexpr =
   | EVar : ('a, 'm) naked_gexpr Bindlib.var -> ('a, _, 'm) base_gexpr
   | EAbs : {
       binder : (('a, 'a, 'm) base_gexpr, ('a, 'm) gexpr) Bindlib.mbinder;
+      pos : Pos.t list;
       tys : typ list;
     }
       -> ('a, < .. >, 'm) base_gexpr
@@ -568,7 +570,8 @@ and ('a, 'b, 'm) base_gexpr =
   | ELocation : 'b glocation -> ('a, (< .. > as 'b), 'm) base_gexpr
   | EScopeCall : {
       scope : ScopeName.t;
-      args : ('a, 'm) gexpr ScopeVar.Map.t;
+      args : (Pos.t * ('a, 'm) gexpr) ScopeVar.Map.t;
+          (* Map elements contain their variable's surface position *)
     }
       -> ('a, < explicitScopes : yes ; .. >, 'm) base_gexpr
   | EDStructAmend : {

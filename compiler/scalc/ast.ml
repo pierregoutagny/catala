@@ -67,6 +67,7 @@ type stmt =
   | SLocalInit of { name : VarName.t Mark.pos; typ : typ; expr : expr }
   | SLocalDef of { name : VarName.t Mark.pos; typ : typ; expr : expr }
   | SFatalError of { pos_expr : expr; error : Runtime.error }
+      (** [pos_expr] here is the position reified into an expression *)
   | SIfThenElse of { if_expr : expr; then_block : block; else_block : block }
   | SSwitch of {
       switch_var : VarName.t;
@@ -76,6 +77,7 @@ type stmt =
     }
   | SReturn of expr
   | SAssert of { pos_expr : expr; expr : expr }
+      (** [pos_expr] here is the position reified into an expression *)
   | SSpecialOp of special_operator
 
 and special_operator = |
@@ -97,11 +99,12 @@ type scope_body = {
   scope_body_name : ScopeName.t;
   scope_body_var : FuncName.t;
   scope_body_func : func;
+  scope_body_visibility : visibility;
 }
 
 type code_item =
-  | SVar of { var : VarName.t; expr : expr; typ : typ }
-  | SFunc of { var : FuncName.t; func : func }
+  | SVar of { var : VarName.t; expr : expr; typ : typ; visibility : visibility }
+  | SFunc of { var : FuncName.t; func : func; visibility : visibility }
   | SScope of scope_body
 
 type ctx = { decl_ctx : decl_ctx; modules : VarName.t ModuleName.Map.t }

@@ -66,9 +66,17 @@ val elit : lit -> 'm mark -> ('a any, 'm) boxed_gexpr
 
 val eabs :
   (('a, 'm) naked_gexpr, ('a, 'm) gexpr) Bindlib.mbinder Bindlib.box ->
+  Pos.t list ->
   typ list ->
   'm mark ->
   ('a any, 'm) boxed_gexpr
+
+val eabs_ghost :
+  (('a, 'm) naked_gexpr, ('a, 'm) gexpr) Bindlib.mbinder Bindlib.box ->
+  typ list ->
+  'm mark ->
+  ('a any, 'm) boxed_gexpr
+(** Same as [eabs] but without binders' positions *)
 
 val eapp :
   f:('a, 'm) boxed_gexpr ->
@@ -165,7 +173,7 @@ val ematch :
 
 val escopecall :
   scope:ScopeName.t ->
-  args:('a, 'm) boxed_gexpr ScopeVar.Map.t ->
+  args:(Pos.t * ('a, 'm) boxed_gexpr) ScopeVar.Map.t ->
   'm mark ->
   ((< explicitScopes : yes ; .. > as 'a), 'm) boxed_gexpr
 
@@ -339,11 +347,19 @@ val map_gather :
 val make_var : ('a, 'm) gexpr Var.t -> 'm mark -> ('a, 'm) boxed_gexpr
 
 val make_abs :
-  ('a, 'm) gexpr Var.vars ->
+  ('a, 'm) gexpr Var.var Mark.pos list ->
   ('a, 'm) boxed_gexpr ->
   typ list ->
   Pos.t ->
   ('a any, 'm) boxed_gexpr
+
+val make_ghost_abs :
+  ('a, 'm) gexpr Var.var list ->
+  ('a, 'm) boxed_gexpr ->
+  typ list ->
+  Pos.t ->
+  ('a any, 'm) boxed_gexpr
+(** Same as [make_abs] without binders' positions *)
 
 val make_app :
   ('a any, 'm) boxed_gexpr ->
@@ -368,7 +384,7 @@ val unthunk_term_nobox : ('a any, 'm) gexpr -> ('a, 'm) gexpr
     raises Invalid_argument otherwise) *)
 
 val make_let_in :
-  ('a, 'm) gexpr Var.t ->
+  ('a, 'm) gexpr Var.t Mark.pos ->
   typ ->
   ('a, 'm) boxed_gexpr ->
   ('a, 'm) boxed_gexpr ->
@@ -376,7 +392,7 @@ val make_let_in :
   ('a any, 'm) boxed_gexpr
 
 val make_multiple_let_in :
-  ('a, 'm) gexpr Var.vars ->
+  ('a, 'm) gexpr Var.var Mark.pos list ->
   typ list ->
   ('a, 'm) boxed_gexpr list ->
   ('a, 'm) boxed_gexpr ->

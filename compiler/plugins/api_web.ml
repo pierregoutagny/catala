@@ -37,7 +37,7 @@ module To_jsoo = struct
      other modules: here everything is flattened in the current namespace *)
   let format_struct_name ppf name =
     StructName.to_string name
-    |> String.to_ascii
+    |> String.to_id
     |> String.uncapitalize_ascii
     |> String.map (function '.' -> '_' | c -> c)
     |> Format.pp_print_string ppf
@@ -146,7 +146,7 @@ module To_jsoo = struct
         elts
     | TOption t ->
       Format.fprintf fmt
-        "(fun o -> Js.Opt.case o (fun () -> Eoption.ENone) (fun x -> \
+        "(fun o -> Js.Opt.case o (fun () -> Eoption.ENone ()) (fun x -> \
          Eoption.ESome (%a x)))"
         format_of_js t
     | TAny -> Format.fprintf fmt "Js.Unsafe.inject"
@@ -475,10 +475,12 @@ let run
     keep_special_ops
     monomorphize_types
     _options =
-  let options = Global.enforce_options ~trace:true () in
+  let options =
+    Global.enforce_options ~trace:(Some (lazy Format.std_formatter)) ()
+  in
   let prg, type_ordering, _ =
     Driver.Passes.lcalc options ~includes ~optimize ~check_invariants
-      ~closure_conversion ~keep_special_ops ~typed:Expr.typed
+      ~autotest:false ~closure_conversion ~keep_special_ops ~typed:Expr.typed
       ~monomorphize_types ~expand_ops:false
       ~renaming:(Some Lcalc.To_ocaml.renaming)
   in

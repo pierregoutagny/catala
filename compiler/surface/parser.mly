@@ -37,7 +37,8 @@ end>
 %nonassoc GREATER GREATER_EQUAL LESSER LESSER_EQUAL EQUAL NOT_EQUAL
 %left PLUS MINUS PLUSPLUS
 %left MULT DIV
-%right apply OF CONTAINS FOR SUCH WITH BUT_REPLACE
+%right apply OF CONTAINS FOR SUCH WITH BUT_REPLACE OR_IF_LIST_EMPTY
+%right WITH_V
 %right COMMA
 %right unop_expr
 %right CONTENT
@@ -201,6 +202,9 @@ let naked_expression ==
 | CARDINAL ; {
   Builtin Cardinal
 }
+| INTEGER ; {
+  Builtin ToInteger
+}
 | DECIMAL ; {
   Builtin ToDecimal
 }
@@ -217,8 +221,7 @@ let naked_expression ==
 }
 | OUTPUT ; OF ;
   c = addpos(quident) ;
-  fields = option(scope_call_args) ; {
-  let fields = Option.value ~default:[] fields in
+  fields = scope_call_args ; {
   ScopeCall (c, fields)
 }
 | e = expression ;
@@ -246,13 +249,20 @@ let naked_expression ==
   AMONG ; coll = expression ; {
   CollectionOp ((Map {f = i, f}, pos), coll)
 } %prec apply
+| pos = pos(COMBINE) ; acc = mbinder ; INITIALLY ; init = expression ;
+  WITH_V ; map_expr = expression ; {
+  match map_expr with
+  | CollectionOp ((Map { f = i, f }, _), coll), _ ->
+    CollectionOp ((Fold {f = acc, i, f; init = init}, pos), coll)
+  | _ ->
+    Message.error ~pos:(snd map_expr)
+      "Expected the form '<expr> for <var> among <collection>'"
+} %prec apply
 | maxp = addpos(minmax) ;
-  OF ; coll = expression ;
-  OR ; IF ; LIST_EMPTY ; THEN ;
-  default = expression ; {
+  OF ; coll = expression ; default = opt_or_if_empty ; {
   let max, pos = maxp in
   CollectionOp ((AggregateExtremum { max; default }, pos), coll)
-} %prec apply
+}
 | op = addpos(unop) ; e = expression ; {
   Unop (op, e)
 } %prec unop_expr
@@ -301,10 +311,13 @@ let naked_expression ==
   AMONG ; coll = expression ;
   SUCH ; THAT ; f = expression ;
   IS ; max = minmax ;
-  OR ; IF ; LIST_EMPTY ; THEN ; default = expression ; {
+  default = opt_or_if_empty; {
   CollectionOp ((AggregateArgExtremum { max; default; f = ids, f }, pos), coll)
-} %prec top_expr
+}
 
+let opt_or_if_empty ==
+| OR_IF_LIST_EMPTY ; THEN ; default = expression ; <Some> %prec apply
+| { None } %prec apply
 
 let struct_content_field :=
 | field = lident ; COLON ; e = expression ; <>
@@ -354,6 +367,7 @@ let literal :=
 | FALSE ; { LBool false }
 
 let scope_call_args ==
+| { [] }
 | WITH_V ;
   LBRACE ;
   fields = list(preceded (ALT, struct_content_field)) ;
@@ -514,14 +528,6 @@ let assertion :=
     assertion_condition = cond;
     assertion_content = base;
   })
-}
-| FIXED ; q = addpos(scope_var) ; BY ; i = lident ; {
-  MetaAssertion (FixedBy (q, i))
-}
-| VARIES ; q = addpos(scope_var) ;
-  WITH_V ; e = expression ;
-  t = option(addpos(variation_type)) ; {
-  MetaAssertion (VariesWith (q, e, t))
 }
 
 let scope_item :=
