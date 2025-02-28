@@ -15,8 +15,12 @@ scope S:
 
 ```catala-test-inline
 $ catala Typecheck --check-invariants
-[RESULT] All invariant checks passed
-[RESULT] Typechecking successful!
+┌─[RESULT]─
+│ All invariant checks passed
+└─
+┌─[RESULT]─
+│ Typechecking successful!
+└─
 ```
 
 ```catala-test-inline
@@ -75,7 +79,7 @@ let scope S (S_in: S_in {x_in: list of integer}): S {y: integer} =
          (λ () → false)
          (λ () → ENone ()))
     with
-    | ENone → raise NoValueProvided
+    | ENone → error NoValue
     | ESome arg → arg
   in
   return { S y = y; }

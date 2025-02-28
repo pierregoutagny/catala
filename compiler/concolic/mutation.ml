@@ -60,7 +60,7 @@ let negate_justs : ('e, 'c, 't) mutation_type =
     | (EDefault {excepts ; just ; cons }, m) -> begin
         let excepts = List.map Expr.rebox excepts in
         let just = Expr.rebox just in
-        let not_just = Expr.eappop ~op:Operator.Not ~args:[just] ~tys:[TLit TBool, Expr.mark_pos m] m in
+        let not_just = Expr.eappop ~op:(Operator.Not, Expr.mark_pos m) ~args:[just] ~tys:[TLit TBool, Expr.mark_pos m] m in
         let cons = Expr.rebox cons in
         if Global.options.debug then Message.debug "[mutation] Negating just";
         incr negate_justs_n;

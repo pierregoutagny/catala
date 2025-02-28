@@ -71,6 +71,7 @@ val unformat : (Format.formatter -> unit) -> string
     indents *)
 
 val has_color : out_channel -> bool
+val set_terminal_width_function : (unit -> int) -> unit
 
 (* {1 More general color-enabled formatting helpers}*)
 
@@ -88,6 +89,7 @@ type ('a, 'b) emitter =
   ?pos_msg:Content.message ->
   ?extra_pos:(string * Pos.t) list ->
   ?fmt_pos:(Content.message * Pos.t) list ->
+  ?outcome:Content.message list ->
   ?suggestion:string list ->
   ('a, Format.formatter, unit, 'b) format4 ->
   'a
@@ -97,3 +99,4 @@ val debug : ('a, unit) emitter
 val result : ('a, unit) emitter
 val warning : ('a, unit) emitter
 val error : ('a, 'b) emitter
+val results : Content.message list -> unit

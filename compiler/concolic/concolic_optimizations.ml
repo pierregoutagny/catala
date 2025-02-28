@@ -163,10 +163,10 @@ let rec optimize_rec:
       let bool_typ = Mark.add Pos.no_pos (TLit TBool) in
       let make_eq (cons : EnumConstructor.t) =
         let inj = Expr.einj ~name:n ~cons ~e:lunit m in
-        Expr.eappop ~op:Eq ~args:[boxed_e'; inj] ~tys:[enum_typ; enum_typ] m
+        Expr.eappop ~op:(Eq, Expr.mark_pos m) ~args:[boxed_e'; inj] ~tys:[enum_typ; enum_typ] m
       in
       let make_or e1 e2 =
-        Expr.eappop ~op:Or ~args:[e1; e2] ~tys:[bool_typ; bool_typ] m
+        Expr.eappop ~op:(Or, Expr.mark_pos m) ~args:[e1; e2] ~tys:[bool_typ; bool_typ] m
       in
       let f cons _ acc =
         let eq = make_eq cons in

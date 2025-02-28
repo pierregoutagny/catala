@@ -12,8 +12,12 @@ scope Foo:
 
 ```catala-test-inline
 $ catala Typecheck --check-invariants
-[RESULT] All invariant checks passed
-[RESULT] Typechecking successful!
+┌─[RESULT]─
+│ All invariant checks passed
+└─
+┌─[RESULT]─
+│ Typechecking successful!
+└─
 ```
 
 ```catala-test-inline
@@ -24,8 +28,8 @@ let scope Foo (Foo_in: Foo_in): Foo {bar: integer} =
       handle_default
         [λ () → handle_default [] (λ () → true) (λ () → 0)]
         (λ () → false)
-        (λ () → raise EmptyError)
-    with EmptyError -> raise NoValueProvided
+        (λ () → raise Empty)
+    with Empty -> error NoValue
   in
   return { Foo bar = bar; }
 ```

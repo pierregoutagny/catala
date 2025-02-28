@@ -56,21 +56,6 @@ let all_match_cases_map_to_same_constructor cases n =
       | _ -> assert false)
     cases
 
-let all_match_cases_take_unit_and_map_to_boolean_literals cases =
-  EnumConstructor.Map.for_all
-    (fun _ case ->
-      match Mark.remove case with
-      | EAbs { binder; tys } -> (
-        let _, body = Bindlib.unmbind binder in
-        match Mark.remove body with
-        | ELit (LBool _) ->
-          let ty = List.hd tys in
-          (* because of invariant [invariant_match], the arity is always one. *)
-          Mark.remove ty = TLit TUnit
-        | _ -> false)
-      | _ -> assert false)
-    cases
-
 let binder_vars_used_at_most_once
     (binder :
       ( (('a, 'b) dcalc_lcalc, ('a, 'b) dcalc_lcalc, 'm) base_gexpr,
@@ -112,15 +97,15 @@ let rec optimize_expr :
        the matches and the log calls are not preserved, which would be a good
        property *)
     match Mark.remove e with
-    | EAppOp { op = Not; args = [(ELit (LBool b), _)]; _ } ->
+    | EAppOp { op = Not, _; args = [(ELit (LBool b), _)]; _ } ->
       (* reduction of logical not *)
       ELit (LBool (not b))
-    | EAppOp { op = Or; args = [(ELit (LBool b), _); (e, _)]; _ }
-    | EAppOp { op = Or; args = [(e, _); (ELit (LBool b), _)]; _ } ->
+    | EAppOp { op = Or, _; args = [(ELit (LBool b), _); (e, _)]; _ }
+    | EAppOp { op = Or, _; args = [(e, _); (ELit (LBool b), _)]; _ } ->
       (* reduction of logical or *)
       if b then ELit (LBool true) else e
-    | EAppOp { op = And; args = [(ELit (LBool b), _); (e, _)]; _ }
-    | EAppOp { op = And; args = [(e, _); (ELit (LBool b), _)]; _ } ->
+    | EAppOp { op = And, _; args = [(ELit (LBool b), _); (e, _)]; _ }
+    | EAppOp { op = And, _; args = [(e, _); (ELit (LBool b), _)]; _ } ->
       (* reduction of logical and *)
       if b then e else ELit (LBool false)
     | EMatch { e = EInj { e = e'; cons; name = n' }, _; cases; name = n }
@@ -155,15 +140,12 @@ let rec optimize_expr :
               match Mark.remove b1, Mark.remove e2 with
               | EAbs { binder = b1; _ }, EAbs { binder = b2; tys } -> (
                 let v1, e1 = Bindlib.unmbind b1 in
-                let[@warning "-8"] [| v1 |] = v1 in
                 match Mark.remove e1 with
-                | EInj { e = e1; _ } ->
+                | EInj { e = e1, _; _ } ->
                   Some
                     (Expr.unbox
-                       (Expr.make_abs [| v1 |]
-                          (Expr.rebox
-                             (Bindlib.msubst b2
-                                ([e1] |> List.map fst |> Array.of_list)))
+                       (Expr.make_abs v1
+                          (Expr.rebox (Bindlib.msubst b2 [| e1 |]))
                           tys (Expr.pos e2)))
                 | _ -> assert false)
               | _ -> assert false)
@@ -171,44 +153,6 @@ let rec optimize_expr :
           cases1 cases2
       in
       EMatch { e = arg; cases; name = n1 }
-    | EMatch { e = e'; cases; name = n }
-      when all_match_cases_take_unit_and_map_to_boolean_literals cases ->
-      (* transform matches whose arms are all of the form [Constructor () ->
-         true/false] to a big [or] of all those cases *)
-      let cases_true =
-        EnumConstructor.Map.filter
-          (fun _ case ->
-            match Mark.remove case with
-            | EAbs { binder; _ } -> (
-              let _, body = Bindlib.unmbind binder in
-              match Mark.remove body with
-              | ELit (LBool b) -> b
-              | _ -> failwith "should not happen")
-            | _ -> assert false)
-          cases
-      in
-      let boxed_e' = Expr.rebox e' in
-      let m = Mark.get e' |> Expr.no_mark in
-      let lunit = Expr.elit LUnit m in
-      let enum_typ = Mark.add Pos.no_pos (TEnum n) in
-      let bool_typ = Mark.add Pos.no_pos (TLit TBool) in
-      let make_eq (cons : EnumConstructor.t) =
-        let inj = Expr.einj ~name:n ~cons ~e:lunit m in
-        Expr.eappop ~op:Eq ~args:[boxed_e'; inj] ~tys:[enum_typ; enum_typ] m
-      in
-      let make_or e1 e2 =
-        Expr.eappop ~op:Or ~args:[e1; e2] ~tys:[bool_typ; bool_typ] m
-      in
-      let f cons _ acc =
-        let eq = make_eq cons in
-        make_or acc eq
-      in
-      let lfalse = Expr.elit (LBool false) m in
-      EnumConstructor.Map.fold f cases_true lfalse
-      |> Expr.unbox
-      |> optimize_expr ctx
-      |> Expr.unbox
-      |> Mark.remove
     | EApp { f = EAbs { binder; _ }, _; args; _ }
       when binder_vars_used_at_most_once binder
            || List.for_all
@@ -224,7 +168,7 @@ let rec optimize_expr :
     | EDefault { excepts; just; cons } -> (
       (* TODO: mechanically prove each of these optimizations correct *)
       let excepts =
-        List.filter (fun except -> Mark.remove except <> EEmptyError) excepts
+        List.filter (fun except -> Mark.remove except <> EEmpty) excepts
         (* we can discard the exceptions that are always empty error *)
       in
       let value_except_count =
@@ -251,13 +195,13 @@ let rec optimize_expr :
           Mark.remove cons
         | ( [],
             ( ( ELit (LBool false)
-              | EAppOp { op = Log _; args = [(ELit (LBool false), _)]; _ } ),
+              | EAppOp { op = Log _, _; args = [(ELit (LBool false), _)]; _ } ),
               _ ) ) ->
           (* No exceptions and condition false *)
-          EEmptyError
+          EEmpty
         | ( [except],
             ( ( ELit (LBool false)
-              | EAppOp { op = Log _; args = [(ELit (LBool false), _)]; _ } ),
+              | EAppOp { op = Log _, _; args = [(ELit (LBool false), _)]; _ } ),
               _ ) ) ->
           (* Single exception and condition false *)
           Mark.remove except
@@ -266,7 +210,7 @@ let rec optimize_expr :
         {
           cond =
             ( ELit (LBool true), _
-            | EAppOp { op = Log _; args = [(ELit (LBool true), _)]; _ }, _ );
+            | EAppOp { op = Log _, _; args = [(ELit (LBool true), _)]; _ }, _ );
           etrue;
           _;
         } ->
@@ -275,7 +219,7 @@ let rec optimize_expr :
         {
           cond =
             ( ( ELit (LBool false)
-              | EAppOp { op = Log _; args = [(ELit (LBool false), _)]; _ } ),
+              | EAppOp { op = Log _, _; args = [(ELit (LBool false), _)]; _ } ),
               _ );
           efalse;
           _;
@@ -286,32 +230,37 @@ let rec optimize_expr :
           cond;
           etrue =
             ( ( ELit (LBool btrue)
-              | EAppOp { op = Log _; args = [(ELit (LBool btrue), _)]; _ } ),
+              | EAppOp { op = Log _, _; args = [(ELit (LBool btrue), _)]; _ } ),
               _ );
           efalse =
             ( ( ELit (LBool bfalse)
-              | EAppOp { op = Log _; args = [(ELit (LBool bfalse), _)]; _ } ),
+              | EAppOp { op = Log _, _; args = [(ELit (LBool bfalse), _)]; _ }
+                ),
               _ );
         } ->
       if btrue && not bfalse then Mark.remove cond
       else if (not btrue) && bfalse then
         EAppOp
-          { op = Not; tys = [TLit TBool, Expr.mark_pos mark]; args = [cond] }
+          {
+            op = Not, Expr.mark_pos mark;
+            tys = [TLit TBool, Expr.mark_pos mark];
+            args = [cond];
+          }
         (* note: this last call eliminates the condition & might skip log calls
            as well *)
       else (* btrue = bfalse *) ELit (LBool btrue)
-    | EAppOp { op = Op.Fold; args = [_f; init; (EArray [], _)]; _ } ->
+    | EAppOp { op = Op.Fold, _; args = [_f; init; (EArray [], _)]; _ } ->
       (*reduces a fold with an empty list *)
       Mark.remove init
     | EAppOp
         {
-          op = Map;
+          op = (Map, _) as op;
           args =
             [
               f1;
               ( EAppOp
                   {
-                    op = Map;
+                    op = Map, _;
                     args = [f2; ls];
                     tys = [_; ((TArray xty, _) as lsty)];
                   },
@@ -339,7 +288,7 @@ let rec optimize_expr :
       in
       let fg = optimize_expr ctx (Expr.unbox fg) in
       let mapl =
-        Expr.eappop ~op:Map
+        Expr.eappop ~op
           ~args:[fg; Expr.box ls]
           ~tys:[Expr.maybe_ty (Mark.get fg); lsty]
           mark
@@ -347,13 +296,13 @@ let rec optimize_expr :
       Mark.remove (Expr.unbox mapl)
     | EAppOp
         {
-          op = Map;
+          op = Map, _;
           args =
             [
               f1;
               ( EAppOp
                   {
-                    op = Map2;
+                    op = (Map2, _) as op;
                     args = [f2; ls1; ls2];
                     tys =
                       [
@@ -392,7 +341,7 @@ let rec optimize_expr :
       in
       let fg = optimize_expr ctx (Expr.unbox fg) in
       let mapl =
-        Expr.eappop ~op:Map2
+        Expr.eappop ~op
           ~args:[fg; Expr.box ls1; Expr.box ls2]
           ~tys:[Expr.maybe_ty (Mark.get fg); ls1ty; ls2ty]
           mark
@@ -400,7 +349,7 @@ let rec optimize_expr :
       Mark.remove (Expr.unbox mapl)
     | EAppOp
         {
-          op = Op.Fold;
+          op = Op.Fold, _;
           args = [f; init; (EArray [e'], _)];
           tys = [_; tinit; (TArray tx, _)];
         } ->
@@ -416,13 +365,12 @@ let rec optimize_expr :
                 el) ->
       (* identity tuple reconstruction *)
       Mark.remove e
-    | ECatch { body; exn; handler } -> (
+    | ECatchEmpty { body; handler } -> (
       (* peephole exception catching reductions *)
       match Mark.remove body, Mark.remove handler with
-      | ERaise exn', ERaise exn'' when exn' = exn && exn = exn'' -> ERaise exn
-      | ERaise exn', _ when exn' = exn -> Mark.remove handler
-      | _, ERaise exn' when exn' = exn -> Mark.remove body
-      | _ -> ECatch { body; exn; handler })
+      | ERaiseEmpty, _ -> Mark.remove handler
+      | _, ERaiseEmpty -> Mark.remove body
+      | _ -> ECatchEmpty { body; handler })
     | e -> e
   in
   Expr.Box.app1 e reduce mark

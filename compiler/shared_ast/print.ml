@@ -345,13 +345,8 @@ let operator : type a. ?debug:bool -> Format.formatter -> a operator -> unit =
     op_style fmt
       (if debug then operator_to_string op else operator_to_shorter_string op)
 
-let except (fmt : Format.formatter) (exn : except) : unit =
-  op_style fmt
-    (match exn with
-    | EmptyError -> "EmptyError"
-    | ConflictError _ -> "ConflictError"
-    | Crash s -> Printf.sprintf "Crash %S" s
-    | NoValueProvided -> "NoValueProvided")
+let runtime_error ppf err =
+  Format.fprintf ppf "@{<red>%s@}" (Runtime.error_to_string err)
 
 let var_debug fmt v =
   Format.fprintf fmt "%s_%d" (Bindlib.name_of v) (Bindlib.uid_of v)
@@ -375,7 +370,7 @@ module Precedence = struct
     match Mark.remove e with
     | ELit _ -> Contained (* Todo: unop if < 0 *)
     | EAppOp { op; _ } -> (
-      match op with
+      match Mark.remove op with
       | Not | GetDay | GetMonth | GetYear | FirstDayOfMonth | LastDayOfMonth
       | Length | Log _ | Minus | Minus_int | Minus_rat | Minus_mon | Minus_dur
       | ToRat | ToRat_int | ToRat_mon | ToMoney | ToMoney_rat | Round
@@ -426,13 +421,14 @@ module Precedence = struct
     | EDStructAmend _ -> App
     | EDStructAccess _ | EStructAccess _ -> Dot
     | EAssert _ -> App
+    | EFatalError _ -> App
     | EDefault _ -> Contained
     | EPureDefault _ -> Contained
-    | EEmptyError -> Contained
+    | EEmpty -> Contained
     | EErrorOnEmpty _ -> App
+    | ERaiseEmpty -> App
+    | ECatchEmpty _ -> App
     | EGenericError -> Contained
-    | ERaise _ -> App
-    | ECatch _ -> App
     | ECustom _ -> Contained
 
   let needs_parens ~context ?(rhs = false) e =
@@ -576,16 +572,16 @@ module ExprGen (C : EXPR_PARAM) = struct
                  Format.pp_close_box fmt ();
                  punctuation fmt ")"))
           xs_tau punctuation "→" (rhs expr) body
-      | EAppOp { op = (Map | Filter) as op; args = [arg1; arg2]; _ } ->
+      | EAppOp { op = ((Map | Filter) as op), _; args = [arg1; arg2]; _ } ->
         Format.fprintf fmt "@[<hv 2>%a %a@ %a@]" operator op (lhs exprc) arg1
           (rhs exprc) arg2
-      | EAppOp { op = Log _ as op; args = [arg1]; _ } ->
+      | EAppOp { op = (Log _ as op), _; args = [arg1]; _ } ->
         Format.fprintf fmt "@[<hv 0>%a@ %a@]" operator op (rhs exprc) arg1
-      | EAppOp { op = op0; args = [_; _]; _ } ->
+      | EAppOp { op = op0, _; args = [_; _]; _ } ->
         let prec = Precedence.expr e in
         let rec pr colors fmt = function
           (* Flatten sequences of the same associative op *)
-          | EAppOp { op; args = [arg1; arg2]; _ }, _ when op = op0 -> (
+          | EAppOp { op = op, _; args = [arg1; arg2]; _ }, _ when op = op0 -> (
             (match prec with
             | Op (And | Or | Mul | Add | Div | Sub) -> lhs pr fmt arg1
             | _ -> lhs exprc fmt arg1);
@@ -600,9 +596,9 @@ module ExprGen (C : EXPR_PARAM) = struct
         Format.pp_open_hvbox fmt 0;
         pr colors fmt e;
         Format.pp_close_box fmt ()
-      | EAppOp { op; args = [arg1]; _ } ->
+      | EAppOp { op = op, _; args = [arg1]; _ } ->
         Format.fprintf fmt "@[<hv 2>%a@ %a@]" operator op (rhs exprc) arg1
-      | EAppOp { op; args; _ } ->
+      | EAppOp { op = op, _; args; _ } ->
         Format.fprintf fmt "@[<hv 2>%a@ %a@]" operator op
           (Format.pp_print_list
              ~pp_sep:(fun fmt () -> Format.fprintf fmt "@ ")
@@ -666,20 +662,22 @@ module ExprGen (C : EXPR_PARAM) = struct
           "⟨" expr e
           (default_punct (List.hd colors))
           "⟩"
-      | EEmptyError -> lit_style fmt "∅"
-      | EGenericError -> lit_style fmt "↯"
+      | EEmpty -> lit_style fmt "∅"
       | EErrorOnEmpty e' ->
         Format.fprintf fmt "@[<hov 2>%a@ %a@]" op_style "error_empty"
           (rhs exprc) e'
       | EAssert e' ->
         Format.fprintf fmt "@[<hov 2>%a@ %a%a%a@]" keyword "assert" punctuation
           "(" (rhs exprc) e' punctuation ")"
-      | ECatch { body; exn; handler } ->
+      | EFatalError err ->
+        Format.fprintf fmt "@[<hov 2>%a@ @{<red>%s@}@]" keyword "error"
+          (Runtime.error_to_string err)
+      | ECatchEmpty { body; handler } ->
         Format.fprintf fmt
           "@[<hv 0>@[<hov 2>%a@ %a@]@ @[<hov 2>%a@ %a ->@ %a@]@]" keyword "try"
-          expr body keyword "with" except exn (rhs exprc) handler
-      | ERaise exn ->
-        Format.fprintf fmt "@[<hov 2>%a@ %a@]" keyword "raise" except exn
+          expr body keyword "with" op_style "Empty" (rhs exprc) handler
+      | ERaiseEmpty ->
+        Format.fprintf fmt "@[<hov 2>%a@ %a@]" keyword "raise" op_style "Empty"
       | ELocation loc -> location fmt loc
       | EDStructAccess { e; field; _ } ->
         Format.fprintf fmt "@[<hv 2>%a%a@,%a%a%a@]" (lhs exprc) e punctuation
@@ -752,6 +750,7 @@ module ExprGen (C : EXPR_PARAM) = struct
         Format.pp_close_box fmt ();
         punctuation fmt "}";
         Format.pp_close_box fmt ()
+      | EGenericError -> lit_style fmt "↯"
       | ECustom _ -> Format.pp_print_string fmt "<obj>"
 
   let expr ppf e = expr_aux Bindlib.empty_ctxt colors ppf e
@@ -764,7 +763,7 @@ module ExprConciseParam = struct
   let lit = lit
 
   let rec pre_map : type a. (a, 't) gexpr -> (a, 't) gexpr = function
-    | EAppOp { op = Log _; args = [e]; _ }, _ -> pre_map e
+    | EAppOp { op = Log _, _; args = [e]; _ }, _ -> pre_map e
     | e -> e
 end
 
@@ -954,8 +953,8 @@ let program ?(debug = false) fmt p =
 (* This function is re-exported from module [Expr], but defined here where it's
    first needed *)
 let rec skip_wrappers : type a. (a, 'm) gexpr -> (a, 'm) gexpr = function
-  | EAppOp { op = Log _; args = [e]; tys = _ }, _ -> skip_wrappers e
-  | EApp { f = EAppOp { op = Log _; args = [f]; _ }, _; args; tys }, m ->
+  | EAppOp { op = Log _, _; args = [e]; tys = _ }, _ -> skip_wrappers e
+  | EApp { f = EAppOp { op = Log _, _; args = [f]; _ }, _; args; tys }, m ->
     skip_wrappers (EApp { f; args; tys }, m)
   | EErrorOnEmpty e, _ -> skip_wrappers e
   | EDefault { excepts = []; just = ELit (LBool true), _; cons = e }, _ ->
@@ -1054,13 +1053,13 @@ module UserFacing = struct
      and some others not, adding confusion. *)
 
   let date (lang : Global.backend_lang) ppf d =
-    let y, m, d = Dates_calc.Dates.date_to_ymd d in
+    let y, m, d = Runtime.date_to_years_months_days d in
     match lang with
     | En | Pl -> Format.fprintf ppf "%04d-%02d-%02d" y m d
     | Fr -> Format.fprintf ppf "%02d/%02d/%04d" d m y
 
   let duration (lang : Global.backend_lang) ppf dr =
-    let y, m, d = Dates_calc.Dates.period_to_ymds dr in
+    let y, m, d = Runtime.duration_to_years_months_days dr in
     let rec filter0 = function
       | (0, _) :: (_ :: _ as r) -> filter0 r
       | x :: r -> x :: List.filter (fun (n, _) -> n <> 0) r
@@ -1132,13 +1131,13 @@ module UserFacing = struct
     | EInj { name = _; cons; e } ->
       Format.fprintf ppf "@[<hov 2>%a@ %a@]" EnumConstructor.format cons
         (value ~fallback lang) e
-    | EEmptyError -> Format.pp_print_string ppf "ø"
-    | EGenericError -> Format.pp_print_string ppf "↯"
+    | EEmpty -> Format.pp_print_string ppf "ø"
     | EAbs _ -> Format.pp_print_string ppf "<function>"
     | EExternal _ -> Format.pp_print_string ppf "<external>"
+    | EGenericError -> Format.pp_print_string ppf "↯"
     | EApp _ | EAppOp _ | EVar _ | EIfThenElse _ | EMatch _ | ETupleAccess _
-    | EStructAccess _ | EAssert _ | EDefault _ | EPureDefault _
-    | EErrorOnEmpty _ | ERaise _ | ECatch _ | ELocation _ | EScopeCall _
+    | EStructAccess _ | EAssert _ | EFatalError _ | EDefault _ | EPureDefault _
+    | EErrorOnEmpty _ | ERaiseEmpty | ECatchEmpty _ | ELocation _ | EScopeCall _
     | EDStructAmend _ | EDStructAccess _ | ECustom _ ->
       fallback ppf e
 
@@ -1153,7 +1152,7 @@ module UserFacing = struct
         let bypass : type a t. Format.formatter -> (a, t) gexpr -> bool =
          fun ppf e ->
           match Mark.remove e with
-          | EArray _ | ETuple _ | EStruct _ | EInj _ | EEmptyError | EAbs _
+          | EArray _ | ETuple _ | EStruct _ | EInj _ | EEmpty | EAbs _
           | EExternal _ ->
             aux_value ppf e;
             true

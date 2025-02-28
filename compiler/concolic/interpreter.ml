@@ -98,8 +98,9 @@ let add_genericerror e =
       Expr.eappop ~tys ~args:(List.map f args) ~op:(Operator.translate op) m
     | (EDefault _, _) as e -> Expr.map ~f e
     | (EPureDefault _, _) as e -> Expr.map ~f e
-    | (EEmptyError, _) as e -> Expr.map ~f e
+    | (EEmpty, _) as e -> Expr.map ~f e
     | (EErrorOnEmpty _, _) as e -> Expr.map ~f e
+    | (EFatalError _, _) as e -> Expr.map ~f e
     | ( ( EAssert _ | ELit _ | EApp _ | EArray _ | EVar _ | EExternal _ | EAbs _
         | EIfThenElse _ | ETuple _ | ETupleAccess _ | EInj _ | EStruct _
         | EStructAccess _ | EMatch _ ),
@@ -155,8 +156,8 @@ let del_genericerror e =
         Expr.eappop ~tys ~args:(List.map f args) ~op:(Operator.translate op) m
       | ( ( EAssert _ | ELit _ | EApp _ | EArray _ | EVar _ | EExternal _ | EAbs _
           | EIfThenElse _ | ETuple _ | ETupleAccess _ | EInj _ | EStruct _
-          | EStructAccess _ | EMatch _ | EDefault _ | EPureDefault _ | EEmptyError
-          | EErrorOnEmpty _ | ECustom _ ),
+          | EStructAccess _ | EMatch _ | EDefault _ | EPureDefault _ | EEmpty
+          | EFatalError _ | EErrorOnEmpty _ | ECustom _ ),
           _ ) as e ->
         Expr.map ~f e
       | _ -> .
@@ -799,7 +800,8 @@ let propagate_generic_error_list l other_constraints f =
 (*   in *)
 (*   aux [] elist *)
 
-let handle_eq evaluate_operator pos lang e1 e2 =
+let handle_eq pos evaluate_operator (m: conc_info mark) lang e1 e2 =
+  let eq_eval = evaluate_operator (Eq, pos) m lang in
   let open Runtime.Oper in
   match e1, e2 with
   | ELit LUnit, ELit LUnit -> true
@@ -807,13 +809,14 @@ let handle_eq evaluate_operator pos lang e1 e2 =
   | ELit (LInt x1), ELit (LInt x2) -> o_eq_int_int x1 x2
   | ELit (LRat x1), ELit (LRat x2) -> o_eq_rat_rat x1 x2
   | ELit (LMoney x1), ELit (LMoney x2) -> o_eq_mon_mon x1 x2
-  | ELit (LDuration x1), ELit (LDuration x2) -> o_eq_dur_dur x1 x2
+  | ELit (LDuration x1), ELit (LDuration x2) ->
+    o_eq_dur_dur (Expr.pos_to_runtime (Expr.mark_pos m)) x1 x2
   | ELit (LDate x1), ELit (LDate x2) -> o_eq_dat_dat x1 x2
   | EArray es1, EArray es2 -> (
     try
       List.for_all2
         (fun e1 e2 ->
-          match Mark.remove (evaluate_operator Eq pos lang [e1; e2]) with
+          match Mark.remove (eq_eval [e1; e2]) with
           | ELit (LBool b) -> b
           | _ -> assert false
           (* should not happen *))
@@ -823,7 +826,7 @@ let handle_eq evaluate_operator pos lang e1 e2 =
     StructName.equal s1 s2
     && StructField.Map.equal
          (fun e1 e2 ->
-           match Mark.remove (evaluate_operator Eq pos lang [e1; e2]) with
+           match Mark.remove (eq_eval [e1; e2]) with
            | ELit (LBool b) -> b
            | _ -> assert false
            (* should not happen *))
@@ -834,7 +837,7 @@ let handle_eq evaluate_operator pos lang e1 e2 =
       EnumName.equal en1 en2
       && EnumConstructor.equal i1 i2
       &&
-      match Mark.remove (evaluate_operator Eq pos lang [e1; e2]) with
+      match Mark.remove (eq_eval [e1; e2]) with
       | ELit (LBool b) -> b
       | _ -> assert false
       (* should not happen *)
@@ -915,7 +918,7 @@ let handle_division
        evaluated expressions, and their constraints are handled by [EAppOp]. *)
     let constraints = [den_not_zero_pc] in
     add_conc_info_m m symb_expr ~constraints concrete
-  with Runtime.Division_by_zero ->
+  with Runtime.(Error(DivisionByZero,_)) ->
     let den_zero_pc = PathConstraint.mk_z3 den_zero (Expr.pos e2) true in
     make_error_divisionbyzeroerror m [den_zero_pc]
       [
@@ -928,13 +931,19 @@ let handle_division
 let rec evaluate_operator
     evaluate_expr
     ctx
-    (op : < overloaded : no ; .. > operator)
-    m
+    ((op, opos) : < overloaded : no ; .. > operator Mark.pos)
+    (m: conc_info mark)
     lang
     (args : conc_expr list) : conc_result =
   let pos = Expr.mark_pos m in
+  let rpos () = Expr.pos_to_runtime opos in
+  let div_pos () =
+    (* Division by 0 errors point to their 2nd operand *)
+    Expr.pos_to_runtime
+    @@ match args with _ :: denom :: _ -> Expr.pos denom | _ -> opos
+  in
   let protect f x y =
-    (* TODO CONC REU For now, I crash on date ambiguities, because they should
+    (* TODO CONC For now, I crash on date ambiguities, because they should
        not happen: any duration expressed with months or years is rejected early
        on. *)
     let get_binop_args_pos = function
@@ -942,12 +951,9 @@ let rec evaluate_operator
         ["", Expr.pos arg0; "", Expr.pos arg1]
       | _ -> assert false
     in
-    try f x y
+    try f (rpos ()) x y
     with
-    (* TODO QU RAPHAEL: the standard interpreter also has a case for division by
-       zero, is it absent here because it is handled somewhere else?
-       =>> OUI *)
-    | Runtime.UncomparableDurations ->
+    | Runtime.(Error(UncomparableDurations,_)) ->
       Message.error ~extra_pos:(get_binop_args_pos args)
         "Cannot compare together durations that cannot be converted to a \
          precise number of days"
@@ -993,7 +999,7 @@ let rec evaluate_operator
     let e2' = Mark.remove e2 in
     let concrete =
       ELit
-        (LBool (handle_eq (evaluate_operator evaluate_expr ctx) m lang e1' e2'))
+        (LBool (handle_eq opos (evaluate_operator evaluate_expr ctx) m lang e1' e2'))
     in
     let s_e1 = get_symb_expr e1 in
     let s_e2 = get_symb_expr e2 in
@@ -1261,7 +1267,7 @@ let rec evaluate_operator
       DateEncoding.mult_dur_int x y e1 e2
   | Div_int_int, [((ELit (LInt x), _) as e1); ((ELit (LInt y), _) as e2)] ->
     handle_division ctx m
-      (fun x y -> ELit (LRat (o_div_int_int x y)))
+      (fun x y -> ELit (LRat (o_div_int_int (div_pos ()) x y)))
       (fun ctx e1 e2 ->
         (* convert e1 to a [Real] explicitely to avoid using integer division *)
         let e1_rat = z3_force_real ctx e1 in
@@ -1269,7 +1275,7 @@ let rec evaluate_operator
       x y e1 e2
   | Div_rat_rat, [((ELit (LRat x), _) as e1); ((ELit (LRat y), _) as e2)] ->
     handle_division ctx m
-      (fun x y -> ELit (LRat (o_div_rat_rat x y)))
+      (fun x y -> ELit (LRat (o_div_rat_rat (div_pos ()) x y)))
       (* Z3.Arithmetic.mk_div x y e1 e2 *)
         (fun ctx e1 e2 ->
         (* convert e1 to a [Real] explicitely to avoid using integer division *)
@@ -1278,7 +1284,7 @@ let rec evaluate_operator
       x y e1 e2
   | Div_mon_mon, [((ELit (LMoney x), _) as e1); ((ELit (LMoney y), _) as e2)] ->
     handle_division ctx m
-      (fun x y -> ELit (LRat (o_div_mon_mon x y)))
+      (fun x y -> ELit (LRat (o_div_mon_mon (div_pos ()) x y)))
       (fun ctx e1 e2 ->
         (* TODO factorize with [Div_int_int]? *)
         (* convert e1 to a [Real] explicitely to avoid using integer division *)
@@ -1287,7 +1293,7 @@ let rec evaluate_operator
       x y e1 e2
   | Div_mon_rat, [((ELit (LMoney x), _) as e1); ((ELit (LRat y), _) as e2)] ->
     handle_division ctx m
-      (fun x y -> ELit (LMoney (o_div_mon_rat x y)))
+      (fun x y -> ELit (LMoney (o_div_mon_rat (div_pos ()) x y)))
       (fun ctx cents r ->
         (* TODO maybe factorize with [Mult_mon_rat] and [ToRat_int]? *)
         let cents_rat = z3_force_real ctx cents in
@@ -1298,7 +1304,7 @@ let rec evaluate_operator
   | ( Div_dur_dur,
       [((ELit (LDuration x), _) as e1); ((ELit (LDuration y), _) as e2)] ) ->
     handle_division ctx m
-      (fun x y -> ELit (LRat (o_div_dur_dur x y)))
+      (fun x y -> ELit (LRat (o_div_dur_dur (div_pos ()) x y)))
       DateEncoding.div_dur_dur x y e1 e2
   | Lt_int_int, [((ELit (LInt x), _) as e1); ((ELit (LInt y), _) as e2)] ->
     op2 ctx m
@@ -1825,17 +1831,17 @@ let rec evaluate_expr :
              (should not happen if the term was well-typed)"
       end
     | ECustom _ -> failwith "ECustom not implemented"
-    | EEmptyError ->
+    | EEmpty ->
       if Global.options.debug then Message.debug "... it's an EEmptyError";
-      make_ok e
-      (* TODO check that it's ok to pass along the symbolic values and
-         constraints? *)
+      make_ok e (* it is a value *)
+    | EFatalError _err -> failwith "EFatalError not implemented"
+      (* raise (Runtime.Error (err, [Expr.pos_to_runtime pos])) *)
     | EErrorOnEmpty e' -> (
       if Global.options.debug then Message.debug "... it's an EErrorOnEmpty";
       propagate_generic_error (evaluate_expr ctx lang e') []
       @@ fun e' ->
       match e' with
-      | EEmptyError, m ->
+      | EEmpty, m ->
         make_error_emptyerror m (get_constraints e')
           "This variable evaluated to an empty term (no rule that defined it \
            applied in this situation)"
@@ -1864,7 +1870,7 @@ let rec evaluate_expr :
         get_constraints app (* TODO check that this is always []? *)
       in
       match Mark.remove app with
-      | EEmptyError ->
+      | EEmpty ->
         if Global.options.debug then Message.debug "Context>empty";
         let is_empty : PathConstraint.naked_path =
           PathConstraint.mk_reentrant abs_symb ctx.ctx_dummy_const pos true
@@ -1949,7 +1955,8 @@ and handle_default ctx lang m pos nonempty_count excepts just cons =
     let j_symb = get_symb_expr just in
     let j_constraints = get_constraints just in
     match Mark.remove just with
-    | EEmptyError ->
+    | EEmpty ->
+      (* TODO should be a runtime error *)
       if Global.options.debug then Message.debug "EDefault>empty";
       (* TODO test this case *)
       (* the constraints generated by the default when [just] is empty are :
@@ -1957,7 +1964,7 @@ and handle_default ctx lang m pos nonempty_count excepts just cons =
        * - those generated by the evaluation of [just]
        *)
       let constraints = j_constraints @ exc_constraints in
-      add_conc_info_m m SymbExpr.none ~constraints EEmptyError
+      add_conc_info_m m SymbExpr.none ~constraints EEmpty
     | ELit (LBool true) ->
       if Global.options.debug then Message.debug "EDefault>true adding %a to constraints" SymbExpr.formatter
         j_symb;
@@ -2001,7 +2008,7 @@ and handle_default ctx lang m pos nonempty_count excepts just cons =
       let constraints =
         (not_j_path_constraint :: j_constraints) @ exc_constraints
       in
-      add_conc_info_m m SymbExpr.none ~constraints EEmptyError
+      add_conc_info_m m SymbExpr.none ~constraints EEmpty
     | _ ->
       Message.error ~pos
         "Default justification has not been reduced to a boolean at evaluation \
