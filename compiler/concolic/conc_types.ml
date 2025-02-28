@@ -25,7 +25,6 @@ type ('c, 'e) conc_interpr_kind =
   ; assertions : yes
   ; defaultTerms : yes
   ; genericErrors : 'e
-  ; exceptions : no
   ; custom : 'c >
 
 type conc_src_kind = (yes, no) conc_interpr_kind

@@ -286,7 +286,7 @@ module DateEncoding = struct
       (* NOTE: no rounding for now *)
         (e : s_expr) : Runtime.date =
     let days = decode_duration e in
-    Runtime.o_add_dat_dur round base_day days
+    Runtime.o_add_dat_dur round (Expr.pos_to_runtime Pos.no_pos) base_day days
 
   (* Default date is epoch *)
   let default_date : Runtime.date = base_day
@@ -1212,7 +1212,7 @@ let rec evaluate_operator
   | ( Add_dat_dur r,
       [((ELit (LDate x), _) as e1); ((ELit (LDuration y), _) as e2)] ) ->
     op2list ctx m
-      (fun x y -> ELit (LDate (o_add_dat_dur r x y)))
+      (fun x y -> ELit (LDate (o_add_dat_dur r (rpos ()) x y)))
       DateEncoding.add_dat_dur x y e1 e2
   | ( Add_dur_dur,
       [((ELit (LDuration x), _) as e1); ((ELit (LDuration y), _) as e2)] ) ->
@@ -1390,6 +1390,9 @@ let rec evaluate_operator
     op2 ctx m
       (fun x y -> ELit (LBool (protect o_gte_dur_dur x y)))
       DateEncoding.gte_dur_dur x y e1 e2
+  | Eq_boo_boo, [(ELit (LBool _x), _); (ELit (LBool _y), _)] ->
+    failwith "Eq_boo_boo not implemented yet"
+    (* ELit (LBool (o_eq_boo_boo x y)) *)
   | Eq_int_int, [((ELit (LInt x), _) as e1); ((ELit (LInt y), _) as e2)] ->
     op2 ctx m
       (fun x y -> ELit (LBool (o_eq_int_int x y)))
@@ -1411,15 +1414,31 @@ let rec evaluate_operator
     op2 ctx m
       (fun x y -> ELit (LBool (protect o_eq_dur_dur x y)))
       DateEncoding.eq_dur_dur x y e1 e2
-  | HandleDefault, _ ->
-    Message.error ~internal:true
-      "The concolic interpreter is trying to evaluate the \"handle_default\" \
-       operator, which should not happen with a DCalc AST"
-  | HandleDefaultOpt, _ ->
-    Message.error ~internal:true
-      "The concolic interpreter is trying to evaluate the \
-       \"handle_default_opt\" operator, which should not happen with a DCalc \
-       AST"
+  | HandleExceptions, [(EArray _exps, _)] ->
+  failwith "HandleExceptions not implemented yet"
+(*
+    (
+    let valid_exceptions =
+      ListLabels.filter exps ~f:(function
+        | EInj { name; cons; _ }, _ when EnumName.equal name Expr.option_enum ->
+          EnumConstructor.equal cons Expr.some_constr
+        | _ -> err ())
+    in
+    match valid_exceptions with
+    | [] ->
+      EInj
+        { name = Expr.option_enum; cons = Expr.none_constr; e = ELit LUnit, m }
+    | [((EInj { cons; name; _ } as e), _)]
+      when EnumName.equal name Expr.option_enum
+           && EnumConstructor.equal cons Expr.some_constr ->
+      e
+    | [_] -> err ()
+    | excs ->
+      raise
+        Runtime.(
+          Error (Conflict, List.map Expr.(fun e -> pos_to_runtime (pos e)) excs))
+    )
+*)
   | ( ( Minus_int | Minus_rat | Minus_mon | Minus_dur | ToRat_int | ToRat_mon
       | ToMoney_rat | Round_rat | Round_mon | Add_int_int | Add_rat_rat
       | Add_mon_mon | Add_dat_dur _ | Add_dur_dur | Sub_int_int | Sub_rat_rat
@@ -1429,8 +1448,8 @@ let rec evaluate_operator
       | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur | Lte_int_int | Lte_rat_rat
       | Lte_mon_mon | Lte_dat_dat | Lte_dur_dur | Gt_int_int | Gt_rat_rat
       | Gt_mon_mon | Gt_dat_dat | Gt_dur_dur | Gte_int_int | Gte_rat_rat
-      | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur | Eq_int_int | Eq_rat_rat
-      | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur ),
+      | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur | Eq_boo_boo | Eq_int_int
+      | Eq_rat_rat | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur | HandleExceptions ),
       _ ) ->
     err ()
 

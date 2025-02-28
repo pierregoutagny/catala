@@ -20,7 +20,7 @@ let random p =
 (*   Message.result "random %.2f %.2f" f p; *)
   f < p
 
-type ('e, 'c, 't) mutation_type = ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed
+type ('e, 'c, 't) mutation_type = ((yes, 'c) interpr_kind, 't) gexpr boxed -> ((yes, 'c) interpr_kind, 't) gexpr boxed
 
 let remove_excepts_n = ref 0
 let remove_excepts (p: float) : ('e, 'c, 't) mutation_type =
@@ -70,7 +70,7 @@ let negate_justs : ('e, 'c, 't) mutation_type =
 
 let apply_mutations (type e c) (mutations: ((e, c, 't) mutation_type * float) list) expr =
   let op = Fun.id in
-  let rec f : ((yes, e, c) interpr_kind, 't) gexpr -> ((yes, e, c) interpr_kind, 't) gexpr boxed = function
+  let rec f : ((yes, c) interpr_kind, 't) gexpr -> ((yes, c) interpr_kind, 't) gexpr boxed = function
     | (EDefault {excepts ; just ; cons}, m) as e ->
         if Global.options.debug then Message.debug "[mutation] looking at expression %a (%n)" (Print.expr ()) e (List.length excepts);
         let excepts = List.map f excepts in
@@ -122,7 +122,7 @@ let pprint_ast_stats (fmt : Format.formatter) (s: ast_stats_t) =
 let get_stats expr =
   let stats = { defaults = 0 ; defaults_with_excepts = 0 ; excepts_sizes = [] ; ifs = 0 ; asserts = 0 ; matches = 0 ; match_max_arms = 0 } in
   let op = Fun.id in
-  let rec f : ((yes, 'e, 'c) interpr_kind, 't) gexpr -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed = function
+  let rec f : ((yes, 'c) interpr_kind, 't) gexpr -> ((yes, 'c) interpr_kind, 't) gexpr boxed = function
     | (EIfThenElse _, _) as e ->
         stats.ifs <- stats.ifs + 1;
         Expr.map ~op ~f e
@@ -150,7 +150,7 @@ let mutate_default_at_index (type e c)
   expr =
     let op = Fun.id in
     let i = ref 0 in
-    let rec f : ((yes, e, c) interpr_kind, 't) gexpr -> ((yes, e, c) interpr_kind, 't) gexpr boxed = function
+    let rec f : ((yes, c) interpr_kind, 't) gexpr -> ((yes, c) interpr_kind, 't) gexpr boxed = function
       | (EDefault {excepts ; just ; cons}, m) as e ->
           if excepts <> [] || not only_with_excepts then incr i;
           if !i = goal then begin
@@ -164,8 +164,8 @@ let mutate_default_at_index (type e c)
       | _ as e -> Expr.map ~op ~f e
     in f expr
 
-let create_one_conflict (expr: ((yes, 'e, 'c) interpr_kind, 't) gexpr) :
-  ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed =
+let create_one_conflict (expr: ((yes, 'c) interpr_kind, 't) gexpr) :
+  ((yes, 'c) interpr_kind, 't) gexpr boxed =
   let stats = get_stats expr in
   let goal = Random.int stats.defaults_with_excepts + 1 in
   mutate_default_at_index duplicate_excepts true goal expr

@@ -2,7 +2,7 @@ open Shared_ast
 
 val init : int option -> unit
 
-type ('e, 'c, 't) mutation_type = ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed
+type ('e, 'c, 't) mutation_type = ((yes, 'c) interpr_kind, 't) gexpr boxed -> ((yes, 'c) interpr_kind, 't) gexpr boxed
 
 val remove_excepts_n : int ref
 val remove_excepts : float -> ('e, 'c, 't) mutation_type
@@ -14,7 +14,7 @@ val negate_justs_n : int ref
 val negate_justs : ('e, 'c, 't) mutation_type
 
 
-val apply_mutations : (('e, 'c, 't) mutation_type * float) list -> ((yes, 'e, 'c) interpr_kind, 't) gexpr -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed
+val apply_mutations : (('e, 'c, 't) mutation_type * float) list -> ((yes, 'c) interpr_kind, 't) gexpr -> ((yes, 'c) interpr_kind, 't) gexpr boxed
 
 
 type ast_stats_t = {
@@ -26,8 +26,8 @@ type ast_stats_t = {
   mutable matches : int;
   mutable match_max_arms : int;
 }
-val get_stats : ((yes, 'e, 'c) interpr_kind, 't) gexpr -> ast_stats_t
+val get_stats : ((yes, 'c) interpr_kind, 't) gexpr -> ast_stats_t
 val pprint_ast_stats : Format.formatter -> ast_stats_t -> unit
 
-val create_one_conflict : ((yes, 'e, 'c) interpr_kind, 't) gexpr -> ((yes, 'e, 'c) interpr_kind, 't) gexpr boxed
+val create_one_conflict : ((yes, 'c) interpr_kind, 't) gexpr -> ((yes, 'c) interpr_kind, 't) gexpr boxed
 
