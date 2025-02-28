@@ -685,13 +685,9 @@ module Commands = struct
     let prg, _ =
       Passes.dcalc options ~includes ~optimize ~check_invariants ~typed
     in
-    let t1 = Sys.time () in
     Interpreter.load_runtime_modules prg;
-    let r = print_interpretation_results options Interpreter.interpret_program_dcalc prg
+    print_interpretation_results options Interpreter.interpret_program_dcalc prg
       (get_scope_uid prg.decl_ctx ex_scope)
-    in 
-    Message.result "interpret time %f" (Sys.time () -. t1);
-    r
 
   let lcalc
       typed
