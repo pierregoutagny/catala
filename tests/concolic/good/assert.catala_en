@@ -15,7 +15,7 @@ $ catala DCalc -s A
 let scope A (A_in: A_in {b_in: bool}): A {o: integer} =
   let get b : bool = A_in.b_in in
   let set o : integer = error_empty ⟨ ⟨true ⊢ ⟨0⟩⟩ | false ⊢ ∅ ⟩ in
-  let assert assert1 : unit = assert (b) in
+  let assert assert__1 : unit = assert (b) in
   return { A o = o; }
 ```
 
