@@ -52,6 +52,7 @@ type error =
   | DivisionByZero
   | NotSameLength
   | UncomparableDurations
+  | AmbiguousDateRounding
   | IndivisibleDurations
 
 let error_to_string = function
@@ -61,6 +62,7 @@ let error_to_string = function
   | DivisionByZero -> "DivisionByZero"
   | NotSameLength -> "NotSameLength"
   | UncomparableDurations -> "UncomparableDurations"
+  | AmbiguousDateRounding -> "AmbiguousDateRounding"
   | IndivisibleDurations -> "IndivisibleDurations"
 
 let error_message = function
@@ -75,6 +77,8 @@ let error_message = function
   | UncomparableDurations ->
     "ambiguous comparison between durations in different units (e.g. months \
      vs. days)"
+  | AmbiguousDateRounding ->
+    "ambiguous date computation, and rounding mode was not specified"
   | IndivisibleDurations -> "dividing durations that are not in days"
 
 exception Error of error * source_position list
@@ -716,32 +720,9 @@ module EventParser = struct
     ctx.events
 end
 
-let handle_default :
-      'a.
-      source_position array ->
-      (unit -> 'a) array ->
-      (unit -> bool) ->
-      (unit -> 'a) ->
-      'a =
- fun pos exceptions just cons ->
-  let len = Array.length exceptions in
-  let rec filt_except i =
-    if i < len then
-      match exceptions.(i) () with
-      | new_val -> (new_val, i) :: filt_except (i + 1)
-      | exception Empty -> filt_except (i + 1)
-    else []
-  in
-  match filt_except 0 with
-  | [] -> if just () then cons () else raise Empty
-  | [(res, _)] -> res
-  | res -> error Conflict (List.map (fun (_, i) -> pos.(i)) res)
-
-let handle_default_opt
+let handle_exceptions
     (pos : source_position array)
-    (exceptions : 'a Eoption.t array)
-    (just : unit -> bool)
-    (cons : unit -> 'a Eoption.t) : 'a Eoption.t =
+    (exceptions : 'a Eoption.t array) : 'a Eoption.t =
   let len = Array.length exceptions in
   let rec filt_except i =
     if i < len then
@@ -751,7 +732,7 @@ let handle_default_opt
     else []
   in
   match filt_except 0 with
-  | [] -> if just () then cons () else Eoption.ENone ()
+  | [] -> Eoption.ENone ()
   | [(res, _)] -> res
   | res -> error Conflict (List.map (fun (_, i) -> pos.(i)) res)
 
@@ -814,7 +795,12 @@ module Oper = struct
   let o_add_int_int i1 i2 = Z.add i1 i2
   let o_add_rat_rat i1 i2 = Q.add i1 i2
   let o_add_mon_mon m1 m2 = Z.add m1 m2
-  let o_add_dat_dur r da du = Dates_calc.Dates.add_dates ~round:r da du
+
+  let o_add_dat_dur r pos da du =
+    try Dates_calc.Dates.add_dates ~round:r da du
+    with Dates_calc.Dates.AmbiguousComputation ->
+      error AmbiguousDateRounding [pos]
+
   let o_add_dur_dur = Dates_calc.Dates.add_periods
   let o_sub_int_int i1 i2 = Z.sub i1 i2
   let o_sub_rat_rat i1 i2 = Q.sub i1 i2
@@ -878,12 +864,15 @@ module Oper = struct
   let o_gte_mon_mon m1 m2 = Z.compare m1 m2 >= 0
   let o_gte_dur_dur pos d1 d2 = compare_periods pos d1 d2 >= 0
   let o_gte_dat_dat d1 d2 = Dates_calc.Dates.compare_dates d1 d2 >= 0
+  let o_eq_boo_boo b1 b2 = b1 = b2
   let o_eq_int_int i1 i2 = Z.equal i1 i2
   let o_eq_rat_rat i1 i2 = Q.equal i1 i2
   let o_eq_mon_mon m1 m2 = Z.equal m1 m2
   let o_eq_dur_dur pos d1 d2 = equal_periods pos d1 d2
   let o_eq_dat_dat d1 d2 = Dates_calc.Dates.compare_dates d1 d2 = 0
   let o_fold = Array.fold_left
+  let o_toclosureenv = Obj.repr
+  let o_fromclosureenv = Obj.obj
 end
 
 include Oper
@@ -897,7 +886,9 @@ let register_module modname values hash =
   Hashtbl.add modules_table modname hash;
   List.iter (fun (id, v) -> Hashtbl.add values_table ([modname], id) v) values
 
-let check_module m h = String.equal (Hashtbl.find modules_table m) h
+let check_module m h =
+  let h1 = Hashtbl.find modules_table m in
+  if String.equal h h1 then Ok () else Error h1
 
 let lookup_value qid =
   try Hashtbl.find values_table qid

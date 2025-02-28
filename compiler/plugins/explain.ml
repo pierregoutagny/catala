@@ -436,7 +436,7 @@ let result_level base_vars =
 let interpret_program (prg : ('dcalc, 'm) gexpr program) (scope : ScopeName.t) :
     ('t, 'm) gexpr * Env.t =
   let ctx = prg.decl_ctx in
-  let (all_env, scopes), () =
+  let (all_env, scopes), _ =
     BoundList.fold_left prg.code_items ~init:(Env.empty, ScopeName.Map.empty)
       ~f:(fun (env, scopes) item v ->
         match item with
@@ -445,7 +445,7 @@ let interpret_program (prg : ('dcalc, 'm) gexpr program) (scope : ScopeName.t) :
           let e = Expr.remove_logging_calls (Expr.unbox e) in
           ( Env.add v (Expr.unbox e) env env,
             ScopeName.Map.add name (v, body.scope_body_input_struct) scopes )
-        | Topdef (_, _, e) -> Env.add v e env env, scopes)
+        | Topdef (_, _, _, e) -> Env.add v e env env, scopes)
   in
   let scope_v, _scope_arg_struct = ScopeName.Map.find scope scopes in
   let e, env = (Env.find scope_v all_env).base in
@@ -611,7 +611,7 @@ let program_to_graph
     Expr.map_marks ~f:(fun m ->
         Custom { pos = Expr.mark_pos m; custom = { conditions = [] } })
   in
-  let (all_env, scopes), () =
+  let (all_env, scopes), _ =
     BoundList.fold_left prg.code_items ~init:(Env.empty, ScopeName.Map.empty)
       ~f:(fun (env, scopes) item v ->
         match item with
@@ -619,10 +619,20 @@ let program_to_graph
           let e = Scope.to_expr ctx body in
           let e = customize (Expr.unbox e) in
           let e = Expr.remove_logging_calls (Expr.unbox e) in
-          let e = Expr.rename_vars (Expr.unbox e) in
+          let e =
+            Renaming.expr
+              (Renaming.get_ctx
+                 {
+                   Renaming.reserved = [];
+                   sanitize_varname = String.to_snake_case;
+                   skip_constant_binders = false;
+                   constant_binder_name = None;
+                 })
+              (Expr.unbox e)
+          in
           ( Env.add (Var.translate v) (Expr.unbox e) env env,
             ScopeName.Map.add name (v, body.scope_body_input_struct) scopes )
-        | Topdef (_, _, e) ->
+        | Topdef (_, _, _, e) ->
           Env.add (Var.translate v) (Expr.unbox (customize e)) env env, scopes)
   in
   let scope_v, _scope_arg_struct = ScopeName.Map.find scope scopes in
@@ -1036,8 +1046,8 @@ let expr_to_dot_label0 :
         let open Op in
         let str =
           match o with
-          | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dur_dur | Eq_dat_dat | Eq
-            ->
+          | Eq_boo_boo | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dur_dur
+          | Eq_dat_dat | Eq ->
             "="
           | Minus_int | Minus_rat | Minus_mon | Minus_dur | Minus -> "-"
           | ToRat_int | ToRat_mon | ToRat -> ""
@@ -1085,8 +1095,7 @@ let expr_to_dot_label0 :
           | Reduce -> xlang () ~en:"reduce" ~fr:"réunion"
           | Filter -> xlang () ~en:"filter" ~fr:"filtre"
           | Fold -> xlang () ~en:"fold" ~fr:"pliage"
-          | HandleDefault -> ""
-          | HandleDefaultOpt -> ""
+          | HandleExceptions -> ""
           | ToClosureEnv -> ""
           | FromClosureEnv -> ""
         in
@@ -1381,7 +1390,8 @@ let run includes optimize ex_scope explain_options global_options =
     Driver.Passes.dcalc global_options ~includes ~optimize
       ~check_invariants:false ~typed:Expr.typed
   in
-  Interpreter.load_runtime_modules prg;
+  Interpreter.load_runtime_modules prg
+    ~hashf:(Hash.finalise ~closure_conversion:false ~monomorphize_types:false);
   let scope = Driver.Commands.get_scope_uid prg.decl_ctx ex_scope in
   (* let result_expr, env = interpret_program prg scope in *)
   let g, base_vars, env = program_to_graph explain_options prg scope in

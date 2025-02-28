@@ -14,11 +14,13 @@
    License for the specific language governing permissions and limitations under
    the License. *)
 
+open Catala_utils
 open Shared_ast
+
+val renaming : Renaming.t
 
 (** Formats a lambda calculus program into a valid OCaml program *)
 
-val avoid_keywords : string -> string
 val typ_needs_parens : typ -> bool
 
 (* val needs_parens : 'm expr -> bool *)
@@ -40,8 +42,9 @@ val format_program :
   Format.formatter ->
   ?exec_scope:ScopeName.t ->
   ?exec_args:bool ->
+  hashf:(Hash.t -> Hash.full) ->
   'm Ast.program ->
-  Scopelang.Dependency.TVertex.t list ->
+  TypeIdent.t list ->
   unit
 (** Usage [format_program fmt p type_dependencies_ordering]. Either one of these
     may be set:

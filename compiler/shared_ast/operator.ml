@@ -102,14 +102,14 @@ let name : type a. a t -> string = function
   | Gte_mon_mon -> "o_gte_mon_mon"
   | Gte_dur_dur -> "o_gte_dur_dur"
   | Gte_dat_dat -> "o_gte_dat_dat"
+  | Eq_boo_boo -> "o_eq_boo_boo"
   | Eq_int_int -> "o_eq_int_int"
   | Eq_rat_rat -> "o_eq_rat_rat"
   | Eq_mon_mon -> "o_eq_mon_mon"
   | Eq_dur_dur -> "o_eq_dur_dur"
   | Eq_dat_dat -> "o_eq_dat_dat"
   | Fold -> "o_fold"
-  | HandleDefault -> "o_handledefault"
-  | HandleDefaultOpt -> "o_handledefaultopt"
+  | HandleExceptions -> "handle_exceptions"
   | ToClosureEnv -> "o_toclosureenv"
   | FromClosureEnv -> "o_fromclosureenv"
 
@@ -226,14 +226,14 @@ let compare (type a1 a2) (t1 : a1 t) (t2 : a2 t) =
   | Gte_mon_mon, Gte_mon_mon
   | Gte_dat_dat, Gte_dat_dat
   | Gte_dur_dur, Gte_dur_dur
+  | Eq_boo_boo, Eq_boo_boo
   | Eq_int_int, Eq_int_int
   | Eq_rat_rat, Eq_rat_rat
   | Eq_mon_mon, Eq_mon_mon
   | Eq_dat_dat, Eq_dat_dat
   | Eq_dur_dur, Eq_dur_dur
   | Fold, Fold
-  | HandleDefault, HandleDefault
-  | HandleDefaultOpt, HandleDefaultOpt
+  | HandleExceptions, HandleExceptions
   | FromClosureEnv, FromClosureEnv | ToClosureEnv, ToClosureEnv -> 0
   | Not, _ -> -1 | _, Not -> 1
   | Length, _ -> -1 | _, Length -> 1
@@ -313,13 +313,13 @@ let compare (type a1 a2) (t1 : a1 t) (t2 : a2 t) =
   | Gte_mon_mon, _ -> -1 | _, Gte_mon_mon -> 1
   | Gte_dat_dat, _ -> -1 | _, Gte_dat_dat -> 1
   | Gte_dur_dur, _ -> -1 | _, Gte_dur_dur -> 1
+  | Eq_boo_boo, _ -> -1 | _, Eq_boo_boo -> 1
   | Eq_int_int, _ -> -1 | _, Eq_int_int -> 1
   | Eq_rat_rat, _ -> -1 | _, Eq_rat_rat -> 1
   | Eq_mon_mon, _ -> -1 | _, Eq_mon_mon -> 1
   | Eq_dat_dat, _ -> -1 | _, Eq_dat_dat -> 1
   | Eq_dur_dur, _ -> -1 | _, Eq_dur_dur -> 1
-  | HandleDefault, _ -> -1 | _, HandleDefault -> 1
-  | HandleDefaultOpt, _ -> -1 | _, HandleDefaultOpt -> 1
+  | HandleExceptions, _ -> -1 | _, HandleExceptions -> 1
   | FromClosureEnv, _ -> -1 | _, FromClosureEnv -> 1
   | ToClosureEnv, _ -> -1 | _, ToClosureEnv -> 1
   | Fold, _  | _, Fold -> .
@@ -344,7 +344,7 @@ let kind_dispatch :
       _ ) as op ->
     monomorphic op
   | ( ( Log _ | Length | Eq | Map | Map2 | Concat | Filter | Reduce | Fold
-      | HandleDefault | HandleDefaultOpt | FromClosureEnv | ToClosureEnv ),
+      | HandleExceptions | FromClosureEnv | ToClosureEnv ),
       _ ) as op ->
     polymorphic op
   | ( ( Minus | ToRat | ToMoney | Round | Add | Sub | Mult | Div | Lt | Lte | Gt
@@ -360,8 +360,8 @@ let kind_dispatch :
       | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur | Lte_int_int | Lte_rat_rat
       | Lte_mon_mon | Lte_dat_dat | Lte_dur_dur | Gt_int_int | Gt_rat_rat
       | Gt_mon_mon | Gt_dat_dat | Gt_dur_dur | Gte_int_int | Gte_rat_rat
-      | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur | Eq_int_int | Eq_rat_rat
-      | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur ),
+      | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur | Eq_boo_boo | Eq_int_int
+      | Eq_rat_rat | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur ),
       _ ) as op ->
     resolved op
 
@@ -377,18 +377,18 @@ type 'a no_overloads =
 let translate (t : 'a no_overloads t Mark.pos) : 'b no_overloads t Mark.pos =
   match t with
   | ( ( Not | GetDay | GetMonth | GetYear | FirstDayOfMonth | LastDayOfMonth
-      | And | Or | Xor | HandleDefault | HandleDefaultOpt | Log _ | Length | Eq
-      | Map | Map2 | Concat | Filter | Reduce | Fold | Minus_int | Minus_rat
-      | Minus_mon | Minus_dur | ToRat_int | ToRat_mon | ToMoney_rat | Round_rat
-      | Round_mon | Add_int_int | Add_rat_rat | Add_mon_mon | Add_dat_dur _
-      | Add_dur_dur | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat
-      | Sub_dat_dur | Sub_dur_dur | Mult_int_int | Mult_rat_rat | Mult_mon_rat
-      | Mult_dur_int | Div_int_int | Div_rat_rat | Div_mon_mon | Div_mon_rat
-      | Div_dur_dur | Lt_int_int | Lt_rat_rat | Lt_mon_mon | Lt_dat_dat
-      | Lt_dur_dur | Lte_int_int | Lte_rat_rat | Lte_mon_mon | Lte_dat_dat
-      | Lte_dur_dur | Gt_int_int | Gt_rat_rat | Gt_mon_mon | Gt_dat_dat
-      | Gt_dur_dur | Gte_int_int | Gte_rat_rat | Gte_mon_mon | Gte_dat_dat
-      | Gte_dur_dur | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dat_dat
+      | And | Or | Xor | HandleExceptions | Log _ | Length | Eq | Map | Map2
+      | Concat | Filter | Reduce | Fold | Minus_int | Minus_rat | Minus_mon
+      | Minus_dur | ToRat_int | ToRat_mon | ToMoney_rat | Round_rat | Round_mon
+      | Add_int_int | Add_rat_rat | Add_mon_mon | Add_dat_dur _ | Add_dur_dur
+      | Sub_int_int | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur
+      | Sub_dur_dur | Mult_int_int | Mult_rat_rat | Mult_mon_rat | Mult_dur_int
+      | Div_int_int | Div_rat_rat | Div_mon_mon | Div_mon_rat | Div_dur_dur
+      | Lt_int_int | Lt_rat_rat | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur
+      | Lte_int_int | Lte_rat_rat | Lte_mon_mon | Lte_dat_dat | Lte_dur_dur
+      | Gt_int_int | Gt_rat_rat | Gt_mon_mon | Gt_dat_dat | Gt_dur_dur
+      | Gte_int_int | Gte_rat_rat | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur
+      | Eq_boo_boo | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dat_dat
       | Eq_dur_dur | FromClosureEnv | ToClosureEnv ),
       _ ) as op ->
     op
@@ -473,6 +473,7 @@ let resolved_type ((op : resolved t), pos) =
     | Gte_mon_mon -> [TMoney; TMoney], TBool
     | Gte_dat_dat -> [TDate; TDate], TBool
     | Gte_dur_dur -> [TDuration; TDuration], TBool
+    | Eq_boo_boo -> [TBool; TBool], TBool
     | Eq_int_int -> [TInt; TInt], TBool
     | Eq_rat_rat -> [TRat; TRat], TBool
     | Eq_mon_mon -> [TMoney; TMoney], TBool

@@ -35,7 +35,6 @@ module To_json = struct
       Format.asprintf "%a" StructField.format v
       |> String.to_ascii
       |> String.to_snake_case
-      |> avoid_keywords
       |> to_camel_case
     in
     Format.fprintf fmt "%s" s
@@ -210,15 +209,16 @@ let run
     output
     optimize
     check_invariants
-    avoid_exceptions
     closure_conversion
+    keep_special_ops
     monomorphize_types
     ex_scope
     options =
-  let prg, _ =
+  let prg, _, _ =
     Driver.Passes.lcalc options ~includes ~optimize ~check_invariants
-      ~avoid_exceptions ~closure_conversion ~typed:Expr.typed
-      ~monomorphize_types
+      ~closure_conversion ~keep_special_ops ~typed:Expr.typed
+      ~monomorphize_types ~expand_ops:false
+      ~renaming:(Some Lcalc.To_ocaml.renaming)
   in
   let output_file, with_output =
     Driver.Commands.get_output_format options ~ext:"_schema.json" output
@@ -239,8 +239,8 @@ let term =
   $ Cli.Flags.output
   $ Cli.Flags.optimize
   $ Cli.Flags.check_invariants
-  $ Cli.Flags.avoid_exceptions
   $ Cli.Flags.closure_conversion
+  $ Cli.Flags.keep_special_ops
   $ Cli.Flags.monomorphize_types
   $ Cli.Flags.ex_scope
 

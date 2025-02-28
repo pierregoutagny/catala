@@ -228,7 +228,7 @@ let rec lazy_eval :
 let interpret_program (prg : ('dcalc, 'm) gexpr program) (scope : ScopeName.t) :
     ('t, 'm) gexpr * 'm Env.t =
   let ctx = prg.decl_ctx in
-  let (all_env, scopes), () =
+  let (all_env, scopes), _ =
     BoundList.fold_left prg.code_items ~init:(Env.empty, ScopeName.Map.empty)
       ~f:(fun (env, scopes) item v ->
         match item with
@@ -236,7 +236,7 @@ let interpret_program (prg : ('dcalc, 'm) gexpr program) (scope : ScopeName.t) :
           let e = Scope.to_expr ctx body in
           ( Env.add v (Expr.unbox e) env env,
             ScopeName.Map.add name (v, body.scope_body_input_struct) scopes )
-        | Topdef (_, _, e) -> Env.add v e env env, scopes)
+        | Topdef (_, _, _, e) -> Env.add v e env env, scopes)
   in
   let scope_v, scope_arg_struct = ScopeName.Map.find scope scopes in
   let { contents = e, env } = Env.find scope_v all_env in
@@ -271,7 +271,8 @@ let run includes optimize check_invariants ex_scope options =
     Driver.Passes.dcalc options ~includes ~optimize ~check_invariants
       ~typed:Expr.typed
   in
-  Interpreter.load_runtime_modules prg;
+  Interpreter.load_runtime_modules prg
+    ~hashf:(Hash.finalise ~closure_conversion:false ~monomorphize_types:false);
   let scope = Driver.Commands.get_scope_uid prg.decl_ctx ex_scope in
   let result_expr, _env = interpret_program prg scope in
   let fmt = Format.std_formatter in

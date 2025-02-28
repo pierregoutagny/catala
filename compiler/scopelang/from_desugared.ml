@@ -598,12 +598,16 @@ let translate_rule
     (exc_graphs :
       Desugared.Dependency.ExceptionsDependencies.t D.ScopeDef.Map.t) = function
   | Desugared.Dependency.Vertex.Var (var, state) -> (
-    let pos = Mark.get (ScopeVar.get_info var) in
-    (* TODO: this may point to the place where the variable was declared instead
-       of the binding in the definition being explored. Needs double-checking
-       and maybe adding more position information *)
+    let decl_pos = Mark.get (ScopeVar.get_info var) in
     let scope_def =
-      D.ScopeDef.Map.find ((var, pos), D.ScopeDef.Var state) scope.scope_defs
+      D.ScopeDef.Map.find
+        ((var, Pos.no_pos), D.ScopeDef.Var state)
+        scope.scope_defs
+    in
+    let all_def_pos =
+      List.map
+        (fun r -> Mark.get (RuleName.get_info r))
+        (RuleName.Map.keys scope_def.scope_def_rules)
     in
     match ScopeVar.Map.find_opt var scope.scope_sub_scopes with
     | None -> (
@@ -617,7 +621,7 @@ let translate_rule
       | OnlyInput -> []
       (* we do not provide any definition for an input-only variable *)
       | _ ->
-        let scope_def_key = (var, pos), D.ScopeDef.Var state in
+        let scope_def_key = (var, decl_pos), D.ScopeDef.Var state in
         let expr_def =
           translate_def ctx scope_def_key var_def var_params var_typ
             scope_def.D.scope_def_io
@@ -633,7 +637,7 @@ let translate_rule
         [
           Ast.ScopeVarDefinition
             {
-              var = scope_var, pos;
+              var = Mark.add all_def_pos scope_var;
               typ = var_typ;
               io = scope_def.D.scope_def_io;
               e = Expr.unbox expr_def;
@@ -699,7 +703,7 @@ let translate_rule
       in
       let subscope_expr =
         Expr.escopecall ~scope:subscope ~args:subscope_param_map
-          (Untyped { pos })
+          (Untyped { pos = decl_pos })
       in
       assert (RuleName.Map.is_empty scope_def.D.scope_def_rules);
       (* The subscope will be defined by its inputs, it's not supposed to have
@@ -713,7 +717,7 @@ let translate_rule
       let subscope_def =
         Ast.ScopeVarDefinition
           {
-            var = subscope_var_dcalc, pos;
+            var = Mark.add all_def_pos subscope_var_dcalc;
             typ =
               ( TStruct scope_info.out_struct_name,
                 Mark.get (ScopeVar.get_info var) );
@@ -799,9 +803,10 @@ let translate_scope_interface ctx scope =
   Mark.add pos
     {
       Ast.scope_decl_name = scope.scope_uid;
-      Ast.scope_decl_rules = [];
-      Ast.scope_sig;
-      Ast.scope_options = scope.scope_options;
+      scope_decl_rules = [];
+      scope_sig;
+      scope_options = scope.scope_options;
+      scope_visibility = scope.scope_visibility;
     }
 
 let translate_scope
@@ -953,8 +958,10 @@ let translate_program
   let program_topdefs =
     TopdefName.Map.mapi
       (fun id -> function
-        | Some e, ty -> Expr.unbox (translate_expr ctx e), ty
-        | None, (_, pos) ->
+        | { D.topdef_expr = Some e; topdef_type = ty; topdef_visibility = vis }
+          ->
+          Expr.unbox (translate_expr ctx e), ty, vis
+        | { D.topdef_expr = None; topdef_type = _, pos; _ } ->
           Message.error ~pos "No definition found for %a" TopdefName.format id)
       desugared.program_root.module_topdefs
   in
@@ -964,11 +971,10 @@ let translate_program
       desugared.D.program_root.module_scopes
   in
   {
-    Ast.program_module_name =
-      Option.map ModuleName.fresh desugared.D.program_module_name;
-    Ast.program_topdefs;
-    Ast.program_scopes;
-    Ast.program_ctx = ctx.decl_ctx;
-    Ast.program_modules;
-    Ast.program_lang = desugared.program_lang;
+    Ast.program_module_name = desugared.D.program_module_name;
+    program_topdefs;
+    program_scopes;
+    program_ctx = ctx.decl_ctx;
+    program_modules;
+    program_lang = desugared.program_lang;
   }

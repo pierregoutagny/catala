@@ -55,10 +55,10 @@ module Flags : sig
   val ex_variable : string Term.t
   val output : raw_file option Term.t
   val optimize : bool Term.t
-  val avoid_exceptions : bool Term.t
   val closure_conversion : bool Term.t
   val keep_special_ops : bool Term.t
   val monomorphize_types : bool Term.t
+  val expand_ops : bool Term.t
   val dead_value_assignment : bool Term.t
   val no_struct_literals : bool Term.t
   val include_dirs : raw_file list Term.t
@@ -84,6 +84,13 @@ val info : Cmdliner.Cmd.info
 
 val s_plugins : string
 (** Manpage section name for the installed plugins *)
+
+val s_debug : string
+(** Name of the manpage section for debugging commands (use as [~docs] arg to
+    [Arg.info]) *)
+
+val man_base : Cmdliner.Manpage.block list
+(** Skeleton of the manpage shared by all commands *)
 
 exception Exit_with of int
 (** Exit with a specific exit code (but less brutally than [Sys.exit] which

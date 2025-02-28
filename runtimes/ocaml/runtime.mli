@@ -77,6 +77,8 @@ type error =
   | NotSameLength  (** Traversing multiple lists of different lengths *)
   | UncomparableDurations
       (** Comparing durations in different units (e.g. months vs. days) *)
+  | AmbiguousDateRounding
+      (** ambiguous date computation, and rounding mode was not specified *)
   | IndivisibleDurations  (** Dividing durations that are not in days *)
 
 val error_to_string : error -> string
@@ -335,21 +337,8 @@ val duration_to_string : duration -> string
 
 (**{1 Defaults} *)
 
-val handle_default :
-  source_position array ->
-  (unit -> 'a) array ->
-  (unit -> bool) ->
-  (unit -> 'a) ->
-  'a
-(** @raise Empty
-    @raise Error Conflict *)
-
-val handle_default_opt :
-  source_position array ->
-  'a Eoption.t array ->
-  (unit -> bool) ->
-  (unit -> 'a Eoption.t) ->
-  'a Eoption.t
+val handle_exceptions :
+  source_position array -> 'a Eoption.t array -> 'a Eoption.t
 (** @raise Error Conflict *)
 
 (**{1 Operators} *)
@@ -389,13 +378,16 @@ module Oper : sig
   val o_add_int_int : integer -> integer -> integer
   val o_add_rat_rat : decimal -> decimal -> decimal
   val o_add_mon_mon : money -> money -> money
-  val o_add_dat_dur : date_rounding -> date -> duration -> date
+
+  val o_add_dat_dur :
+    date_rounding -> source_position -> date -> duration -> date
+
   val o_add_dur_dur : duration -> duration -> duration
   val o_sub_int_int : integer -> integer -> integer
   val o_sub_rat_rat : decimal -> decimal -> decimal
   val o_sub_mon_mon : money -> money -> money
   val o_sub_dat_dat : date -> date -> duration
-  val o_sub_dat_dur : date -> duration -> date
+  val o_sub_dat_dur : date -> duration -> date (* TODO: rounding mode!? *)
   val o_sub_dur_dur : duration -> duration -> duration
   val o_mult_int_int : integer -> integer -> integer
   val o_mult_rat_rat : decimal -> decimal -> decimal
@@ -426,12 +418,15 @@ module Oper : sig
   val o_gte_mon_mon : money -> money -> bool
   val o_gte_dur_dur : source_position -> duration -> duration -> bool
   val o_gte_dat_dat : date -> date -> bool
+  val o_eq_boo_boo : bool -> bool -> bool
   val o_eq_int_int : integer -> integer -> bool
   val o_eq_rat_rat : decimal -> decimal -> bool
   val o_eq_mon_mon : money -> money -> bool
   val o_eq_dur_dur : source_position -> duration -> duration -> bool
   val o_eq_dat_dat : date -> date -> bool
   val o_fold : ('a -> 'b -> 'a) -> 'a -> 'b array -> 'a
+  val o_toclosureenv : 'a -> Obj.t
+  val o_fromclosureenv : Obj.t -> 'a
 end
 
 include module type of Oper
@@ -446,8 +441,8 @@ val register_module : string -> (string * Obj.t) list -> hash -> unit
     expected to be a hash of the source file and the Catala version, and will in
     time be used to ensure that the module and the interface are in sync *)
 
-val check_module : string -> hash -> bool
-(** Returns [true] if it has been registered with the correct hash, [false] if
+val check_module : string -> hash -> (unit, hash) result
+(** Returns [Ok] if it has been registered with the correct hash, [Error h] if
     there is a hash mismatch.
 
     @raise Not_found if the module does not exist at all *)

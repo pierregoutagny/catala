@@ -130,38 +130,30 @@ let ocaml_keywords =
     "Oper";
   ]
 
-let ocaml_keywords_set = String.Set.of_list ocaml_keywords
-
-let avoid_keywords (s : string) : string =
-  if String.Set.mem s ocaml_keywords_set then s ^ "_user" else s
-(* Fixme: this could cause clashes if the user program contains both e.g. [new]
-   and [new_user] *)
-
-let ppclean fmt str =
-  str |> String.to_ascii |> avoid_keywords |> Format.pp_print_string fmt
-
-let ppsnake fmt str =
-  str
-  |> String.to_ascii
-  |> String.to_snake_case
-  |> avoid_keywords
-  |> Format.pp_print_string fmt
+let renaming =
+  Renaming.program ()
+    ~reserved:ocaml_keywords
+      (* TODO: add catala runtime built-ins as reserved as well ? *)
+    ~skip_constant_binders:true ~constant_binder_name:(Some "_")
+    ~namespaced_fields_constrs:true
 
 let format_struct_name (fmt : Format.formatter) (v : StructName.t) : unit =
   (match StructName.path v with
   | [] -> ()
   | path ->
-    ppclean fmt (Uid.Path.to_string path);
+    Uid.Path.format fmt path;
     Format.pp_print_char fmt '.');
-  ppsnake fmt (Mark.remove (StructName.get_info v))
+  assert (
+    let n = Mark.remove (StructName.get_info v) in
+    n = String.capitalize_ascii n);
+  Format.pp_print_string fmt (Mark.remove (StructName.get_info v))
 
 let format_to_module_name
     (fmt : Format.formatter)
     (name : [< `Ename of EnumName.t | `Sname of StructName.t ]) =
-  ppclean fmt
-    (match name with
-    | `Ename v -> EnumName.to_string v
-    | `Sname v -> StructName.to_string v)
+  match name with
+  | `Ename v -> EnumName.format fmt v
+  | `Sname v -> StructName.format fmt v
 
 let format_struct_field_name
     (fmt : Format.formatter)
@@ -171,20 +163,16 @@ let format_struct_field_name
       format_to_module_name fmt (`Sname sname);
       Format.pp_print_char fmt '.')
     sname_opt;
-  ppclean fmt (StructField.to_string v)
+  StructField.format fmt v
 
 let format_enum_name (fmt : Format.formatter) (v : EnumName.t) : unit =
-  (match EnumName.path v with
-  | [] -> ()
-  | path ->
-    ppclean fmt (Uid.Path.to_string path);
-    Format.pp_print_char fmt '.');
-  ppsnake fmt (Mark.remove (EnumName.get_info v))
+  EnumName.format fmt v
 
 let format_enum_cons_name (fmt : Format.formatter) (v : EnumConstructor.t) :
     unit =
-  ppclean fmt (EnumConstructor.to_string v)
+  EnumConstructor.format fmt v
 
+(* TODO: these names should be properly registered before renaming *)
 let rec typ_embedding_name (fmt : Format.formatter) (ty : typ) : unit =
   match Mark.remove ty with
   | TLit TUnit -> Format.pp_print_string fmt "embed_unit"
@@ -195,16 +183,12 @@ let rec typ_embedding_name (fmt : Format.formatter) (ty : typ) : unit =
   | TLit TDate -> Format.pp_print_string fmt "embed_date"
   | TLit TDuration -> Format.pp_print_string fmt "embed_duration"
   | TStruct s_name ->
-    Format.fprintf fmt "%a%sembed_%a" ppclean
-      (Uid.Path.to_string (StructName.path s_name))
-      (if StructName.path s_name = [] then "" else ".")
-      ppsnake
+    Format.fprintf fmt "%aembed_%a" Uid.Path.format (StructName.path s_name)
+      Format.pp_print_string
       (Uid.MarkedString.to_string (StructName.get_info s_name))
   | TEnum e_name ->
-    Format.fprintf fmt "%a%sembed_%a" ppclean
-      (Uid.Path.to_string (EnumName.path e_name))
-      (if EnumName.path e_name = [] then "" else ".")
-      ppsnake
+    Format.fprintf fmt "%aembed_%a" Uid.Path.format (EnumName.path e_name)
+      Format.pp_print_string
       (Uid.MarkedString.to_string (EnumName.get_info e_name))
   | TArray ty -> Format.fprintf fmt "embed_array (%a)" typ_embedding_name ty
   | _ -> Format.pp_print_string fmt "unembeddable"
@@ -219,6 +203,7 @@ let rec format_typ (fmt : Format.formatter) (typ : typ) : unit =
   in
   match Mark.remove typ with
   | TLit l -> Format.fprintf fmt "%a" Print.tlit l
+  | TTuple [] -> Format.fprintf fmt "unit"
   | TTuple ts ->
     Format.fprintf fmt "@[<hov 2>(%a)@]"
       (Format.pp_print_list
@@ -239,23 +224,10 @@ let rec format_typ (fmt : Format.formatter) (typ : typ) : unit =
       (t1 @ [t2])
   | TArray t1 -> Format.fprintf fmt "@[%a@ array@]" format_typ_with_parens t1
   | TAny -> Format.fprintf fmt "_"
-  | TClosureEnv -> failwith "unimplemented!"
+  | TClosureEnv -> Format.fprintf fmt "Obj.t"
 
 let format_var_str (fmt : Format.formatter) (v : string) : unit =
-  let lowercase_name = String.to_snake_case (String.to_ascii v) in
-  let lowercase_name =
-    Re.Pcre.substitute ~rex:(Re.Pcre.regexp "\\.")
-      ~subst:(fun _ -> "_dot_")
-      lowercase_name
-  in
-  let lowercase_name = String.to_ascii lowercase_name in
-  if
-    List.mem lowercase_name ["handle_default"; "handle_default_opt"]
-    (* O_O *)
-    || String.begins_with_uppercase v
-  then Format.pp_print_string fmt lowercase_name
-  else if lowercase_name = "_" then Format.pp_print_string fmt lowercase_name
-  else Format.fprintf fmt "%s_" lowercase_name
+  Format.pp_print_string fmt v
 
 let format_var (fmt : Format.formatter) (v : 'm Var.t) : unit =
   format_var_str fmt (Bindlib.name_of v)
@@ -276,14 +248,6 @@ let rec format_expr (ctx : decl_ctx) (fmt : Format.formatter) (e : 'm expr) :
   match Mark.remove e with
   | EVar v -> Format.fprintf fmt "%a" format_var v
   | EExternal { name } -> (
-    (* FIXME: this is wrong in general !! We assume the idents exposed by the
-       module depend only on the original name, while they actually get through
-       Bindlib and may have been renamed. A correct implem could use the runtime
-       registration used by the interpreter, but that would be distasteful and
-       incur a penalty ; or we would need to reproduce the same structure as in
-       the original module to ensure that bindlib performs the exact same
-       renamings ; or finally we could normalise the names at generation time
-       (either at toplevel or in a dedicated submodule ?) *)
     let path =
       match Mark.remove name with
       | External_value name -> TopdefName.path name
@@ -408,21 +372,6 @@ let rec format_expr (ctx : decl_ctx) (fmt : Format.formatter) (e : 'm expr) :
       format_with_parens arg1
   | EAppOp { op = Log _, _; args = [arg1]; _ } ->
     Format.fprintf fmt "%a" format_with_parens arg1
-  | EAppOp
-      {
-        op = ((HandleDefault | HandleDefaultOpt) as op), _;
-        args = (EArray excs, _) :: _ as args;
-        _;
-      } ->
-    let pos = List.map Expr.pos excs in
-    Format.fprintf fmt "@[<hov 2>%s@ [|%a|]@ %a@]"
-      (Print.operator_to_string op)
-      (Format.pp_print_list
-         ~pp_sep:(fun ppf () -> Format.fprintf ppf ";@ ")
-         format_pos)
-      pos
-      (Format.pp_print_list ~pp_sep:Format.pp_print_space format_with_parens)
-      args
   | EApp { f; args; _ } ->
     Format.fprintf fmt "@[<hov 2>%a@ %a@]" format_with_parens f
       (Format.pp_print_list
@@ -437,11 +386,17 @@ let rec format_expr (ctx : decl_ctx) (fmt : Format.formatter) (e : 'm expr) :
     Format.fprintf fmt "@[<hov 2>%s@ %t%a@]" (Operator.name op)
       (fun ppf ->
         match op with
-        | Map2 | Lt_dur_dur | Lte_dur_dur | Gt_dur_dur | Gte_dur_dur
-        | Eq_dur_dur ->
+        | Map2 | Add_dat_dur _ | Lt_dur_dur | Lte_dur_dur | Gt_dur_dur
+        | Gte_dur_dur | Eq_dur_dur ->
           Format.fprintf ppf "%a@ " format_pos pos
         | Div_int_int | Div_rat_rat | Div_mon_mon | Div_mon_rat | Div_dur_dur ->
           Format.fprintf ppf "%a@ " format_pos (Expr.pos (List.nth args 1))
+        | HandleExceptions ->
+          Format.fprintf ppf "[|@[<hov>%a@]|]@ "
+            (Format.pp_print_list
+               ~pp_sep:(fun ppf () -> Format.fprintf ppf ";@ ")
+               format_pos)
+            (List.map Expr.pos args)
         | _ -> ())
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.fprintf fmt "@ ")
@@ -456,12 +411,9 @@ let rec format_expr (ctx : decl_ctx) (fmt : Format.formatter) (e : 'm expr) :
   | EFatalError er ->
     Format.fprintf fmt "raise@ (Runtime_ocaml.Runtime.Error (%a, [%a]))"
       Print.runtime_error er format_pos (Expr.pos e)
-  | ERaiseEmpty -> Format.fprintf fmt "raise Empty"
-  | ECatchEmpty { body; handler } ->
-    Format.fprintf fmt "@[<hv>@[<hov 2>try@ %a@]@ with Empty ->@]@ @[%a@]"
-      format_with_parens body format_with_parens handler
   | _ -> .
 
+(* TODO: move [embed_foo] to [Foo.embed] to protect from name clashes *)
 let format_struct_embedding
     (fmt : Format.formatter)
     ((struct_name, struct_fields) : StructName.t * typ StructField.Map.t) =
@@ -509,7 +461,7 @@ let format_enum_embedding
         (EnumConstructor.Map.bindings enum_cases)
 
 let format_ctx
-    (type_ordering : Scopelang.Dependency.TVertex.t list)
+    (type_ordering : TypeIdent.t list)
     (fmt : Format.formatter)
     (ctx : decl_ctx) : unit =
   let format_struct_decl fmt (struct_name, struct_fields) =
@@ -548,13 +500,13 @@ let format_ctx
     List.exists
       (fun struct_or_enum ->
         match struct_or_enum with
-        | Scopelang.Dependency.TVertex.Enum _ -> false
-        | Scopelang.Dependency.TVertex.Struct s' -> s = s')
+        | TypeIdent.Enum _ -> false
+        | TypeIdent.Struct s' -> s = s')
       type_ordering
   in
   let scope_structs =
     List.map
-      (fun (s, _) -> Scopelang.Dependency.TVertex.Struct s)
+      (fun (s, _) -> TypeIdent.Struct s)
       (StructName.Map.bindings
          (StructName.Map.filter
             (fun s _ -> not (is_in_type_ordering s))
@@ -563,25 +515,19 @@ let format_ctx
   List.iter
     (fun struct_or_enum ->
       match struct_or_enum with
-      | Scopelang.Dependency.TVertex.Struct s ->
+      | TypeIdent.Struct s ->
         let def = StructName.Map.find s ctx.ctx_structs in
         if StructName.path s = [] then
           Format.fprintf fmt "%a@\n" format_struct_decl (s, def)
-      | Scopelang.Dependency.TVertex.Enum e ->
+      | TypeIdent.Enum e ->
         let def = EnumName.Map.find e ctx.ctx_enums in
         if EnumName.path e = [] then
           Format.fprintf fmt "%a@\n" format_enum_decl (e, def))
     (type_ordering @ scope_structs)
 
-let rename_vars e =
-  Expr.(
-    unbox
-      (rename_vars ~exclude:ocaml_keywords ~reset_context_for_closed_terms:true
-         ~skip_constant_binders:true ~constant_binder_name:(Some "_") e))
-
 let format_expr ctx fmt e =
   Format.pp_open_vbox fmt 0;
-  format_expr ctx fmt (rename_vars e);
+  format_expr ctx fmt e;
   Format.pp_close_box fmt ()
 
 let format_scope_body_expr
@@ -606,11 +552,11 @@ let format_code_items
     (code_items : 'm Ast.expr code_item_list) :
     ('m Ast.expr Var.t * 'm Ast.expr code_item) String.Map.t =
   Format.pp_open_vbox fmt 0;
-  let var_bindings, () =
+  let var_bindings, _ =
     BoundList.fold_left
       ~f:(fun bnd item var ->
         match item with
-        | Topdef (name, typ, e) ->
+        | Topdef (name, typ, _vis, e) ->
           Format.fprintf fmt "@,@[<v 2>@[<hov 2>let %a : %a =@]@ %a@]@,"
             format_var var format_typ typ (format_expr ctx) e;
           String.Map.add (TopdefName.to_string name) (var, item) bnd
@@ -630,6 +576,12 @@ let format_code_items
   in
   Format.pp_close_box fmt ();
   var_bindings
+
+let is_public = function
+  | ScopeDef (_, { scope_body_visibility = Public; _ })
+  | Topdef (_, _, Public, _) ->
+    true
+  | _ -> false
 
 let format_scope_exec
     (ctx : decl_ctx)
@@ -716,9 +668,21 @@ let commands = if commands = [] then entry_scopes else commands
         name format_var var name)
     scopes_with_no_input
 
-let reexport_used_modules fmt modules =
+let check_and_reexport_used_modules fmt ~hashf modules =
   List.iter
-    (fun m ->
+    (fun (m, intf_id) ->
+      Format.fprintf fmt
+        "@[<hv 2>let () =@ @[<hov 2>match Runtime_ocaml.Runtime.check_module \
+         %S \"%a\"@ with@]@,\
+         | Ok () -> ()@,\
+         @[<hv 2>| Error h -> failwith \"Hash mismatch for module %a, it may \
+         need recompiling\"@]@]@,"
+        (ModuleName.to_string m)
+        (fun ppf h ->
+          if intf_id.is_external then
+            Format.pp_print_string ppf Hash.external_placeholder
+          else Hash.format ppf h)
+        (hashf intf_id.hash) ModuleName.format m;
       Format.fprintf fmt "@[<hv 2>module %a@ = %a@]@," ModuleName.format m
         ModuleName.format m)
     modules
@@ -726,7 +690,9 @@ let reexport_used_modules fmt modules =
 let format_module_registration
     fmt
     (bnd : ('m Ast.expr Var.t * _) String.Map.t)
-    modname =
+    modname
+    hash
+    is_external =
   Format.pp_open_vbox fmt 2;
   Format.pp_print_string fmt "let () =";
   Format.pp_print_space fmt ();
@@ -742,41 +708,45 @@ let format_module_registration
       Format.pp_print_cut fmt ())
     (fun fmt (id, (var, _)) ->
       Format.fprintf fmt "@[<hov 2>%S,@ Obj.repr %a@]" id format_var var)
-    fmt (String.Map.to_seq bnd);
+    fmt
+    (Seq.filter (fun (_, (_, it)) -> is_public it) (String.Map.to_seq bnd));
   Format.pp_close_box fmt ();
   Format.pp_print_char fmt ' ';
   Format.pp_print_string fmt "]";
   Format.pp_print_space fmt ();
-  Format.pp_print_string fmt "\"todo-module-hash\"";
+  Format.fprintf fmt "\"%a\""
+    (fun ppf h ->
+      if is_external then Format.pp_print_string ppf Hash.external_placeholder
+      else Hash.format ppf h)
+    hash;
   Format.pp_close_box fmt ();
   Format.pp_close_box fmt ();
   Format.pp_print_newline fmt ()
 
 let header =
-  {ocaml|
-(** This file has been generated by the Catala compiler, do not edit! *)
-
-open Runtime_ocaml.Runtime
-
-[@@@ocaml.warning "-4-26-27-32-41-42"]
-
-|ocaml}
+  "(** This file has been generated by the Catala compiler, do not edit! *)\n\n\
+   open Runtime_ocaml.Runtime\n\n\
+   [@@@ocaml.warning \"-4-26-27-32-41-42\"]\n\n"
 
 let format_program
     (fmt : Format.formatter)
     ?exec_scope
     ?(exec_args = true)
+    ~(hashf : Hash.t -> Hash.full)
     (p : 'm Ast.program)
-    (type_ordering : Scopelang.Dependency.TVertex.t list) : unit =
+    (type_ordering : TypeIdent.t list) : unit =
   Format.pp_open_vbox fmt 0;
   Format.pp_print_string fmt header;
-  reexport_used_modules fmt (Program.modules_to_list p.decl_ctx.ctx_modules);
+  check_and_reexport_used_modules fmt ~hashf
+    (Program.modules_to_list p.decl_ctx.ctx_modules);
   format_ctx type_ordering fmt p.decl_ctx;
   let bnd = format_code_items p.decl_ctx fmt p.code_items in
   Format.pp_print_cut fmt ();
   let () =
     match p.module_name, exec_scope with
-    | Some modname, None -> format_module_registration fmt bnd modname
+    | Some (modname, intf_id), None ->
+      format_module_registration fmt bnd modname (hashf intf_id.hash)
+        intf_id.is_external
     | None, Some scope_name ->
       let scope_body = Program.get_scope_body p scope_name in
       format_scope_exec p.decl_ctx fmt bnd scope_name scope_body

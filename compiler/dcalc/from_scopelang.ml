@@ -506,7 +506,7 @@ let rec translate_expr (ctx : 'm ctx) (e : 'm S.expr) : 'm Ast.expr boxed =
       | ELocation (ScopelangScopeVar { name = var }) ->
         retrieve_out_typ_or_any var ctx.scope_vars
       | ELocation (ToplevelVar { name }) -> (
-        let typ =
+        let typ, _vis =
           TopdefName.Map.find (Mark.remove name) ctx.decl_ctx.ctx_topdefs
         in
         match Mark.remove typ with
@@ -589,20 +589,21 @@ let translate_rule
   match rule with
   | S.ScopeVarDefinition { var; typ; e; _ }
   | S.SubScopeVarDefinition { var; typ; e; _ } ->
+    let scope_var = Mark.remove var in
+    let decl_pos = Mark.get (ScopeVar.get_info scope_var) in
     let pos_mark, _ = pos_mark_mk e in
     let scope_let_kind, io =
       match rule with
       | S.ScopeVarDefinition { io; _ } -> ScopeVarDefinition, io
       | S.SubScopeVarDefinition _ ->
-        let pos = Mark.get var in
         ( SubScopeVarDefinition,
-          { io_input = NoInput, pos; io_output = false, pos } )
+          { io_input = NoInput, decl_pos; io_output = false, decl_pos } )
       | S.Assertion _ -> assert false
     in
     let a_name = ScopeVar.get_info (Mark.remove var) in
     let a_var = Var.make (Mark.remove a_name) in
     let new_e = translate_expr ctx e in
-    let a_expr = Expr.make_var a_var (pos_mark (Mark.get var)) in
+    let a_expr = Expr.make_var a_var (pos_mark decl_pos) in
     let is_func = match Mark.remove typ with TArrow _ -> true | _ -> false in
     let merged_expr =
       match Mark.remove io.io_input with
@@ -629,7 +630,7 @@ let translate_rule
                   scope_let_typ = typ;
                   scope_let_expr = merged_expr;
                   scope_let_kind;
-                  scope_let_pos = Mark.get var;
+                  scope_let_pos = decl_pos;
                 },
                 next ))
           (Bindlib.bind_var a_var next)
@@ -659,7 +660,7 @@ let translate_rule
                   scope_let_kind = Assertion;
                 },
                 next ))
-          (Bindlib.bind_var (Var.make "_") next)
+          (Bindlib.bind_var (Var.make "assert1") next)
           (Expr.Box.lift new_e)),
       ctx )
 
@@ -824,6 +825,7 @@ let translate_scope_decl
         scope_body_expr;
         scope_body_input_struct = scope_input_struct_name;
         scope_body_output_struct = scope_return_struct_name;
+        scope_body_visibility = sigma.scope_visibility;
       })
     (Bindlib.bind_var scope_input_var
        (input_destructurings rules_with_return_expr))
@@ -922,7 +924,7 @@ let translate_program (prgm : 'm S.program) : 'm Ast.program =
   let decl_ctx = { decl_ctx with ctx_structs } in
   let toplevel_vars =
     TopdefName.Map.mapi
-      (fun name (_, ty) ->
+      (fun name (_, ty, _vis) ->
         Var.make (Mark.remove (TopdefName.get_info name)), Mark.remove ty)
       prgm.S.program_topdefs
   in
@@ -940,17 +942,20 @@ let translate_program (prgm : 'm S.program) : 'm Ast.program =
   (* the resulting expression is the list of definitions of all the scopes,
      ending with the top-level scope. The decl_ctx is filled in left-to-right
      order, then the chained scopes aggregated from the right. *)
-  let rec translate_defs = function
-    | [] -> Bindlib.box (Last ())
+  let rec translate_defs vlist = function
+    | [] ->
+      Bindlib.box_apply
+        (fun vl -> Last vl)
+        (Bindlib.box_rev_list (List.map Bindlib.box_var vlist))
     | def :: next ->
       let dvar, def =
         match def with
         | Scopelang.Dependency.Topdef gname ->
-          let expr, ty = TopdefName.Map.find gname prgm.program_topdefs in
+          let expr, ty, vis = TopdefName.Map.find gname prgm.program_topdefs in
           let expr = translate_expr ctx expr in
           ( fst (TopdefName.Map.find gname ctx.toplevel_vars),
             Bindlib.box_apply
-              (fun e -> Topdef (gname, ty, e))
+              (fun e -> Topdef (gname, ty, vis, e))
               (Expr.Box.lift expr) )
         | Scopelang.Dependency.Scope scope_name ->
           let scope = ScopeName.Map.find scope_name prgm.program_scopes in
@@ -970,13 +975,13 @@ let translate_program (prgm : 'm S.program) : 'm Ast.program =
               (fun body -> ScopeDef (scope_name, body))
               scope_body )
       in
-      let scope_next = translate_defs next in
+      let scope_next = translate_defs (dvar :: vlist) next in
       let next_bind = Bindlib.bind_var dvar scope_next in
       Bindlib.box_apply2
         (fun item next_bind -> Cons (item, next_bind))
         def next_bind
   in
-  let items = translate_defs defs_ordering in
+  let items = translate_defs [] defs_ordering in
   Expr.Box.assert_closed items;
   {
     code_items = Bindlib.unbox items;

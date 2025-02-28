@@ -17,7 +17,7 @@
 
 (** Auxiliary functions used by all lexers. *)
 
-type lexing_context = Law | Code | Directive | Directive_args
+type lexing_context = Law | Raw | Code | Directive | Directive_args
 
 val context : lexing_context ref
 (** Reference, used by the lexer as the mutable state to distinguish whether it
@@ -30,6 +30,8 @@ val code_buffer : Buffer.t
 
 val update_acc : Sedlexing.lexbuf -> unit
 (** Updates {!val:code_buffer} with the current lexeme *)
+
+exception Lexing_error of (Catala_utils.Pos.t * string)
 
 val raise_lexer_error : Catala_utils.Pos.t -> string -> 'a
 (** Error-generating helper *)

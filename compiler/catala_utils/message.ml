@@ -34,13 +34,13 @@ let unstyle_formatter ppf =
    [Format.sprintf] etc. functions (ignoring them) *)
 let () = ignore (unstyle_formatter Format.str_formatter)
 
-let terminal_columns, set_terminal_width_function =
-  let get_cols = ref (fun () -> 80) in
-  (fun () -> !get_cols ()), fun f -> get_cols := f
-
 (* Note: we could do the same for std_formatter, err_formatter... but we'd
    rather promote the use of the formatting functions of this module and the
    below std_ppf / err_ppf *)
+
+let terminal_columns, set_terminal_width_function =
+  let get_cols = ref (fun () -> 80) in
+  (fun () -> !get_cols ()), fun f -> get_cols := f
 
 let has_color_raw ~(tty : bool Lazy.t) =
   match Global.options.color with
@@ -56,21 +56,22 @@ let has_color oc =
 
 let formatter_of_out_channel oc =
   let tty = lazy Unix.(isatty (descr_of_out_channel oc)) in
-  let ppf = Format.formatter_of_out_channel oc in
   let ppf =
-    if has_color_raw ~tty then color_formatter ppf else unstyle_formatter ppf
+    lazy
+      (let ppf = Format.formatter_of_out_channel oc in
+       if has_color_raw ~tty then color_formatter ppf else unstyle_formatter ppf)
   in
-  let out, flush = Format.pp_get_formatter_output_functions ppf () in
-  let flush () =
+  fun () ->
+    let ppf = Lazy.force ppf in
     if Lazy.force tty then Format.pp_set_margin ppf (terminal_columns ());
-    flush ()
-  in
-  Format.pp_set_formatter_output_functions ppf out flush;
-  ppf
+    ppf
 
-let std_ppf = lazy (formatter_of_out_channel stdout)
-let err_ppf = lazy (formatter_of_out_channel stderr)
-let ignore_ppf = lazy (Format.make_formatter (fun _ _ _ -> ()) (fun () -> ()))
+let std_ppf = formatter_of_out_channel stdout
+let err_ppf = formatter_of_out_channel stderr
+
+let ignore_ppf =
+  let ppf = lazy (Format.make_formatter (fun _ _ _ -> ()) (fun () -> ())) in
+  fun () -> Lazy.force ppf
 
 let unformat (f : Format.formatter -> unit) : string =
   let buf = Buffer.create 1024 in
@@ -89,15 +90,17 @@ let unformat (f : Format.formatter -> unit) : string =
   Format.pp_print_flush ppf ();
   Buffer.contents buf
 
+let pad n s ppf = Pos.pad_fmt n s ppf
+
 (**{2 Message types and output helpers *)
 
 type level = Error | Warning | Debug | Log | Result
 
 let get_ppf = function
-  | Result -> Lazy.force std_ppf
-  | Debug when not Global.options.debug -> Lazy.force ignore_ppf
-  | Warning when Global.options.disable_warnings -> Lazy.force ignore_ppf
-  | Error | Log | Debug | Warning -> Lazy.force err_ppf
+  | Result -> std_ppf ()
+  | Debug when not Global.options.debug -> ignore_ppf ()
+  | Warning when Global.options.disable_warnings -> ignore_ppf ()
+  | Error | Log | Debug | Warning -> err_ppf ()
 
 (**{3 Markers}*)
 
@@ -108,10 +111,9 @@ let print_time_marker =
     let old_time = !time in
     time := new_time;
     let delta = (new_time -. old_time) *. 1000. in
-    if delta > 50. then
-      Format.fprintf ppf "@{<bold;black>[TIME] %.0fms@}@\n" delta
+    if delta > 50. then Format.fprintf ppf " @{<bold;black>%.0fms@}" delta
 
-let pp_marker target ppf =
+let pp_marker ?extra_label target ppf =
   let open Ocolor_types in
   let tags, str =
     match target with
@@ -121,10 +123,15 @@ let pp_marker target ppf =
     | Result -> [Bold; Fg (C4 green)], "RESULT"
     | Log -> [Bold; Fg (C4 black)], "LOG"
   in
-  if target = Debug then print_time_marker ppf ();
+  let str =
+    match extra_label with
+    | None -> str
+    | Some lbl -> Printf.sprintf "%s %s" str lbl
+  in
   Format.pp_open_stag ppf (Ocolor_format.Ocolor_styles_tag tags);
   Format.pp_print_string ppf str;
-  Format.pp_close_stag ppf ()
+  Format.pp_close_stag ppf ();
+  if target = Debug then print_time_marker ppf ()
 
 (**{2 Printers}*)
 
@@ -164,7 +171,7 @@ module Content = struct
   let of_string (s : string) : t =
     [MainMessage (fun ppf -> Format.pp_print_text ppf s)]
 
-  let basic_msg ppf target content =
+  let basic_msg ?(pp_marker = pp_marker) ppf target content =
     Format.pp_open_vbox ppf 0;
     Format.pp_print_list
       ~pp_sep:(fun ppf () -> Format.fprintf ppf "@,@,")
@@ -183,7 +190,7 @@ module Content = struct
     Format.pp_close_box ppf ();
     Format.pp_print_newline ppf ()
 
-  let fancy_msg ppf target content =
+  let fancy_msg ?(pp_marker = pp_marker) ppf target content =
     let ppf_out_fcts = Format.pp_get_formatter_out_functions ppf () in
     let restore_ppf () =
       Format.pp_print_flush ppf ();
@@ -268,20 +275,19 @@ module Content = struct
     restore_ppf ();
     Format.pp_print_newline ppf ()
 
-  let emit (content : t) (target : level) : unit =
+  let emit ?ppf ?(pp_marker = pp_marker) (content : t) (target : level) : unit =
+    let ppf = Option.value ~default:(get_ppf target) ppf in
     match Global.options.message_format with
     | Global.Human -> (
-      let ppf = get_ppf target in
       match target with
-      | Debug | Log -> basic_msg ppf target content
-      | Result | Warning | Error -> fancy_msg ppf target content)
+      | Debug | Log -> basic_msg ~pp_marker ppf target content
+      | Result | Warning | Error -> fancy_msg ~pp_marker ppf target content)
     | Global.GNU ->
       (* The top message doesn't come with a position, which is not something
          the GNU standard allows. So we look the position list and put the top
          message everywhere there is not a more precise message. If we can't
          find a position without a more precise message, we just take the first
          position in the list to pair with the message. *)
-      let ppf = get_ppf target in
       Format.pp_print_list ~pp_sep:Format.pp_print_newline
         (fun ppf elt ->
           let pos, message =
@@ -319,6 +325,21 @@ module Content = struct
           | None -> ())
         ppf content;
       Format.pp_print_newline ppf ()
+
+  let emit_n ?ppf (target : level) = function
+    | [content] -> emit content target
+    | contents ->
+      let ppf = Option.value ~default:(get_ppf target) ppf in
+      let len = List.length contents in
+      List.iteri
+        (fun i c ->
+          if i > 0 then Format.pp_print_newline ppf ();
+          let extra_label = Printf.sprintf "(%d/%d)" (succ i) len in
+          let pp_marker ?extra_label:_ = pp_marker ~extra_label in
+          emit ~pp_marker c target)
+        contents
+
+  let emit ?ppf (content : t) (target : level) = emit ?ppf content target
 end
 
 open Content
@@ -326,6 +347,19 @@ open Content
 (** {1 Error exception} *)
 
 exception CompilerError of Content.t
+exception CompilerErrors of Content.t list
+
+type lsp_error_kind = Lexing | Parsing | Typing | Generic
+
+type lsp_error = {
+  kind : lsp_error_kind;
+  message : Format.formatter -> unit;
+  pos : Pos.t option;
+  suggestion : string list option;
+}
+
+let global_error_hook = ref None
+let register_lsp_error_notifier f = global_error_hook := Some f
 
 (** {1 Error printing} *)
 
@@ -354,9 +388,9 @@ let make
     ~level =
   match level with
   | Debug when not Global.options.debug ->
-    Format.ikfprintf (fun _ -> cont [] level) (Lazy.force ignore_ppf)
+    Format.ikfprintf (fun _ -> cont [] level) (ignore_ppf ())
   | Warning when Global.options.disable_warnings ->
-    Format.ikfprintf (fun _ -> cont [] level) (Lazy.force ignore_ppf)
+    Format.ikfprintf (fun _ -> cont [] level) (ignore_ppf ())
   | _ ->
     Format.kdprintf
     @@ fun message ->
@@ -402,4 +436,82 @@ let log = make ~level:Log ~cont:emit
 let result = make ~level:Result ~cont:emit
 let results r = emit (List.flatten (List.map of_result r)) Result
 let warning = make ~level:Warning ~cont:emit
-let error = make ~level:Error ~cont:(fun m _ -> raise (CompilerError m))
+
+let join_pos ~pos ~fmt_pos ~extra_pos =
+  (* Error positioning might be provided using multiple options. Thus, we look
+     for each of them and prioritize in this order [fmt_pos] > [extra_pos] >
+     [pos] if multiple positions are present. *)
+  match fmt_pos, extra_pos, pos with
+  | Some ((_, pos) :: _), _, _ | _, Some ((_, pos) :: _), _ | _, _, Some pos ->
+    Some pos
+  | _ -> None
+
+let error ?(kind = Generic) : ('a, 'exn) emitter =
+ fun ?header ?internal ?pos ?pos_msg ?extra_pos ?fmt_pos ?outcome ?suggestion
+     fmt ->
+  make ?header ?internal ?pos ?pos_msg ?extra_pos ?fmt_pos ?outcome ?suggestion
+    fmt ~level:Error ~cont:(fun m _ ->
+      Option.iter
+        (fun f ->
+          let message ppf = Content.emit ~ppf m Error in
+          let pos = join_pos ~pos ~fmt_pos ~extra_pos in
+          f { kind; message; pos; suggestion })
+        !global_error_hook;
+      raise (CompilerError m))
+
+(* Multiple errors handling *)
+
+type global_errors = {
+  mutable errors : t list option;
+  mutable stop_on_error : bool;
+}
+
+let global_errors = { errors = None; stop_on_error = false }
+
+let delayed_error ?(kind = Generic) x : ('a, 'exn) emitter =
+ fun ?header ?internal ?pos ?pos_msg ?extra_pos ?fmt_pos ?outcome ?suggestion
+     fmt ->
+  make ?header ?internal ?pos ?pos_msg ?extra_pos ?fmt_pos ?outcome ?suggestion
+    fmt ~level:Error ~cont:(fun m _ ->
+      Option.iter
+        (fun f ->
+          let message ppf = Content.emit ~ppf m Error in
+          let pos = join_pos ~pos ~fmt_pos ~extra_pos in
+          f { kind; message; pos; suggestion })
+        !global_error_hook;
+      if global_errors.stop_on_error then raise (CompilerError m);
+      match global_errors.errors with
+      | None ->
+        error ~internal:true
+          "delayed error called outside scope: encapsulate using \
+           'with_delayed_errors' first"
+      | Some l ->
+        global_errors.errors <- Some (m :: l);
+        x)
+
+let with_delayed_errors
+    ?(stop_on_error = Global.options.stop_on_error)
+    (f : unit -> 'a) : 'a =
+  (match global_errors.errors with
+  | None -> global_errors.errors <- Some []
+  | Some _ ->
+    error ~internal:true
+      "delayed error called outside scope: encapsulate using \
+       'with_delayed_errors' first");
+  global_errors.stop_on_error <- stop_on_error;
+  try
+    let r = f () in
+    match global_errors.errors with
+    | None -> error ~internal:true "intertwined delayed error scope"
+    | Some [] ->
+      global_errors.errors <- None;
+      r
+    | Some [err] ->
+      global_errors.errors <- None;
+      raise (CompilerError err)
+    | Some errs ->
+      global_errors.errors <- None;
+      raise (CompilerErrors (List.rev errs))
+  with e ->
+    global_errors.errors <- None;
+    raise e

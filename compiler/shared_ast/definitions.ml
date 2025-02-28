@@ -139,7 +139,6 @@ type desugared =
   ; assertions : no
   ; defaultTerms : yes
   ; genericErrors : no
-  ; exceptions : no
   ; custom : no >
 (* Technically, desugared before name resolution has [syntacticNames: yes;
    resolvedNames: no], and after name resolution has the opposite; but the
@@ -161,7 +160,6 @@ type scopelang =
   ; assertions : no
   ; defaultTerms : yes
   ; genericErrors : no
-  ; exceptions : no
   ; custom : no >
 
 type dcalc =
@@ -176,7 +174,6 @@ type dcalc =
   ; assertions : yes
   ; defaultTerms : yes
   ; genericErrors : no
-  ; exceptions : no
   ; custom : no >
 
 type lcalc =
@@ -191,7 +188,6 @@ type lcalc =
   ; assertions : yes
   ; defaultTerms : no
   ; genericErrors : no
-  ; exceptions : yes
   ; custom : no >
 
 type 'a any = < .. > as 'a
@@ -211,12 +207,11 @@ type dcalc_lcalc_features =
   ; assertions : yes >
 (** Features that are common to Dcalc and Lcalc *)
 
-type ('a, 'b) dcalc_lcalc =
-  < dcalc_lcalc_features ; defaultTerms : 'a ; exceptions : 'b ; custom : no >
+type 'd dcalc_lcalc = < dcalc_lcalc_features ; defaultTerms : 'd ; custom : no >
 (** This type regroups Dcalc and Lcalc ASTs. *)
 
-type ('a, 'b, 'c) interpr_kind =
-  < dcalc_lcalc_features ; defaultTerms : 'a ; exceptions : 'b ; custom : 'c >
+type ('d, 'c) interpr_kind =
+  < dcalc_lcalc_features ; defaultTerms : 'd ; custom : 'c >
 (** This type corresponds to the types handled by the interpreter: it regroups
     Dcalc and Lcalc ASTs and may have custom terms *)
 
@@ -228,15 +223,65 @@ type typ = naked_typ Mark.pos
 
 and naked_typ =
   | TLit of typ_lit
+  | TArrow of typ list * typ
   | TTuple of typ list
   | TStruct of StructName.t
   | TEnum of EnumName.t
   | TOption of typ
-  | TArrow of typ list * typ
   | TArray of typ
   | TDefault of typ
   | TAny
   | TClosureEnv  (** Hides an existential type needed for closure conversion *)
+
+module TypeIdent : sig
+  type t = Struct of StructName.t | Enum of EnumName.t
+
+  include Map.OrderedType with type t := t
+
+  val get_info : t -> Uid.MarkedString.info
+  val equal : t -> t -> bool
+  val hash : t -> int
+
+  module Set : Set.S with type elt = t
+  module Map : Map.S with type key = t
+end = struct
+  module Ordering = struct
+    type t = Struct of StructName.t | Enum of EnumName.t
+
+    let compare x y =
+      match x, y with
+      | Struct x, Struct y -> StructName.compare x y
+      | Enum x, Enum y -> EnumName.compare x y
+      | Struct _, Enum _ -> 1
+      | Enum _, Struct _ -> -1
+
+    let equal x y =
+      match x, y with
+      | Struct x, Struct y -> StructName.compare x y = 0
+      | Enum x, Enum y -> EnumName.compare x y = 0
+      | _ -> false
+
+    let format (fmt : Format.formatter) (x : t) : unit =
+      match x with
+      | Struct x -> StructName.format fmt x
+      | Enum x -> EnumName.format fmt x
+  end
+
+  include Ordering
+
+  let hash x =
+    match x with
+    | Struct x -> StructName.id x
+    | Enum x -> Hashtbl.hash (`Enum (EnumName.id x))
+
+  let get_info (x : t) =
+    match x with
+    | Struct x -> StructName.get_info x
+    | Enum x -> EnumName.get_info x
+
+  module Set = Set.Make (Ordering)
+  module Map = Map.Make (Ordering)
+end
 
 (** {2 Constants and operators} *)
 
@@ -368,6 +413,7 @@ module Op = struct
     (* Todo: Eq is not an overload at the moment, but it should be one. The
        trick is that it needs generation of specific code for arrays, every
        struct and enum: operators [Eq_structs of StructName.t], etc. *)
+    | Eq_boo_boo : < resolved ; .. > t
     | Eq_int_int : < resolved ; .. > t
     | Eq_rat_rat : < resolved ; .. > t
     | Eq_mon_mon : < resolved ; .. > t
@@ -377,8 +423,7 @@ module Op = struct
     (* * polymorphic *)
     | Reduce : < polymorphic ; .. > t
     | Fold : < polymorphic ; .. > t
-    | HandleDefault : < polymorphic ; .. > t
-    | HandleDefaultOpt : < polymorphic ; .. > t
+    | HandleExceptions : < polymorphic ; .. > t
 end
 
 type 'a operator = 'a Op.t
@@ -572,13 +617,6 @@ and ('a, 'b, 'm) base_gexpr =
   | EGenericError : ('a, < genericErrors : yes ; .. >, 'm) base_gexpr
       (** A general purpose error, whose entire payload is expected to be in its
           mark *)
-  (* Lambda calculus with exceptions *)
-  | ERaiseEmpty : ('a, < exceptions : yes ; .. >, 'm) base_gexpr
-  | ECatchEmpty : {
-      body : ('a, 'm) gexpr;
-      handler : ('a, 'm) gexpr;
-    }
-      -> ('a, < exceptions : yes ; .. >, 'm) base_gexpr
   (* Only used during evaluation *)
   | ECustom : {
       obj : Obj.t;
@@ -646,6 +684,8 @@ type 'e scope_let = {
 (** This type is parametrized by the expression type so it can be reused in
     later intermediate representations. *)
 
+type visibility = Private | Public
+
 type 'e scope_body_expr = ('e, 'e scope_let, 'e) bound_list
   constraint 'e = ('a any, _) gexpr
 (** A scope let-binding has all the information necessary to make a proper
@@ -656,6 +696,7 @@ type 'e scope_body = {
   scope_body_input_struct : StructName.t;
   scope_body_output_struct : StructName.t;
   scope_body_expr : ('e, 'e scope_body_expr) binder;
+  scope_body_visibility : visibility;
 }
   constraint 'e = ('a any, _) gexpr
 (** Instead of being a single expression, we give a little more ad-hoc structure
@@ -665,9 +706,14 @@ type 'e scope_body = {
 
 type 'e code_item =
   | ScopeDef of ScopeName.t * 'e scope_body
-  | Topdef of TopdefName.t * typ * 'e
+  | Topdef of TopdefName.t * typ * visibility * 'e
 
-type 'e code_item_list = ('e, 'e code_item, unit) bound_list
+type 'e code_item_list = ('e, 'e code_item, 'naked_e list) bound_list
+  constraint 'e = ('naked_e, _) Mark.ed
+(* The bound_list terminator is a naked expression list that is not part of the
+   program: it contains the list of exported variables, so that Bindlib
+   correctly understands these variables as being used *)
+
 type struct_ctx = typ StructField.Map.t StructName.Map.t
 type enum_ctx = typ EnumConstructor.Map.t EnumName.Map.t
 
@@ -675,16 +721,22 @@ type scope_info = {
   in_struct_name : StructName.t;
   out_struct_name : StructName.t;
   out_struct_fields : StructField.t ScopeVar.Map.t;
+  visibility : visibility;
 }
 
+type module_intf_id = { hash : Hash.t; is_external : bool }
+
+type module_tree_node = { deps : module_tree; intf_id : module_intf_id }
+
+and module_tree = module_tree_node ModuleName.Map.t
 (** In practice, this is a DAG: beware of repeated names *)
-type module_tree = M of module_tree ModuleName.Map.t [@@caml.unboxed]
 
 type decl_ctx = {
   ctx_enums : enum_ctx;
   ctx_structs : struct_ctx;
   ctx_scopes : scope_info ScopeName.Map.t;
-  ctx_topdefs : typ TopdefName.Map.t;
+  ctx_topdefs : (typ * visibility) TopdefName.Map.t;
+  ctx_public_types : TypeIdent.Set.t;
   ctx_struct_fields : StructField.t StructName.Map.t Ident.Map.t;
       (** needed for disambiguation (desugared -> scope) *)
   ctx_enum_constrs : EnumConstructor.t EnumName.Map.t Ident.Map.t;
@@ -697,5 +749,5 @@ type 'e program = {
   decl_ctx : decl_ctx;
   code_items : 'e code_item_list;
   lang : Global.backend_lang;
-  module_name : ModuleName.t option;
+  module_name : (ModuleName.t * module_intf_id) option;
 }

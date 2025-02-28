@@ -67,6 +67,9 @@ let exec_dir =
 
 (** CLI flags and options *)
 
+let s_plugins = "INSTALLED PLUGINS"
+let s_debug = "DEBUGGING COMMANDS"
+
 module Flags = struct
   open Cmdliner
   open Arg
@@ -199,6 +202,12 @@ module Flags = struct
             "Behave as if run from the given directory for file and error \
              reporting. Does not affect resolution of files in arguments."
 
+    let stop_on_error =
+      value
+      & flag
+      & info ["x"; "stop-on-error"]
+          ~doc:"Stops the compilation as soon as an error is encountered."
+
     let flags =
       let make
           language
@@ -209,7 +218,8 @@ module Flags = struct
           plugins_dirs
           disable_warnings
           max_prec_digits
-          directory : options =
+          directory
+          stop_on_error : options =
         if debug then Printexc.record_backtrace true;
         let path_rewrite =
           match directory with
@@ -223,7 +233,8 @@ module Flags = struct
         (* This sets some global refs for convenience, but most importantly
            returns the options record. *)
         Global.enforce_options ~language ~debug ~color ~message_format ~trace
-          ~plugins_dirs ~disable_warnings ~max_prec_digits ~path_rewrite ()
+          ~plugins_dirs ~disable_warnings ~max_prec_digits ~path_rewrite
+          ~stop_on_error ()
       in
       Term.(
         const make
@@ -235,7 +246,8 @@ module Flags = struct
         $ plugins_dirs
         $ disable_warnings
         $ max_prec_digits
-        $ directory)
+        $ directory
+        $ stop_on_error)
 
     let options =
       let make input_src name directory options : options =
@@ -325,20 +337,13 @@ module Flags = struct
         ~env:(Cmd.Env.info "CATALA_OPTIMIZE")
         ~doc:"Run compiler optimizations."
 
-  let avoid_exceptions =
-    value
-    & flag
-    & info ["avoid-exceptions"]
-        ~env:(Cmd.Env.info "CATALA_AVOID_EXCEPTIONS")
-        ~doc:"Compiles the default calculus without exceptions."
-
   let keep_special_ops =
     value
     & flag
     & info ["keep-special-ops"]
         ~doc:
-          "During the Lcalc->Scalc translation, uses special AST nodes for \
-           higher-order operators rather than nested closures (useful for C)."
+          "During closure conversion (between Lcalc and Scalc), do not convert \
+           the functional arguments of higher-order operators."
 
   let monomorphize_types =
     value
@@ -348,6 +353,14 @@ module Flags = struct
           "In LCalc, replaces the polymorphic option type by monomorphized \
            versions of the enumeration, and transform tuples into named \
            structs. "
+
+  let expand_ops =
+    value
+    & flag
+    & info ["expand-ops"]
+        ~doc:
+          "In LCalc, expand equality operators to only rely on comparisons of \
+           literals. "
 
   let dead_value_assignment =
     value
@@ -365,16 +378,14 @@ module Flags = struct
     & info ["no-struct-literals"]
         ~doc:
           "During the Lcalc->Scalc translation, insert temporary variable \
-           assignments to hold the result of structure initializations \
-           (matches the absence of struct literals of C89)."
+           assignments to hold the result of array and structure \
+           initializations (matches the absence of struct literals of C89)."
 
   let closure_conversion =
     value
     & flag
     & info ["closure-conversion"]
-        ~doc:
-          "Performs closure conversion on the lambda calculus. Implies \
-           $(b,--avoid-exceptions)."
+        ~doc:"Performs closure conversion on the lambda calculus."
 
   let disable_counterexamples =
     value
@@ -417,7 +428,38 @@ end
 
 (* Retrieve current version from dune *)
 let version = Version.v
-let s_plugins = "INSTALLED PLUGINS"
+
+let man_header =
+  [
+    `S Manpage.s_description;
+    `P
+      "Catala is a domain-specific language for deriving \
+       faithful-by-construction algorithms from legislative texts.";
+  ]
+
+let man_footer =
+  [
+    `S Manpage.s_common_options;
+    `S Manpage.s_authors;
+    `P "The authors are listed by alphabetical order:";
+    `P "Vincent Botbol <$(i,vincent.botbol@inria.fr)>";
+    `Noblank;
+    `P "Nicolas Chataing <$(i,nicolas.chataing@ens.fr)>";
+    `Noblank;
+    `P "Alain Delaët-Tixeuil <$(i,alain.delaet--tixeuil@inria.fr)>";
+    `Noblank;
+    `P "Aymeric Fromherz <$(i,aymeric.fromherz@inria.fr)>";
+    `Noblank;
+    `P "Louis Gesbert <$(i,louis.gesbert@ocamlpro.com)>";
+    `Noblank;
+    `P "Denis Merigoux <$(i,denis.merigoux@inria.fr)>";
+    `Noblank;
+    `P "Emile Rolley <$(i,erolley@tutamail.com)>";
+    `S Manpage.s_bugs;
+    `P "Please file bug reports at https://github.com/CatalaLang/catala/issues";
+  ]
+
+let man_base = man_header @ man_footer
 
 let info =
   let doc =
@@ -425,38 +467,24 @@ let info =
      computation rules."
   in
   let man =
-    [
-      `S Manpage.s_synopsis;
-      `P "$(mname) [$(i,COMMAND)] $(i,FILE) [$(i,OPTION)]…";
-      `P
-        "Use $(mname) [$(i,COMMAND)] $(b,--hel)p for documentation on a \
-         specific command";
-      `S Manpage.s_description;
-      `P
-        "Catala is a domain-specific language for deriving \
-         faithful-by-construction algorithms from legislative texts.";
-      `S Manpage.s_commands;
-      `S s_plugins;
-      `S Manpage.s_authors;
-      `P "The authors are listed by alphabetical order:";
-      `P "Nicolas Chataing <$(i,nicolas.chataing@ens.fr)>";
-      `Noblank;
-      `P "Alain Delaët-Tixeuil <$(i,alain.delaet--tixeuil@inria.fr)>";
-      `Noblank;
-      `P "Aymeric Fromherz <$(i,aymeric.fromherz@inria.fr)>";
-      `Noblank;
-      `P "Louis Gesbert <$(i,louis.gesbert@ocamlpro.com)>";
-      `Noblank;
-      `P "Denis Merigoux <$(i,denis.merigoux@inria.fr)>";
-      `Noblank;
-      `P "Emile Rolley <$(i,erolley@tutamail.com)>";
-      `S Manpage.s_examples;
-      `Pre "catala Interpret -s Foo file.catala_en";
-      `Pre "catala Ocaml -o target/file.ml file.catala_en";
-      `S Manpage.s_bugs;
-      `P
-        "Please file bug reports at https://github.com/CatalaLang/catala/issues";
-    ]
+    man_header
+    @ [
+        `S Manpage.s_synopsis;
+        `P "$(mname) [$(i,COMMAND)] $(i,FILE) [$(i,OPTION)]…";
+        `P
+          "Use $(mname) [$(i,COMMAND)] $(b,--hel)p for documentation on a \
+           specific command";
+        `S Manpage.s_commands;
+        `S s_plugins;
+        `S s_debug;
+        `P
+          "These commands are intended for debugging of the Catala compiler \
+           itself, and unlikely to be useful to the end-user";
+        `S Manpage.s_examples;
+        `Pre "catala Interpret -s Foo file.catala_en";
+        `Pre "catala Ocaml -o target/file.ml file.catala_en";
+      ]
+    @ man_footer
   in
   let exits = Cmd.Exit.defaults @ [Cmd.Exit.info ~doc:"on error." 1] in
   Cmd.info "catala" ~version ~doc ~exits ~man

@@ -27,7 +27,8 @@ let to_snake_case (s : string) : string =
   s
   |> to_ascii
   |> iteri (fun i c ->
-         if is_uppercase_ascii c && 0 <> i then Buffer.add_char out '_';
+         if is_uppercase_ascii c && 0 <> i && get s (i - 1) <> '_' then
+           Buffer.add_char out '_';
          Buffer.add_char out (Char.lowercase_ascii c));
   Buffer.contents out
 
@@ -49,6 +50,18 @@ let remove_prefix ~prefix s =
     let plen = length prefix in
     sub s plen (length s - plen)
   else s
+
+let trim_end s =
+  let rec stop n =
+    if n < 0 then n
+    else
+      match get s n with
+      | ' ' | '\x0c' | '\n' | '\r' | '\t' -> stop (n - 1)
+      | _ -> n
+  in
+  let last = length s - 1 in
+  let i = stop last in
+  if i = last then s else sub s 0 (i + 1)
 
 (* Note: this should do, but remains incorrect for combined unicode characters
    that display as one (e.g. `e` + postfix `'`). We should switch to Uuseg at
@@ -101,6 +114,7 @@ module Arg = struct
 end
 
 let compare = Arg.compare
+let hash t = Hash.raw t
 
 module Set = Set.Make (Arg)
 module Map = Map.Make (Arg)

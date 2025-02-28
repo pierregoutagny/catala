@@ -14,8 +14,11 @@
    License for the specific language governing permissions and limitations under
    the License. *)
 
-(** Formats a lambda calculus program into a valid C89 program *)
+(** Formats a statement calculus program into a valid C89 program *)
 
-val format_program :
-  Format.formatter -> Ast.program -> Scopelang.Dependency.TVertex.t list -> unit
+open Shared_ast
+
+val renaming : Renaming.t
+
+val format_program : Format.formatter -> Ast.program -> TypeIdent.t list -> unit
 (** Usage [format_program fmt p type_dependencies_ordering] *)

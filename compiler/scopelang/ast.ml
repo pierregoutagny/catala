@@ -40,13 +40,13 @@ let rec locations_used (e : 'm expr) : LocationSet.t =
 
 type 'm rule =
   | ScopeVarDefinition of {
-      var : ScopeVar.t Mark.pos;
+      var : (ScopeVar.t, Pos.t list) Mark.ed;
       typ : typ;
       io : Desugared.Ast.io;
       e : 'm expr;
     }
   | SubScopeVarDefinition of {
-      var : ScopeVar.t Mark.pos;
+      var : (ScopeVar.t, Pos.t list) Mark.ed;
       var_within_origin_scope : ScopeVar.t;
       typ : typ;
       e : 'm expr;
@@ -64,14 +64,15 @@ type 'm scope_decl = {
   scope_sig : scope_var_ty ScopeVar.Map.t;
   scope_decl_rules : 'm rule list;
   scope_options : Desugared.Ast.catala_option Mark.pos list;
+  scope_visibility : visibility;
 }
 
 type 'm program = {
-  program_module_name : ModuleName.t option;
+  program_module_name : (ModuleName.t * module_intf_id) option;
   program_ctx : decl_ctx;
   program_modules : nil scope_decl Mark.pos ScopeName.Map.t ModuleName.Map.t;
   program_scopes : 'm scope_decl Mark.pos ScopeName.Map.t;
-  program_topdefs : ('m expr * typ) TopdefName.Map.t;
+  program_topdefs : ('m expr * typ * visibility) TopdefName.Map.t;
   program_lang : Global.backend_lang;
 }
 
@@ -93,7 +94,7 @@ let type_program (type m) (prg : m program) : typed program =
   let env = Typing.Env.empty prg.program_ctx in
   let env =
     TopdefName.Map.fold
-      (fun name ty env -> Typing.Env.add_toplevel_var name ty env)
+      (fun name (ty, _vis) env -> Typing.Env.add_toplevel_var name ty env)
       prg.program_ctx.ctx_topdefs env
   in
   let env =
@@ -123,8 +124,8 @@ let type_program (type m) (prg : m program) : typed program =
   in
   let program_topdefs =
     TopdefName.Map.map
-      (fun (expr, typ) ->
-        Expr.unbox (Typing.expr prg.program_ctx ~env ~typ expr), typ)
+      (fun (expr, typ, vis) ->
+        Expr.unbox (Typing.expr prg.program_ctx ~env ~typ expr), typ, vis)
       prg.program_topdefs
   in
   let program_scopes =
@@ -145,3 +146,5 @@ let type_program (type m) (prg : m program) : typed program =
       prg.program_scopes
   in
   { prg with program_topdefs; program_scopes }
+
+let type_program prg = Message.with_delayed_errors (fun () -> type_program prg)

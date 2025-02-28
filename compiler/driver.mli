@@ -43,7 +43,7 @@ module Passes : sig
     optimize:bool ->
     check_invariants:bool ->
     typed:'m Shared_ast.mark ->
-    'm Dcalc.Ast.program * Scopelang.Dependency.TVertex.t list
+    'm Dcalc.Ast.program * Shared_ast.TypeIdent.t list
 
   val lcalc :
     Global.options ->
@@ -51,23 +51,30 @@ module Passes : sig
     optimize:bool ->
     check_invariants:bool ->
     typed:'m Shared_ast.mark ->
-    avoid_exceptions:bool ->
     closure_conversion:bool ->
+    keep_special_ops:bool ->
     monomorphize_types:bool ->
-    Shared_ast.typed Lcalc.Ast.program * Scopelang.Dependency.TVertex.t list
+    expand_ops:bool ->
+    renaming:Shared_ast.Renaming.t option ->
+    Shared_ast.typed Lcalc.Ast.program
+    * Shared_ast.TypeIdent.t list
+    * Shared_ast.Renaming.context option
 
   val scalc :
     Global.options ->
     includes:Global.raw_file list ->
     optimize:bool ->
     check_invariants:bool ->
-    avoid_exceptions:bool ->
     closure_conversion:bool ->
     keep_special_ops:bool ->
     dead_value_assignment:bool ->
     no_struct_literals:bool ->
     monomorphize_types:bool ->
-    Scalc.Ast.program * Scopelang.Dependency.TVertex.t list
+    expand_ops:bool ->
+    renaming:Shared_ast.Renaming.t option ->
+    Scalc.Ast.program
+    * Shared_ast.TypeIdent.t list
+    * Shared_ast.Renaming.context
 end
 
 module Commands : sig

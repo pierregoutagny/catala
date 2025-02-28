@@ -102,7 +102,7 @@ let rec typ_gen
     Format.pp_open_hvbox fmt 2;
     pp_color_string (List.hd colors) fmt "(";
     (Format.pp_print_list
-       ~pp_sep:(fun fmt () -> Format.fprintf fmt " %a@ " op_style "*")
+       ~pp_sep:(fun fmt () -> Format.fprintf fmt "%a@ " op_style ",")
        (typ ~colors:(List.tl colors)))
       fmt ts;
     Format.pp_close_box fmt ();
@@ -142,7 +142,7 @@ let rec typ_gen
                mty))
         def punctuation "]")
   | TOption t ->
-    Format.fprintf fmt "@[<hov 2>%a@ %a@]" base_type "eoption" (typ ~colors) t
+    Format.fprintf fmt "@[<hov 2>%a@ %a@]" base_type "option" (typ ~colors) t
   | TArrow ([t1], t2) ->
     Format.fprintf fmt "@[<hov 2>%a@ %a@ %a@]" (typ_with_parens ~colors) t1
       op_style "→" (typ ~colors) t2
@@ -274,14 +274,14 @@ let operator_to_string : type a. a Op.t -> string =
   | Gte_mon_mon -> ">=$"
   | Gte_dur_dur -> ">=^"
   | Gte_dat_dat -> ">=@"
+  | Eq_boo_boo -> "=="
   | Eq_int_int -> "=!"
   | Eq_rat_rat -> "=."
   | Eq_mon_mon -> "=$"
   | Eq_dur_dur -> "=^"
   | Eq_dat_dat -> "=@"
   | Fold -> "fold"
-  | HandleDefault -> "handle_default"
-  | HandleDefaultOpt -> "handle_default_opt"
+  | HandleExceptions -> "handle_exceptions"
   | ToClosureEnv -> "to_closure_env"
   | FromClosureEnv -> "from_closure_env"
 
@@ -303,7 +303,9 @@ let operator_to_shorter_string : type a. a Op.t -> string =
   | And -> "&&"
   | Or -> "||"
   | Xor -> "xor"
-  | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dur_dur | Eq_dat_dat | Eq -> "="
+  | Eq_boo_boo | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dur_dur | Eq_dat_dat
+  | Eq ->
+    "="
   | Map -> "map"
   | Map2 -> "map2"
   | Reduce -> "reduce"
@@ -325,8 +327,7 @@ let operator_to_shorter_string : type a. a Op.t -> string =
   | Gte_int_int | Gte_rat_rat | Gte_mon_mon | Gte_dur_dur | Gte_dat_dat | Gte ->
     ">="
   | Fold -> "fold"
-  | HandleDefault -> "handle_default"
-  | HandleDefaultOpt -> "handle_default_opt"
+  | HandleExceptions -> "handle_exceptions"
   | ToClosureEnv -> "to_closure_env"
   | FromClosureEnv -> "from_closure_env"
 
@@ -379,7 +380,8 @@ module Precedence = struct
       | And -> Op And
       | Or -> Op Or
       | Xor -> Op Xor
-      | Eq | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dur_dur | Eq_dat_dat ->
+      | Eq | Eq_boo_boo | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dur_dur
+      | Eq_dat_dat ->
         Op Comp
       | Lt | Lt_int_int | Lt_rat_rat | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur ->
         Op Comp
@@ -402,8 +404,8 @@ module Precedence = struct
       | Div | Div_int_int | Div_rat_rat | Div_mon_rat | Div_mon_mon
       | Div_dur_dur ->
         Op Div
-      | HandleDefault | HandleDefaultOpt | Map | Map2 | Concat | Filter | Reduce
-      | Fold | ToClosureEnv | FromClosureEnv ->
+      | HandleExceptions | Map | Map2 | Concat | Filter | Reduce | Fold
+      | ToClosureEnv | FromClosureEnv ->
         App)
     | EApp _ -> App
     | EArray _ -> Contained
@@ -426,8 +428,6 @@ module Precedence = struct
     | EPureDefault _ -> Contained
     | EEmpty -> Contained
     | EErrorOnEmpty _ -> App
-    | ERaiseEmpty -> App
-    | ECatchEmpty _ -> App
     | EGenericError -> Contained
     | ECustom _ -> Contained
 
@@ -672,12 +672,6 @@ module ExprGen (C : EXPR_PARAM) = struct
       | EFatalError err ->
         Format.fprintf fmt "@[<hov 2>%a@ @{<red>%s@}@]" keyword "error"
           (Runtime.error_to_string err)
-      | ECatchEmpty { body; handler } ->
-        Format.fprintf fmt
-          "@[<hv 0>@[<hov 2>%a@ %a@]@ @[<hov 2>%a@ %a ->@ %a@]@]" keyword "try"
-          expr body keyword "with" op_style "Empty" (rhs exprc) handler
-      | ERaiseEmpty ->
-        Format.fprintf fmt "@[<hov 2>%a@ %a@]" keyword "raise" op_style "Empty"
       | ELocation loc -> location fmt loc
       | EDStructAccess { e; field; _ } ->
         Format.fprintf fmt "@[<hv 2>%a%a@,%a%a%a@]" (lhs exprc) e punctuation
@@ -713,7 +707,6 @@ module ExprGen (C : EXPR_PARAM) = struct
         Format.fprintf fmt "@[<v 0>@[<hv 2>%a@ %a@;<1 -2>%a@]@ %a@]" keyword
           "match" (lhs exprc) e keyword "with"
           (EnumConstructor.Map.format_bindings
-             ~pp_sep:(fun fmt () -> Format.fprintf fmt "@\n")
              (fun fmt pp_cons_name case_expr ->
                match case_expr with
                | EAbs { binder; tys; _ }, _ ->
@@ -813,6 +806,7 @@ let scope_body ?(debug = false) ctx fmt (n, l) : unit =
     scope_body_input_struct;
     scope_body_output_struct;
     scope_body_expr = body;
+    scope_body_visibility = _vis;
   } =
     l
   in
@@ -829,9 +823,7 @@ let scope_body ?(debug = false) ctx fmt (n, l) : unit =
       let () =
         Format.pp_open_hovbox fmt 4;
         keyword fmt "let scope";
-        Format.pp_print_space fmt ();
-        ScopeName.format fmt n;
-        Format.pp_close_box fmt ()
+        Format.fprintf fmt "@ @{<hi_magenta>%s@}@]" n
       in
       Format.pp_print_space fmt ();
       punctuation fmt "(";
@@ -870,13 +862,12 @@ let enum
     fmt
     (pp_name : Format.formatter -> unit)
     (c : typ EnumConstructor.Map.t) =
-  Format.fprintf fmt "@[<h 0>%a %t %a@ %a@]" keyword "type" pp_name punctuation
-    "="
-    (EnumConstructor.Map.format_bindings
-       ~pp_sep:(fun _ _ -> ())
+  Format.fprintf fmt "@[<h 0>%a %t %a@ %a@]@," keyword "type" pp_name
+    punctuation "="
+    (EnumConstructor.Map.format_bindings ~pp_sep:Format.pp_print_space
        (fun fmt pp_n ty ->
-         Format.fprintf fmt "@[<hov2> %a %t %a %a@]@;" punctuation "|" pp_n
-           keyword "of"
+         Format.fprintf fmt "@[<hov2>%a %t %a %a@]" punctuation "|" pp_n keyword
+           "of"
            (if debug then typ_debug else typ decl_ctx)
            ty))
     c
@@ -899,50 +890,39 @@ let struct_
 let decl_ctx ?(debug = false) decl_ctx (fmt : Format.formatter) (ctx : decl_ctx)
     : unit =
   let { ctx_enums; ctx_structs; _ } = ctx in
-  Format.fprintf fmt "%a@.%a@.@."
-    (EnumName.Map.format_bindings
-       ~pp_sep:(fun fmt () -> Format.fprintf fmt "@.")
-       (enum ~debug decl_ctx))
+  Format.fprintf fmt "@[<v>%a@,%a@,@,@]"
+    (EnumName.Map.format_bindings (enum ~debug decl_ctx))
     ctx_enums
-    (StructName.Map.format_bindings
-       ~pp_sep:(fun fmt () -> Format.fprintf fmt "@.")
-       (struct_ ~debug decl_ctx))
+    (StructName.Map.format_bindings (struct_ ~debug decl_ctx))
     ctx_structs
 
 let scope
     ?(debug : bool = false)
     (ctx : decl_ctx)
     (fmt : Format.formatter)
-    ((n, s) : ScopeName.t * 'm scope_body) : unit =
+    ((n, s) : string * 'm scope_body) : unit =
   Format.pp_open_vbox fmt 0;
   scope_body ~debug ctx fmt (n, s);
   Format.pp_close_box fmt ()
 
-let code_item ?(debug = false) ?name decl_ctx fmt c =
+let code_item ?(debug = false) id decl_ctx fmt c =
+  let name = Format.asprintf "%a" (if debug then var_debug else var) id in
   match c with
-  | ScopeDef (n, b) ->
-    let n =
-      match debug, name with
-      | true, Some n -> ScopeName.fresh [] (n, Pos.no_pos)
-      | _ -> n
-    in
-    scope ~debug decl_ctx fmt (n, b)
-  | Topdef (n, ty, e) ->
-    let n =
-      match debug, name with
-      | true, Some n -> TopdefName.fresh [] (n, Pos.no_pos)
-      | _ -> n
-    in
-    Format.fprintf fmt "@[<v 2>@[<hov 2>%a@ %a@ %a@ %a@ %a@]@ %a@]" keyword
-      "let topval" TopdefName.format n op_style ":" (typ decl_ctx) ty op_style
-      "=" (expr ~debug ()) e
+  | ScopeDef (_, b) -> scope ~debug decl_ctx fmt (name, b)
+  | Topdef (_, ty, _vis, e) ->
+    Format.fprintf fmt
+      "@[<v 2>@[<hov 2>%a@ @{<hi_green>%s@}@ %a@ %a@ %a@]@ %a@]" keyword
+      "let topval" name op_style ":" (typ decl_ctx) ty op_style "="
+      (expr ~debug ()) e
 
 let code_item_list ?(debug = false) decl_ctx fmt c =
-  BoundList.iter c ~f:(fun x item ->
-      code_item ~debug
-        ~name:(Format.asprintf "%a" var_debug x)
-        decl_ctx fmt item;
-      Format.pp_print_newline fmt ())
+  Format.pp_open_vbox fmt 0;
+  Format.pp_print_seq
+    (fun fmt (x, item) ->
+      code_item ~debug x decl_ctx fmt item;
+      Format.pp_print_cut fmt ())
+    fmt (BoundList.to_seq c);
+  Format.pp_close_box fmt ()
 
 let program ?(debug = false) fmt p =
   decl_ctx ~debug p.decl_ctx fmt p.decl_ctx;
@@ -1115,6 +1095,8 @@ module UserFacing = struct
            ~pp_sep:(fun ppf () -> Format.fprintf ppf ";@ ")
            (value ~fallback lang))
         l
+    | ETuple [(EAbs { tys = (TClosureEnv, _) :: _; _ }, _); _] ->
+      Format.pp_print_string ppf "<function>"
     | ETuple l ->
       Format.fprintf ppf "@[<hv 2>(@,@[<hov>%a@]@;<0 -2>)@]"
         (Format.pp_print_list
@@ -1137,8 +1119,8 @@ module UserFacing = struct
     | EGenericError -> Format.pp_print_string ppf "↯"
     | EApp _ | EAppOp _ | EVar _ | EIfThenElse _ | EMatch _ | ETupleAccess _
     | EStructAccess _ | EAssert _ | EFatalError _ | EDefault _ | EPureDefault _
-    | EErrorOnEmpty _ | ERaiseEmpty | ECatchEmpty _ | ELocation _ | EScopeCall _
-    | EDStructAmend _ | EDStructAccess _ | ECustom _ ->
+    | EErrorOnEmpty _ | ELocation _ | EScopeCall _ | EDStructAmend _
+    | EDStructAccess _ | ECustom _ ->
       fallback ppf e
 
   let expr :

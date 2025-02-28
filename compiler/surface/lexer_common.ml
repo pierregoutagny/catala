@@ -42,7 +42,7 @@ let get_law_heading (lexbuf : lexbuf) : token =
   let precedence = calc_precedence (String.trim (R.get_substring rex 1)) in
   LAW_HEADING (title, article_id, is_archive, precedence)
 
-type lexing_context = Law | Code | Directive | Directive_args
+type lexing_context = Law | Raw | Code | Directive | Directive_args
 
 (** Boolean reference, used by the lexer as the mutable state to distinguish
     whether it is lexing code or law. *)
@@ -58,10 +58,11 @@ let code_buffer : Buffer.t = Buffer.create 4000
 let update_acc (lexbuf : lexbuf) : unit =
   Buffer.add_string code_buffer (Utf8.lexeme lexbuf)
 
+exception Lexing_error of (Pos.t * string)
+
 (** Error-generating helper *)
 let raise_lexer_error (loc : Pos.t) (token : string) =
-  Message.error ~pos:loc
-    "Parsing error after token \"%s\": what comes after is unknown" token
+  raise (Lexing_error (loc, token))
 
 (** Associative list matching each punctuation string part of the Catala syntax
     with its {!module: Surface.Parser} token. Same for all the input languages
