@@ -1166,7 +1166,8 @@ module Commands = struct
       check_invariants
       ex_scope =
     let prg, _ =
-      Passes.dcalc options ~includes ~optimize ~check_invariants ~typed
+      Passes.dcalc options ~includes ~optimize ~check_invariants ~autotest:false
+        ~typed
     in
 
     Interpreter.load_runtime_modules

@@ -1156,6 +1156,9 @@ let rec evaluate_operator
     op1 ctx m
       (fun x -> ELit (LDuration (o_minus_dur x)))
       DateEncoding.minus_dur x e
+  | ToInt_rat, [(ELit (LRat _x), _)] ->
+    failwith "ToInt_rat not implemented yet"
+    (* ELit (LInt (o_toint_rat x)) *)
   | ToRat_int, [((ELit (LInt i), _) as e)] ->
     (* TODO maybe write specific tests for this and other similar cases? *)
     op1 ctx m (fun x -> ELit (LRat (o_torat_int x))) z3_force_real i e
@@ -1235,10 +1238,10 @@ let rec evaluate_operator
     op2list ctx m
       (fun x y -> ELit (LDuration (o_sub_dat_dat x y)))
       DateEncoding.sub_dat_dat x y e1 e2
-  | Sub_dat_dur, [((ELit (LDate x), _) as e1); ((ELit (LDuration y), _) as e2)]
+  | Sub_dat_dur r, [((ELit (LDate x), _) as e1); ((ELit (LDuration y), _) as e2)]
     ->
     op2list ctx m
-      (fun x y -> ELit (LDate (o_sub_dat_dur x y)))
+      (fun x y -> ELit (LDate (o_sub_dat_dur r (rpos ()) x y)))
       DateEncoding.sub_dat_dur x y e1 e2
   | ( Sub_dur_dur,
       [((ELit (LDuration x), _) as e1); ((ELit (LDuration y), _) as e2)] ) ->
@@ -1439,17 +1442,18 @@ let rec evaluate_operator
           Error (Conflict, List.map Expr.(fun e -> pos_to_runtime (pos e)) excs))
     )
 *)
-  | ( ( Minus_int | Minus_rat | Minus_mon | Minus_dur | ToRat_int | ToRat_mon
-      | ToMoney_rat | Round_rat | Round_mon | Add_int_int | Add_rat_rat
-      | Add_mon_mon | Add_dat_dur _ | Add_dur_dur | Sub_int_int | Sub_rat_rat
-      | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur | Sub_dur_dur | Mult_int_int
-      | Mult_rat_rat | Mult_mon_rat | Mult_dur_int | Div_int_int | Div_rat_rat
-      | Div_mon_mon | Div_mon_rat | Div_dur_dur | Lt_int_int | Lt_rat_rat
-      | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur | Lte_int_int | Lte_rat_rat
-      | Lte_mon_mon | Lte_dat_dat | Lte_dur_dur | Gt_int_int | Gt_rat_rat
-      | Gt_mon_mon | Gt_dat_dat | Gt_dur_dur | Gte_int_int | Gte_rat_rat
-      | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur | Eq_boo_boo | Eq_int_int
-      | Eq_rat_rat | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur | HandleExceptions ),
+  | ( ( Minus_int | Minus_rat | Minus_mon | Minus_dur | ToInt_rat | ToRat_int
+      | ToRat_mon | ToMoney_rat | Round_rat | Round_mon | Add_int_int
+      | Add_rat_rat | Add_mon_mon | Add_dat_dur _ | Add_dur_dur | Sub_int_int
+      | Sub_rat_rat | Sub_mon_mon | Sub_dat_dat | Sub_dat_dur _ | Sub_dur_dur
+      | Mult_int_int | Mult_rat_rat | Mult_mon_rat | Mult_dur_int | Div_int_int
+      | Div_rat_rat | Div_mon_mon | Div_mon_rat | Div_dur_dur | Lt_int_int
+      | Lt_rat_rat | Lt_mon_mon | Lt_dat_dat | Lt_dur_dur | Lte_int_int
+      | Lte_rat_rat | Lte_mon_mon | Lte_dat_dat | Lte_dur_dur | Gt_int_int
+      | Gt_rat_rat | Gt_mon_mon | Gt_dat_dat | Gt_dur_dur | Gte_int_int
+      | Gte_rat_rat | Gte_mon_mon | Gte_dat_dat | Gte_dur_dur | Eq_boo_boo
+      | Eq_int_int | Eq_rat_rat | Eq_mon_mon | Eq_dat_dat | Eq_dur_dur
+      | HandleExceptions ),
       _ ) ->
     err ()
 

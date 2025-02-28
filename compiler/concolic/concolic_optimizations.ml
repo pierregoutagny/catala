@@ -92,7 +92,7 @@ let all_match_cases_take_unit_and_map_to_boolean_literals cases =
   EnumConstructor.Map.for_all
     (fun _ case ->
       match Mark.remove case with
-      | EAbs { binder; tys } -> (
+        | EAbs { binder; tys; _ } -> (
         let _, body = Bindlib.unmbind binder in
         match Mark.remove body with
         | ELit (LBool _) ->
