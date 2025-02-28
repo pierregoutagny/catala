@@ -49,85 +49,85 @@ $ catala Concolic --conc-optim=incremental -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . d_in = [10 days]
+│ . d_in = [10 days]
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
-│  . o = 3
-└─
-┌─[RESULT]─
-│ 
-└─
-┌─[RESULT]─
-│  Evaluating with inputs:
-└─
-┌─[RESULT]─
-│  . d_in = [15 days]
-└─
-┌─[RESULT]─
-│  Output of scope after evaluation:
-└─
-┌─[RESULT]─
-│  . o = 4
+│ . o = 3
 └─
 ┌─[RESULT]─
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . d_in = [0 day]
+│ . d_in = [15 days]
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
-│  . o = 2
-└─
-┌─[RESULT]─
-│ 
-└─
-┌─[RESULT]─
-│  Evaluating with inputs:
-└─
-┌─[RESULT]─
-│  . d_in = [-1 day]
-└─
-┌─[RESULT]─
-│  Output of scope after evaluation:
-└─
-┌─[RESULT]─
-│  . o = 1
+│ . o = 4
 └─
 ┌─[RESULT]─
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . d_in = [-15 days]
+│ . d_in = [0 day]
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
-│  . o = 0
+│ . o = 2
 └─
 ┌─[RESULT]─
 │ 
 └─
 ┌─[RESULT]─
-│  Concolic interpreter done
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  Computation successful!
+│ . d_in = [-1 day]
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o = 1
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . d_in = [-15 days]
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Concolic interpreter done
+└─
+┌─[RESULT]─
+│ Computation successful!
 └─
 ```
 

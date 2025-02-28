@@ -15,13 +15,13 @@ $ catala Concolic -O -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = 0
+│ . x_in = 0
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯AssertionError↯ at tests/concolic/bad/one_mutation.catala_en:7.15-7.20
@@ -30,44 +30,44 @@ $ catala Concolic -O -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = -1
+│ . x_in = -1
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
-│  . o = 0
+│ . o = 0
 └─
 ┌─[RESULT]─
 │ 
 └─
 ┌─[RESULT]─
-│  Concolic interpreter done
+│ Concolic interpreter done
 └─
 ┌─[RESULT]─
-│  Computation successful!
+│ Computation successful!
 └─
 ```
 
 ```catala-test-inline
 $ catala Concolic -O -s A --conc-optim=mutation-one-conflict --seed=12345
 ┌─[RESULT]─
-│  [mutation] seed 12345
+│ [mutation] seed 12345
 └─
 ┌─[RESULT]─
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = 0
+│ . x_in = 0
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯AssertionError↯ at tests/concolic/bad/one_mutation.catala_en:7.15-7.20
@@ -76,25 +76,25 @@ $ catala Concolic -O -s A --conc-optim=mutation-one-conflict --seed=12345
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = -1
+│ . x_in = -1
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
-│  . o = 0
+│ . o = 0
 └─
 ┌─[RESULT]─
 │ 
 └─
 ┌─[RESULT]─
-│  Concolic interpreter done
+│ Concolic interpreter done
 └─
 ┌─[RESULT]─
-│  Computation successful!
+│ Computation successful!
 └─
 ```
 

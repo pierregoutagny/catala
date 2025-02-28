@@ -27,40 +27,40 @@ $ catala Concolic --conc-optim=incremental -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = 0
+│ . x_in = 0
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
-│  . b = true
-└─
-┌─[RESULT]─
-│ 
-└─
-┌─[RESULT]─
-│  Evaluating with inputs:
-└─
-┌─[RESULT]─
-│  . x_in = 2
-└─
-┌─[RESULT]─
-│  Output of scope after evaluation:
-└─
-┌─[RESULT]─
-│  . b = false
+│ . b = true
 └─
 ┌─[RESULT]─
 │ 
 └─
 ┌─[RESULT]─
-│  Concolic interpreter done
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  Computation successful!
+│ . x_in = 2
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . b = false
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Concolic interpreter done
+└─
+┌─[RESULT]─
+│ Computation successful!
 └─
 ```
 

@@ -38,46 +38,46 @@ $ catala Concolic --conc-optim=incremental -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . d_in = 2010-01-01
+│ . d_in = 2010-01-01
 └─
 ┌─[RESULT]─
-│  . dur_in = [10 days]
+│ . dur_in = [10 days]
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
-│  . o = false
-└─
-┌─[RESULT]─
-│ 
-└─
-┌─[RESULT]─
-│  Evaluating with inputs:
-└─
-┌─[RESULT]─
-│  . d_in = 2024-09-14
-└─
-┌─[RESULT]─
-│  . dur_in = [6 days]
-└─
-┌─[RESULT]─
-│  Output of scope after evaluation:
-└─
-┌─[RESULT]─
-│  . o = true
+│ . o = false
 └─
 ┌─[RESULT]─
 │ 
 └─
 ┌─[RESULT]─
-│  Concolic interpreter done
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  Computation successful!
+│ . d_in = 2024-09-14
+└─
+┌─[RESULT]─
+│ . dur_in = [6 days]
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o = true
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Concolic interpreter done
+└─
+┌─[RESULT]─
+│ Computation successful!
 └─
 ```
 

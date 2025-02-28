@@ -28,16 +28,16 @@ $ catala Concolic --conc-optim=incremental -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = 0
+│ . x_in = 0
 └─
 ┌─[RESULT]─
-│  . y_in = 0
+│ . y_in = 0
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯DivisionByZero(tests/concolic/good/div_error_before_conflict.catala_en:12.46-12.47,tests/concolic/good/div_error_before_conflict.catala_en:12.44-12.47,)↯ at tests/concolic/good/div_error_before_conflict.catala_en:12.44-12.47
@@ -46,46 +46,46 @@ $ catala Concolic --conc-optim=incremental -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = 0
+│ . x_in = 0
 └─
 ┌─[RESULT]─
-│  . y_in = 2
+│ . y_in = 2
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
-│  . o = 0
-└─
-┌─[RESULT]─
-│ 
-└─
-┌─[RESULT]─
-│  Evaluating with inputs:
-└─
-┌─[RESULT]─
-│  . x_in = -1
-└─
-┌─[RESULT]─
-│  . y_in = -2
-└─
-┌─[RESULT]─
-│  Output of scope after evaluation:
-└─
-┌─[RESULT]─
-│  . o = 2
+│ . o = 0
 └─
 ┌─[RESULT]─
 │ 
 └─
 ┌─[RESULT]─
-│  Concolic interpreter done
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  Computation successful!
+│ . x_in = -1
+└─
+┌─[RESULT]─
+│ . y_in = -2
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o = 2
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Concolic interpreter done
+└─
+┌─[RESULT]─
+│ Computation successful!
 └─
 ```
 

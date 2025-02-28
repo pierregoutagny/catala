@@ -21,19 +21,19 @@ $ catala Concolic -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = true
+│ . z_in = true
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:15.70-15.71,tests/concolic/good/packing.catala_en:14.71-14.72,tests/concolic/good/packing.catala_en:11.71-11.72,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -42,19 +42,19 @@ $ catala Concolic -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = false
+│ . y_in = false
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:13.69-13.70,tests/concolic/good/packing.catala_en:12.69-12.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -63,19 +63,19 @@ $ catala Concolic -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = false
+│ . y_in = false
 └─
 ┌─[RESULT]─
-│  . z_in = true
+│ . z_in = true
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:15.70-15.71,tests/concolic/good/packing.catala_en:12.69-12.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -84,19 +84,19 @@ $ catala Concolic -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:15.70-15.71,tests/concolic/good/packing.catala_en:14.71-14.72,tests/concolic/good/packing.catala_en:13.69-13.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -105,19 +105,19 @@ $ catala Concolic -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = false
+│ . x_in = false
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = true
+│ . z_in = true
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:15.70-15.71,tests/concolic/good/packing.catala_en:11.71-11.72,tests/concolic/good/packing.catala_en:10.69-10.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -126,19 +126,19 @@ $ catala Concolic -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = false
+│ . x_in = false
 └─
 ┌─[RESULT]─
-│  . y_in = false
+│ . y_in = false
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:13.69-13.70,tests/concolic/good/packing.catala_en:12.69-12.70,tests/concolic/good/packing.catala_en:10.69-10.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -147,19 +147,19 @@ $ catala Concolic -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = false
+│ . x_in = false
 └─
 ┌─[RESULT]─
-│  . y_in = false
+│ . y_in = false
 └─
 ┌─[RESULT]─
-│  . z_in = true
+│ . z_in = true
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:15.70-15.71,tests/concolic/good/packing.catala_en:12.69-12.70,tests/concolic/good/packing.catala_en:10.69-10.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -168,19 +168,19 @@ $ catala Concolic -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = false
+│ . x_in = false
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:15.70-15.71,tests/concolic/good/packing.catala_en:13.69-13.70,tests/concolic/good/packing.catala_en:10.69-10.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -189,10 +189,10 @@ $ catala Concolic -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Concolic interpreter done
+│ Concolic interpreter done
 └─
 ┌─[RESULT]─
-│  Computation successful!
+│ Computation successful!
 └─
 ```
 
@@ -202,19 +202,19 @@ $ catala Concolic -s A --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = true
+│ . z_in = true
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:14.71-14.72,tests/concolic/good/packing.catala_en:11.71-11.72,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -223,19 +223,19 @@ $ catala Concolic -s A --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = false
+│ . y_in = false
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:13.69-13.70,tests/concolic/good/packing.catala_en:12.69-12.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -244,19 +244,19 @@ $ catala Concolic -s A --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = false
+│ . y_in = false
 └─
 ┌─[RESULT]─
-│  . z_in = true
+│ . z_in = true
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:15.70-15.71,tests/concolic/good/packing.catala_en:12.69-12.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -265,19 +265,19 @@ $ catala Concolic -s A --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:14.71-14.72,tests/concolic/good/packing.catala_en:13.69-13.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -286,19 +286,19 @@ $ catala Concolic -s A --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = false
+│ . x_in = false
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = true
+│ . z_in = true
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:11.71-11.72,tests/concolic/good/packing.catala_en:10.69-10.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -307,19 +307,19 @@ $ catala Concolic -s A --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = false
+│ . x_in = false
 └─
 ┌─[RESULT]─
-│  . y_in = false
+│ . y_in = false
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:12.69-12.70,tests/concolic/good/packing.catala_en:10.69-10.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -328,19 +328,19 @@ $ catala Concolic -s A --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = false
+│ . x_in = false
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:13.69-13.70,tests/concolic/good/packing.catala_en:10.69-10.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -349,10 +349,10 @@ $ catala Concolic -s A --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Concolic interpreter done
+│ Concolic interpreter done
 └─
 ┌─[RESULT]─
-│  Computation successful!
+│ Computation successful!
 └─
 ```
 
@@ -362,19 +362,19 @@ $ catala Concolic -s A --conc-optim=packing --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = true
+│ . z_in = true
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:14.71-14.72,tests/concolic/good/packing.catala_en:11.71-11.72,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -383,19 +383,19 @@ $ catala Concolic -s A --conc-optim=packing --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = false
+│ . y_in = false
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:13.69-13.70,tests/concolic/good/packing.catala_en:12.69-12.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -404,19 +404,19 @@ $ catala Concolic -s A --conc-optim=packing --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = false
+│ . y_in = false
 └─
 ┌─[RESULT]─
-│  . z_in = true
+│ . z_in = true
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:15.70-15.71,tests/concolic/good/packing.catala_en:12.69-12.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -425,19 +425,19 @@ $ catala Concolic -s A --conc-optim=packing --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = true
+│ . x_in = true
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:14.71-14.72,tests/concolic/good/packing.catala_en:13.69-13.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -446,19 +446,19 @@ $ catala Concolic -s A --conc-optim=packing --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = false
+│ . x_in = false
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = true
+│ . z_in = true
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:11.71-11.72,tests/concolic/good/packing.catala_en:10.69-10.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -467,19 +467,19 @@ $ catala Concolic -s A --conc-optim=packing --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = false
+│ . x_in = false
 └─
 ┌─[RESULT]─
-│  . y_in = false
+│ . y_in = false
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:12.69-12.70,tests/concolic/good/packing.catala_en:10.69-10.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -488,19 +488,19 @@ $ catala Concolic -s A --conc-optim=packing --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . x_in = false
+│ . x_in = false
 └─
 ┌─[RESULT]─
-│  . y_in = true
+│ . y_in = true
 └─
 ┌─[RESULT]─
-│  . z_in = false
+│ . z_in = false
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
 │ Found error ↯Conflict(tests/concolic/good/packing.catala_en:13.69-13.70,tests/concolic/good/packing.catala_en:10.69-10.70,)↯ at tests/concolic/good/packing.catala_en:6.12-6.13
@@ -509,10 +509,10 @@ $ catala Concolic -s A --conc-optim=packing --conc-optim=lazy-default
 │ 
 └─
 ┌─[RESULT]─
-│  Concolic interpreter done
+│ Concolic interpreter done
 └─
 ┌─[RESULT]─
-│  Computation successful!
+│ Computation successful!
 └─
 ```
 

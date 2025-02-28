@@ -81,7 +81,7 @@ let TestB : TestB_in → TestB =
               o⟩⟩
       | false ⊢ ∅ ⟩
   in
-  let _ : unit = assert ((o = 2)) in
+  let assert1 : unit = assert ((o = 2)) in
   {TestB}
 in
 A

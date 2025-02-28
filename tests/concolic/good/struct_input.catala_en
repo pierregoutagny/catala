@@ -47,52 +47,52 @@ $ catala Concolic --conc-optim=incremental -s A
 │ 
 └─
 ┌─[RESULT]─
-│  Evaluating with inputs:
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  . m_in = 0
+│ . m_in = 0
 └─
 ┌─[RESULT]─
-│  . s_in = S { -- a: 0 -- b: T { -- c: true } }
+│ . s_in = S { -- a: 0 -- b: T { -- c: true } }
 └─
 ┌─[RESULT]─
-│  . t_in = T { -- c: true }
+│ . t_in = T { -- c: true }
 └─
 ┌─[RESULT]─
-│  Output of scope after evaluation:
+│ Output of scope after evaluation:
 └─
 ┌─[RESULT]─
-│  . o = true
-└─
-┌─[RESULT]─
-│ 
-└─
-┌─[RESULT]─
-│  Evaluating with inputs:
-└─
-┌─[RESULT]─
-│  . m_in = 0
-└─
-┌─[RESULT]─
-│  . s_in = S { -- a: 2 -- b: T { -- c: false } }
-└─
-┌─[RESULT]─
-│  . t_in = T { -- c: true }
-└─
-┌─[RESULT]─
-│  Output of scope after evaluation:
-└─
-┌─[RESULT]─
-│  . o = false
+│ . o = true
 └─
 ┌─[RESULT]─
 │ 
 └─
 ┌─[RESULT]─
-│  Concolic interpreter done
+│ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│  Computation successful!
+│ . m_in = 0
+└─
+┌─[RESULT]─
+│ . s_in = S { -- a: 2 -- b: T { -- c: false } }
+└─
+┌─[RESULT]─
+│ . t_in = T { -- c: true }
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o = false
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Concolic interpreter done
+└─
+┌─[RESULT]─
+│ Computation successful!
 └─
 ```
 
