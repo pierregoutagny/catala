@@ -197,6 +197,10 @@ type context = {
   (* A dummy sort for lambda abstractions *)
   ctx_dummy_const : s_expr;
   (* A dummy expression for lambda abstractions *)
+  ctx_reentrant_sort : Z3.Sort.sort;
+  (* A dummy sort for reentrant variables *)
+  ctx_reentrant_const : s_expr;
+  (* A dummy expression for reentrant variables *)
   ctx_z3enums : Z3.Sort.sort EnumName.Map.t;
   (* A map from Catala enumeration names to the corresponding Z3 datatype sort,
      from which we can retrieve constructors and accessors *)
@@ -360,7 +364,7 @@ let rec translate_typ (ctx : context) (t : naked_typ) : context * Z3.Sort.sort =
   | TAny -> failwith "[translate_typ] TAny not implemented"
   | TClosureEnv -> failwith "[translate_typ] TClosureEnv not implemented"
   | TDefault _ -> (* context variable *)
-    ctx, ctx.ctx_dummy_sort
+    ctx, ctx.ctx_reentrant_sort
 
 (* taken from z3backend's find_or_create_struct *)
 and find_or_create_struct (ctx : context) (s : StructName.t) :
@@ -483,6 +487,10 @@ let make_empty_context (decl_ctx : decl_ctx) (optims : Optimizations.flag list)
   let z3_dummy_const =
     Z3.Expr.mk_const_s z3_ctx "!dummy_const!" z3_dummy_sort
   in
+  let z3_reentrant_sort = Z3.Sort.mk_uninterpreted_s z3_ctx "!reentrant_sort!" in
+  let z3_reentrant_const =
+    Z3.Expr.mk_const_s z3_ctx "!reentrant_const!" z3_reentrant_sort
+  in
   {
     ctx_z3 = z3_ctx;
     ctx_decl = decl_ctx;
@@ -496,6 +504,8 @@ let make_empty_context (decl_ctx : decl_ctx) (optims : Optimizations.flag list)
     (* ctx_z3constraints = []; *)
     ctx_dummy_sort = z3_dummy_sort;
     ctx_dummy_const = z3_dummy_const;
+    ctx_reentrant_sort = z3_reentrant_sort;
+    ctx_reentrant_const = z3_reentrant_const;
     ctx_optims = optims;
   }
 
@@ -586,7 +596,7 @@ let get_type (e : conc_expr) : typ option =
 let make_z3_struct ctx (name : StructName.t) (es : conc_expr list) : s_expr =
   let sort = StructName.Map.find name ctx.ctx_z3structs in
   let constructor = List.hd (Z3.Datatype.get_constructors sort) in
-  let z3_of_expr (e : conc_expr) : s_expr =
+  let z3_of_expr (e : conc_expr) (d: Z3.Sort.sort): s_expr =
     (* To build a Z3 struct, all of the fields of the concolic struct must have
      * a z3 symbolic expression.
      * - Normal fields will have a z3 symbolic expression computed during their
@@ -605,10 +615,16 @@ let make_z3_struct ctx (name : StructName.t) (es : conc_expr list) : s_expr =
      * - If a field is not a function but has no symbolic value, an error is
      *   raised because its value should have been computed before.
      *)
+    (* FIXME CONTEXT is this right? *)
+    (* don't if the field is of sort reentrant, we don't need the underlying
+     * symbolic expression because it would be of the wrong sort *)
+    if d = ctx.ctx_reentrant_sort then ctx.ctx_reentrant_const
+    else
     let e_symb = get_symb_expr e in
     match e_symb with
     | Symb_z3 s -> s
-    | Symb_reentrant _ | Symb_abs -> ctx.ctx_dummy_const
+    | Symb_reentrant _ -> ctx.ctx_reentrant_const
+    | Symb_abs -> ctx.ctx_dummy_const
     | Symb_none -> (
         Message.error ~pos:(Expr.pos e)
           "Fields of structs must have a symbolic expression. This should not
@@ -621,7 +637,8 @@ let make_z3_struct ctx (name : StructName.t) (es : conc_expr list) : s_expr =
         "Fields of structs cannot be errors when making the symbolic \
          expression. This should not happen if errors were handled properly."
   in
-  let es_symb = List.map z3_of_expr es in
+  let domain = Z3.FuncDecl.get_domain constructor in
+  let es_symb = List.map2 z3_of_expr es domain in
   Z3.Expr.mk_app ctx.ctx_z3 constructor es_symb
 
 (* taken loosely from z3backend *)
@@ -649,6 +666,10 @@ let make_z3_struct_access
     let _, z3_accessor =
       List.find (fun (field1, _) -> StructField.equal field field1) idx_mappings
     in
+    let range = Z3.FuncDecl.get_range z3_accessor in
+    (* FIXME CONTEXT: is this ok? *)
+    (* Same as the Symb_reentrant _ case of the match *)
+    if range = ctx.ctx_reentrant_sort then field_expr else
     SymbExpr.app_z3
       (fun s -> Z3.Expr.mk_app ctx.ctx_z3 z3_accessor [s])
       struct_expr
@@ -1950,7 +1971,7 @@ let rec evaluate_expr :
       | EEmpty ->
         if Global.options.debug then Message.debug "Context>empty";
         let is_empty : PathConstraint.naked_path =
-          PathConstraint.mk_reentrant outer_symb ctx.ctx_dummy_const pos true
+          PathConstraint.mk_reentrant outer_symb ctx.ctx_reentrant_const pos true
           |> Option.to_list
         in
         let result = evaluate_expr ctx lang cons in
@@ -1965,7 +1986,7 @@ let rec evaluate_expr :
       | _ ->
         if Global.options.debug then Message.debug "Context>non-empty";
         let not_is_empty : PathConstraint.naked_path =
-          PathConstraint.mk_reentrant outer_symb ctx.ctx_dummy_const pos false
+          PathConstraint.mk_reentrant outer_symb ctx.ctx_reentrant_const pos false
           |> Option.to_list
         in
         (* the only constraint is the new one encoding the fact that there is a

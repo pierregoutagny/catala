@@ -41,13 +41,13 @@ module PathConstraint = struct
 
   let mk_reentrant
       (expr : SymbExpr.t)
-      (dummy_const : s_expr)
+      (reentrant_const : s_expr)
       (pos : Pos.t)
       (branch : bool) : naked_pc option =
     let expr : pc_expr option =
       match expr with
       | Symb_reentrant r -> Some (Pc_reentrant { symb = r; is_empty = branch })
-      | Symb_z3 s when Z3.Expr.equal s dummy_const ->
+      | Symb_z3 s when Z3.Expr.equal s reentrant_const ->
         (* If the symbolic expression is the dummy, it means that the default
            being evaluated is in a scope called by the scope under analysis.
            Thus the context variable is not an input variable of the concolic

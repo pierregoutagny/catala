@@ -14,9 +14,6 @@ scope A:
 When a value is forced for x, we are able to find the conflict. When its
 default value is used there is no conflict.
 
-For now it is not very clear what is happening because we can't see the value
-of `<function>`.
-
 ```catala-test-inline
 $ catala Concolic --conc-optim=incremental -s A
 ┌─[RESULT]─
@@ -26,7 +23,7 @@ $ catala Concolic --conc-optim=incremental -s A
 │ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│ . x_in = <function>
+│ . x_in = ⟨0⟩
 └─
 ┌─[RESULT]─
 │ Output of scope after evaluation:
@@ -41,7 +38,7 @@ $ catala Concolic --conc-optim=incremental -s A
 │ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│ . x_in = <function>
+│ . x_in = ⟨2⟩
 └─
 ┌─[RESULT]─
 │ Output of scope after evaluation:
@@ -59,7 +56,7 @@ $ catala Concolic --conc-optim=incremental -s A
 │ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│ . x_in = <function>
+│ . x_in = ∅
 └─
 ┌─[RESULT]─
 │ Output of scope after evaluation:
