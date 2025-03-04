@@ -58,6 +58,7 @@ module SymbExpr = struct
 
   let mk_z3 s = Symb_z3 s
   let mk_reentrant name symbol = Symb_reentrant { name; symbol }
+  let is_reentrant = function Symb_reentrant _ -> true | _ -> false
   let none = Symb_none
   let incomplete = Symb_incomplete
   let abs = Symb_abs

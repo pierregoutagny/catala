@@ -37,6 +37,7 @@ module SymbExpr : sig
 
   val mk_z3 : z3_expr -> t
   val mk_reentrant : StructField.t -> z3_expr -> t
+  val is_reentrant : t -> bool
   val none : t
   val incomplete : t
   val abs : t

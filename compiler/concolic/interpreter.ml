@@ -359,8 +359,8 @@ let rec translate_typ (ctx : context) (t : naked_typ) : context * Z3.Sort.sort =
   | TArray _ -> ctx, ctx.ctx_dummy_sort (* TODO maybe put a better sort here? this should not be read anyway... *)
   | TAny -> failwith "[translate_typ] TAny not implemented"
   | TClosureEnv -> failwith "[translate_typ] TClosureEnv not implemented"
-  | TDefault inner_ty -> (* context variable *)
-    translate_typ ctx (Mark.remove inner_ty)
+  | TDefault _ -> (* context variable *)
+    ctx, ctx.ctx_dummy_sort
 
 (* taken from z3backend's find_or_create_struct *)
 and find_or_create_struct (ctx : context) (s : StructName.t) :
@@ -1928,20 +1928,25 @@ let rec evaluate_expr :
           excepts = [ outer ];
           just = ELit (LBool true), _;
           cons;
-        } -> (
+        } when SymbExpr.is_reentrant (get_symb_expr outer) -> (
       (* FIXME add metadata to find this case instead of this match? *)
       if Global.options.debug then Message.debug "... it's a context variable definition";
 
       let outer_symb = get_symb_expr outer in
       if Global.options.debug then Message.debug "context symb %a" SymbExpr.formatter outer_symb;
-      let eval_outer = evaluate_expr ctx lang outer in
-      propagate_generic_error eval_outer []
-      @@ fun eval_outer ->
-      let pos = Expr.pos eval_outer in
-      let eval_outer_constraints =
-        get_constraints eval_outer (* TODO check that this is always []? *)
+      let inner = match Mark.remove outer with
+        | EEmpty -> outer
+        | EPureDefault inner -> inner
+        | _ -> failwith "no"
       in
-      match Mark.remove eval_outer with
+      let eval_inner = evaluate_expr ctx lang inner in
+      propagate_generic_error eval_inner []
+      @@ fun eval_inner ->
+      let pos = Expr.pos eval_inner in
+      let eval_inner_constraints =
+        get_constraints eval_inner (* TODO check that this is always []? *)
+      in
+      match Mark.remove eval_inner with
       | EEmpty ->
         if Global.options.debug then Message.debug "Context>empty";
         let is_empty : PathConstraint.naked_path =
@@ -1949,13 +1954,13 @@ let rec evaluate_expr :
           |> Option.to_list
         in
         let result = evaluate_expr ctx lang cons in
-        propagate_generic_error result (is_empty @ eval_outer_constraints)
+        propagate_generic_error result (is_empty @ eval_inner_constraints)
         @@ fun result ->
         let r_symb = get_symb_expr result in
         let r_constraints = get_constraints result in
         (* TODO check that constraints from app should stay as well, just in
            case *)
-        let constraints = r_constraints @ is_empty @ eval_outer_constraints in
+        let constraints = r_constraints @ is_empty @ eval_inner_constraints in
         add_conc_info_e r_symb ~constraints result |> make_ok
       | _ ->
         if Global.options.debug then Message.debug "Context>non-empty";
@@ -1968,8 +1973,8 @@ let rec evaluate_expr :
            reentering value *)
         (* TODO check that constraints from app should stay as well, just in
            case *)
-        let constraints = not_is_empty @ eval_outer_constraints in
-        add_conc_info_e SymbExpr.none ~constraints eval_outer |> make_ok)
+        let constraints = not_is_empty @ eval_inner_constraints in
+        add_conc_info_e SymbExpr.none ~constraints eval_inner |> make_ok)
     | EDefault { excepts; just; cons } ->
       if Global.options.debug then Message.debug "... it's an EDefault";
 
@@ -2004,11 +2009,10 @@ let rec evaluate_expr :
       let nonempty_count, excepts = count_nonempty excepts in
       if Global.options.debug then Message.debug "EDefault found %n non-empty exceptions!" nonempty_count;
       handle_default ctx lang m (Expr.pos e) nonempty_count excepts just cons
-    | EPureDefault _ as e ->
-      if Global.options.debug then Message.debug "... it's an EPureDefault";
-      (* FIXME should I always delay evaluation? *)
-      (* evaluate_expr ctx lang e *)
-      Mark.add m e |> make_ok
+    | EPureDefault _ when SymbExpr.is_reentrant (get_symb_expr e) ->
+      if Global.options.debug then Message.debug "... it's an EPureDefault for reentrant";
+      e |> make_ok
+    | EPureDefault e -> evaluate_expr ctx lang e
     | _ -> .
   in
   (* if Global.options.debug then Message.debug "\teval returns %a | %a" (Print.expr ()) ret
@@ -2764,6 +2768,15 @@ let apply_diff ctx f_push f_pop (diff : PathConstraint.incremental_annotated_pc 
   in
   List.iter f diff
 
+(* FIXME what do I print for context variables? *)
+let print_value language fmt value =
+  let f =
+  if Global.options.debug then Print.expr () else
+    match Mark.remove value with
+    | EPureDefault _ | EEmpty -> Print.expr ()
+    | _ -> Print.UserFacing.value language
+  in f fmt value
+
 let print_fields language (prefix : string) fields =
   let ordered_fields =
     List.sort (fun ((v1, _), _) ((v2, _), _) -> String.compare v1 v2) fields
@@ -2771,8 +2784,7 @@ let print_fields language (prefix : string) fields =
   List.iter
     (fun ((var, _), value) ->
       Message.result "%s@[<hov 2>%s@ =@ %a@]%s" prefix var
-        (if Global.options.debug then Print.expr ()
-         else Print.UserFacing.value language)
+        (print_value language)
         value
         (if Global.options.debug then
            " | " ^ SymbExpr.to_string (_get_symb_expr_unsafe value)
