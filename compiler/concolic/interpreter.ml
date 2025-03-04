@@ -352,14 +352,15 @@ let rec translate_typ (ctx : context) (t : naked_typ) : context * Z3.Sort.sort =
   | TTuple _ -> failwith "[translate_typ] TTuple not implemented"
   | TEnum name -> find_or_create_enum ctx name
   | TOption _ -> failwith "[translate_typ] TOption not implemented"
-  | TArrow ([(TLit TUnit, _)], (TDefault _, _)) ->
+  | TArrow ([(TLit TUnit, _)], (TDefault _, _)) -> failwith "[translate_typ] no more thunk" (* FIXME CONTEXT *)
     (* context variable *)
-    ctx, ctx.ctx_dummy_sort
+    (* ctx, ctx.ctx_dummy_sort *)
   | TArrow _ -> ctx, ctx.ctx_dummy_sort (* other functions *)
   | TArray _ -> ctx, ctx.ctx_dummy_sort (* TODO maybe put a better sort here? this should not be read anyway... *)
   | TAny -> failwith "[translate_typ] TAny not implemented"
   | TClosureEnv -> failwith "[translate_typ] TClosureEnv not implemented"
-  | TDefault _ -> failwith "[translate_typ] TDefault not implemented"
+  | TDefault inner_ty -> (* context variable *)
+    translate_typ ctx (Mark.remove inner_ty)
 
 (* taken from z3backend's find_or_create_struct *)
 and find_or_create_struct (ctx : context) (s : StructName.t) :
@@ -1881,6 +1882,7 @@ let rec evaluate_expr :
           just = ELit (LBool true), _;
           cons;
         } -> (
+      (* failwith "[evaluate_expr] no more thunk" (* FIXME CONTEXT *) *)
       (* FIXME add metadata to find this case instead of this big match *)
       if Global.options.debug then Message.debug "... it's a context variable definition";
 
@@ -1921,6 +1923,53 @@ let rec evaluate_expr :
            case *)
         let constraints = not_is_empty @ app_constraints in
         add_conc_info_e SymbExpr.none ~constraints app |> make_ok)
+    | EDefault
+        {
+          excepts = [ outer ];
+          just = ELit (LBool true), _;
+          cons;
+        } -> (
+      (* FIXME add metadata to find this case instead of this match? *)
+      if Global.options.debug then Message.debug "... it's a context variable definition";
+
+      let outer_symb = get_symb_expr outer in
+      if Global.options.debug then Message.debug "context symb %a" SymbExpr.formatter outer_symb;
+      let eval_outer = evaluate_expr ctx lang outer in
+      propagate_generic_error eval_outer []
+      @@ fun eval_outer ->
+      let pos = Expr.pos eval_outer in
+      let eval_outer_constraints =
+        get_constraints eval_outer (* TODO check that this is always []? *)
+      in
+      match Mark.remove eval_outer with
+      | EEmpty ->
+        if Global.options.debug then Message.debug "Context>empty";
+        let is_empty : PathConstraint.naked_path =
+          PathConstraint.mk_reentrant outer_symb ctx.ctx_dummy_const pos true
+          |> Option.to_list
+        in
+        let result = evaluate_expr ctx lang cons in
+        propagate_generic_error result (is_empty @ eval_outer_constraints)
+        @@ fun result ->
+        let r_symb = get_symb_expr result in
+        let r_constraints = get_constraints result in
+        (* TODO check that constraints from app should stay as well, just in
+           case *)
+        let constraints = r_constraints @ is_empty @ eval_outer_constraints in
+        add_conc_info_e r_symb ~constraints result |> make_ok
+      | _ ->
+        if Global.options.debug then Message.debug "Context>non-empty";
+        let not_is_empty : PathConstraint.naked_path =
+          PathConstraint.mk_reentrant outer_symb ctx.ctx_dummy_const pos false
+          |> Option.to_list
+        in
+        (* the only constraint is the new one encoding the fact that there is a
+           reentrant value, and the symbolic expression is that of the
+           reentering value *)
+        (* TODO check that constraints from app should stay as well, just in
+           case *)
+        let constraints = not_is_empty @ eval_outer_constraints in
+        add_conc_info_e SymbExpr.none ~constraints eval_outer |> make_ok)
     | EDefault { excepts; just; cons } ->
       if Global.options.debug then Message.debug "... it's an EDefault";
 
@@ -1955,9 +2004,11 @@ let rec evaluate_expr :
       let nonempty_count, excepts = count_nonempty excepts in
       if Global.options.debug then Message.debug "EDefault found %n non-empty exceptions!" nonempty_count;
       handle_default ctx lang m (Expr.pos e) nonempty_count excepts just cons
-    | EPureDefault e ->
+    | EPureDefault _ as e ->
       if Global.options.debug then Message.debug "... it's an EPureDefault";
-      evaluate_expr ctx lang e
+      (* FIXME should I always delay evaluation? *)
+      (* evaluate_expr ctx lang e *)
+      Mark.add m e |> make_ok
     | _ -> .
   in
   (* if Global.options.debug then Message.debug "\teval returns %a | %a" (Print.expr ()) ret
@@ -2067,11 +2118,12 @@ let make_input_mark ctx m field (ty : typ) : conc_info mark =
   let _, sort = translate_typ ctx (Mark.remove ty) in
   let symb_expr =
     match Mark.remove ty with
-    | TArrow ([(TLit TUnit, _)], (TDefault inner_ty, _)) ->
+    | TArrow ([(TLit TUnit, _)], (TDefault _inner_ty, _)) -> failwith "[make_input_mark] no more thunks" (* FIXME CONTEXT *)
+    | TDefault inner_ty ->
       (* Context variables carry the name of the actual input variable (that is
-         the name of the field in the input struct), as well as a symbol used to
-         mark the inner expression of the thunk, that can then be used in Z3
-         when the thunk is non-empty. See [make_reentrant_input]. *)
+         the name of the field in the input struct), as well as a symbol used
+         to mark the default expression, that can then be used in Z3 when the
+         given value is non-empty. See [make_reentrant_input]. *)
       if Global.options.debug then Message.debug "[make_input_mark] reentrant variable <%s> : %a" name
         Print.typ_debug ty;
       let _, inner_sort = translate_typ ctx (Mark.remove inner_ty) in
@@ -2612,22 +2664,24 @@ struct
        symbolic expression. *)
     if StructField.Set.mem name empty_reentrants then (
       (* If the context variable must evaluate to its default value (as defined
-         in the scope), then we make an empty thunked term. During evaluation,
+         in the scope), then we make an empty term. During evaluation,
          the [name] of the variable will be used to generate a constraint
          encoding whether it is empty, but the symbolic expression on the
          (empty) innner term will not be used. *)
       if Global.options.debug then Message.debug "[make_reentrant_input] empty";
-      Expr.empty_thunked_term mk)
+      Expr.eempty mk)
     else (
       (* If the context variable must evaluate to a specific value computed by
-         the Z3 model, then we make this inner term and thunk it. The mark on
-         the inner term (inside the thunk) is the symbol in the Symb_reentrant
-         structure, and will be be used during evaluation. The mark on the outer
-         term (the thunk itself) will be used only for its [name] field and will
-         be used to generate a constraint encoding whether it is empty. *)
+         the Z3 model, then we make this inner term and encapsulate it. The
+         mark on the inner term (inside the default) is the symbol in the
+         Symb_reentrant structure, and will be be used during evaluation. The
+         mark on the outer term (the default term itself) will be used only for
+         its [name] field and will be used to generate a constraint encoding
+         whether it is empty. *)
       if Global.options.debug then Message.debug "[make_reentrant_input] non empty";
       match Mark.remove ty with
-      | TArrow ([(TLit TUnit, _)], (TDefault inner_ty, _)) ->
+      | TArrow ([(TLit TUnit, _)], (TDefault _inner_ty, _)) -> failwith "[make_reentrant_input] no more thunk" (* FIXME CONTEXT *)
+      | TDefault inner_ty ->
         let inner_mk =
           map_conc_mark ~symb_expr_f:(fun _ -> Symb_z3 symb_expr) mk
         in
@@ -2635,8 +2689,7 @@ struct
         let (Custom { custom; _ }) = Mark.get term in
         if Global.options.debug then Message.debug "[make_reentrant_input] non empty inner: %a"
           SymbExpr.formatter_typed custom.symb_expr;
-        let term = Expr.thunk_term term in
-        let term = Mark.add mk (Mark.remove term) in
+        let term = Expr.epuredefault term mk in
         let (Custom { custom; _ }) = Mark.get term in
         if Global.options.debug then Message.debug "[make_reentrant_input] non empty thunked: %a"
           SymbExpr.formatter_typed custom.symb_expr;
