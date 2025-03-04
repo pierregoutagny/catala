@@ -250,7 +250,7 @@ $ catala Concolic --conc-optim=incremental -s A
 ```
 
 ```catala-test-inline
-$ catala Concolic --conc-optim=incremental -s A --optimize
+$ catala Concolic --conc-optim=incremental -s A --optimize --conc-optim=linearize-match
 ┌─[RESULT]─
 │ 
 └─

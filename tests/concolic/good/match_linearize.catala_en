@@ -294,7 +294,7 @@ $ catala Concolic --conc-optim=linearize-match -s A
 ```
 
 ```catala-test-inline
-$ catala Concolic -O -s A
+$ catala Concolic -O --conc-optim=linearize-match -s A
 ┌─[RESULT]─
 │ 
 └─
