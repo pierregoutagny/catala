@@ -25,7 +25,7 @@ $ catala Concolic --conc-optim=incremental -s A
 │ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│ . x_in = <function>
+│ . x_in = ⟨0⟩
 └─
 ┌─[RESULT]─
 │ Output of scope after evaluation:
@@ -43,7 +43,7 @@ $ catala Concolic --conc-optim=incremental -s A
 │ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│ . x_in = <function>
+│ . x_in = ⟨30⟩
 └─
 ┌─[RESULT]─
 │ Output of scope after evaluation:
@@ -61,7 +61,7 @@ $ catala Concolic --conc-optim=incremental -s A
 │ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│ . x_in = <function>
+│ . x_in = ⟨-1⟩
 └─
 ┌─[RESULT]─
 │ Output of scope after evaluation:
@@ -79,7 +79,7 @@ $ catala Concolic --conc-optim=incremental -s A
 │ Evaluating with inputs:
 └─
 ┌─[RESULT]─
-│ . x_in = <function>
+│ . x_in = ∅
 └─
 ┌─[RESULT]─
 │ Output of scope after evaluation:
