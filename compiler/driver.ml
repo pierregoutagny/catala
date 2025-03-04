@@ -1174,8 +1174,8 @@ module Commands = struct
       ~hashf:Hash.(finalise ~closure_conversion:false ~monomorphize_types:false)
       prg;
     print_interpretation_results options
-      (Concolic.Interpreter.interpret_program_concolic stats
-         conc_optims mutation_seed)
+      (Concolic.Interpreter.interpret_program_concolic stats conc_optims
+         mutation_seed)
       prg
       (get_scope_uid prg.decl_ctx ex_scope)
 
@@ -1216,8 +1216,7 @@ module Commands = struct
         $ Cli.Flags.include_dirs
         $ Cli.Flags.optimize
         $ Cli.Flags.check_invariants
-        $ Cli.Flags.ex_scope
-        )
+        $ Cli.Flags.ex_scope)
 
   let commands =
     [

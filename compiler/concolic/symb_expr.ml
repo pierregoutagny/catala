@@ -92,13 +92,16 @@ module SymbExpr = struct
   let app_z3 (f : z3_expr -> z3_expr) = function
     | Symb_z3 e -> Symb_z3 (f e)
     | Symb_incomplete -> Symb_incomplete
-    | _ -> invalid_arg "[SymbExpr.app_z3] expected a z3 expression or incomplete"
+    | _ ->
+      invalid_arg "[SymbExpr.app_z3] expected a z3 expression or incomplete"
 
   let app2_z3 (f : z3_expr -> z3_expr -> z3_expr) e1 e2 =
     match e1, e2 with
     | Symb_incomplete, _ | _, Symb_incomplete -> Symb_incomplete
     | Symb_z3 e1, Symb_z3 e2 -> Symb_z3 (f e1 e2)
-    | _ -> invalid_arg "[SymbExpr.app2_z3] expected two z3 expressions or an incomplete"
+    | _ ->
+      invalid_arg
+        "[SymbExpr.app2_z3] expected two z3 expressions or an incomplete"
 
   let applist_z3 (f : z3_expr list -> z3_expr) (l : t list) =
     let extract_z3 = function

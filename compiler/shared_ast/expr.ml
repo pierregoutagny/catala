@@ -141,9 +141,7 @@ let eifthenelse cond etrue efalse =
   @@ fun cond etrue efalse -> EIfThenElse { cond; etrue; efalse }
 
 let eerroronempty e1 = Box.app1 e1 @@ fun e1 -> EErrorOnEmpty e1
-
 let eempty mark = Mark.add mark (Bindlib.box EEmpty)
-
 let egenericerror mark = Mark.add mark (Bindlib.box EGenericError)
 
 let ecustom obj targs tret mark =
@@ -370,7 +368,8 @@ let shallow_fold
   let lfold x acc = List.fold_left (fun acc x -> f x acc) acc x in
   match Mark.remove e with
   | ELit _ | EVar _ | EFatalError _ | EExternal _ | ELocation _ | EEmpty
-  | EGenericError -> acc
+  | EGenericError ->
+    acc
   | EApp { f = e; args; _ } -> acc |> f e |> lfold args
   | EAppOp { args; _ } -> acc |> lfold args
   | EArray args -> acc |> lfold args

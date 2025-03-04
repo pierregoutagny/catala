@@ -147,17 +147,17 @@ let make_error_assertionerror mk constraints message : conc_result =
 
 (* Inspired by [Concrete.delcustom] *)
 let del_genericerror e =
-  if false then 
+  if false then
     let rec f : (conc_dest_kind, 'm) gexpr -> (conc_src_kind, 'm) gexpr boxed =
       function
       | EGenericError, _ ->
         invalid_arg "Generic error remaining after propagation"
       | EAppOp { op; args; tys }, m ->
         Expr.eappop ~tys ~args:(List.map f args) ~op:(Operator.translate op) m
-      | ( ( EAssert _ | ELit _ | EApp _ | EArray _ | EVar _ | EExternal _ | EAbs _
-          | EIfThenElse _ | ETuple _ | ETupleAccess _ | EInj _ | EStruct _
-          | EStructAccess _ | EMatch _ | EDefault _ | EPureDefault _ | EEmpty
-          | EFatalError _ | EErrorOnEmpty _ | ECustom _ ),
+      | ( ( EAssert _ | ELit _ | EApp _ | EArray _ | EVar _ | EExternal _
+          | EAbs _ | EIfThenElse _ | ETuple _ | ETupleAccess _ | EInj _
+          | EStruct _ | EStructAccess _ | EMatch _ | EDefault _ | EPureDefault _
+          | EEmpty | EFatalError _ | EErrorOnEmpty _ | ECustom _ ),
           _ ) as e ->
         Expr.map ~f e
       | _ -> .
@@ -173,10 +173,10 @@ let del_genericerror e =
        (erreur ou pas), a priori tout doit passer sans ! Peut-être à garder
        comme option pour le debugging/les unit tests *)
     let open struct
-      external id :
-        (conc_dest_kind, 'm) gexpr -> (conc_src_kind, 'm) gexpr = "%identity"
+      external id : (conc_dest_kind, 'm) gexpr -> (conc_src_kind, 'm) gexpr
+        = "%identity"
     end in
-    id e 
+    id e
 
 (** Transform any DCalc expression into a concolic expression with no symbolic
     expression and no constraints *)
@@ -356,21 +356,29 @@ let rec translate_typ (ctx : context) (t : naked_typ) : context * Z3.Sort.sort =
   | TTuple _ -> failwith "[translate_typ] TTuple not implemented"
   | TEnum name -> find_or_create_enum ctx name
   | TOption _ -> failwith "[translate_typ] TOption not implemented"
-  | TArrow ([(TLit TUnit, _)], (TDefault _, _)) -> failwith "[translate_typ] no more thunk" (* FIXME CONTEXT *)
+  | TArrow ([(TLit TUnit, _)], (TDefault _, _)) ->
+    failwith "[translate_typ] no more thunk"
+    (* FIXME CONTEXT *)
     (* context variable *)
     (* ctx, ctx.ctx_dummy_sort *)
   | TArrow _ -> ctx, ctx.ctx_dummy_sort (* other functions *)
-  | TArray _ -> ctx, ctx.ctx_dummy_sort (* TODO maybe put a better sort here? this should not be read anyway... *)
+  | TArray _ ->
+    ( ctx,
+      ctx.ctx_dummy_sort
+      (* TODO maybe put a better sort here? this should not be read anyway... *)
+    )
   | TAny -> failwith "[translate_typ] TAny not implemented"
   | TClosureEnv -> failwith "[translate_typ] TClosureEnv not implemented"
-  | TDefault _ -> (* context variable *)
+  | TDefault _ ->
+    (* context variable *)
     ctx, ctx.ctx_reentrant_sort
 
 (* taken from z3backend's find_or_create_struct *)
 and find_or_create_struct (ctx : context) (s : StructName.t) :
     context * Z3.Sort.sort =
-  if Global.options.debug then Message.debug "[Struct] Find or create struct %s"
-    (Mark.remove (StructName.get_info s));
+  if Global.options.debug then
+    Message.debug "[Struct] Find or create struct %s"
+      (Mark.remove (StructName.get_info s));
   match StructName.Map.find_opt s ctx.ctx_z3structs with
   | Some s ->
     if Global.options.debug then Message.debug "[Struct] . found!";
@@ -392,9 +400,10 @@ and find_or_create_struct (ctx : context) (s : StructName.t) :
     let ctx, z3_fieldtypes_rev =
       StructField.Map.fold
         (fun f ty (ctx, ftypes) ->
-          if Global.options.debug then Message.debug "[Struct] . %s : %a"
-            (Mark.remove (StructField.get_info f))
-            Print.typ_debug ty;
+          if Global.options.debug then
+            Message.debug "[Struct] . %s : %a"
+              (Mark.remove (StructField.get_info f))
+              Print.typ_debug ty;
           let ctx, ftype = translate_typ ctx (Mark.remove ty) in
           ctx, ftype :: ftypes)
         fields (ctx, [])
@@ -417,8 +426,9 @@ and find_or_create_struct (ctx : context) (s : StructName.t) :
 (* inspired by z3backend *)
 and find_or_create_enum (ctx : context) (enum : EnumName.t) :
     context * Z3.Sort.sort =
-  if Global.options.debug then Message.debug "[Enum] Find or create enum %s"
-    (Mark.remove (EnumName.get_info enum));
+  if Global.options.debug then
+    Message.debug "[Enum] Find or create enum %s"
+      (Mark.remove (EnumName.get_info enum));
 
   let create_constructor (name : EnumConstructor.t) (ty : typ) (ctx : context) :
       context * Z3.Datatype.Constructor.constructor =
@@ -428,7 +438,8 @@ and find_or_create_enum (ctx : context) (enum : EnumName.t) :
     let fieldname_s = cstr_name ^ "!0" (* name of the argument *) in
     let ctx, z3_arg_ty = translate_typ ctx (Mark.remove ty) in
     let z3_sortrefs = [0] (* will not be used *) in
-    if Global.options.debug then Message.debug "[Enum] . %s : %a" cstr_name Print.typ_debug ty;
+    if Global.options.debug then
+      Message.debug "[Enum] . %s : %a" cstr_name Print.typ_debug ty;
     ( ctx,
       Z3.Datatype.mk_constructor_s ctx.ctx_z3 mk_cstr_s
         (Z3.Symbol.mk_string ctx.ctx_z3 is_cstr_s)
@@ -487,7 +498,9 @@ let make_empty_context (decl_ctx : decl_ctx) (optims : Optimizations.flag list)
   let z3_dummy_const =
     Z3.Expr.mk_const_s z3_ctx "!dummy_const!" z3_dummy_sort
   in
-  let z3_reentrant_sort = Z3.Sort.mk_uninterpreted_s z3_ctx "!reentrant_sort!" in
+  let z3_reentrant_sort =
+    Z3.Sort.mk_uninterpreted_s z3_ctx "!reentrant_sort!"
+  in
   let z3_reentrant_const =
     Z3.Expr.mk_const_s z3_ctx "!reentrant_const!" z3_reentrant_sort
   in
@@ -596,7 +609,7 @@ let get_type (e : conc_expr) : typ option =
 let make_z3_struct ctx (name : StructName.t) (es : conc_expr list) : s_expr =
   let sort = StructName.Map.find name ctx.ctx_z3structs in
   let constructor = List.hd (Z3.Datatype.get_constructors sort) in
-  let z3_of_expr (e : conc_expr) (d: Z3.Sort.sort): s_expr =
+  let z3_of_expr (e : conc_expr) (d : Z3.Sort.sort) : s_expr =
     (* To build a Z3 struct, all of the fields of the concolic struct must have
      * a z3 symbolic expression.
      * - Normal fields will have a z3 symbolic expression computed during their
@@ -620,22 +633,22 @@ let make_z3_struct ctx (name : StructName.t) (es : conc_expr list) : s_expr =
      * symbolic expression because it would be of the wrong sort *)
     if d = ctx.ctx_reentrant_sort then ctx.ctx_reentrant_const
     else
-    let e_symb = get_symb_expr e in
-    match e_symb with
-    | Symb_z3 s -> s
-    | Symb_reentrant _ -> ctx.ctx_reentrant_const
-    | Symb_abs -> ctx.ctx_dummy_const
-    | Symb_none -> (
+      let e_symb = get_symb_expr e in
+      match e_symb with
+      | Symb_z3 s -> s
+      | Symb_reentrant _ -> ctx.ctx_reentrant_const
+      | Symb_abs -> ctx.ctx_dummy_const
+      | Symb_none ->
         Message.error ~pos:(Expr.pos e)
-          "Fields of structs must have a symbolic expression. This should not
-          happen if the evaluation of fields worked.")
-    | Symb_incomplete ->
-      Message.error ~pos:(Expr.pos e)
-        "Fields of structs cannot be incomplete" (* TODO INC *)
-    | Symb_error _ ->
-      Message.error ~pos:(Expr.pos e)
-        "Fields of structs cannot be errors when making the symbolic \
-         expression. This should not happen if errors were handled properly."
+          "Fields of structs must have a symbolic expression. This should not\n\
+          \          happen if the evaluation of fields worked."
+      | Symb_incomplete ->
+        Message.error ~pos:(Expr.pos e)
+          "Fields of structs cannot be incomplete" (* TODO INC *)
+      | Symb_error _ ->
+        Message.error ~pos:(Expr.pos e)
+          "Fields of structs cannot be errors when making the symbolic \
+           expression. This should not happen if errors were handled properly."
   in
   let domain = Z3.FuncDecl.get_domain constructor in
   let es_symb = List.map2 z3_of_expr es domain in
@@ -658,8 +671,9 @@ let make_z3_struct_access
     let sort = StructName.Map.find name ctx.ctx_z3structs in
     let fields = StructName.Map.find name ctx.ctx_decl.ctx_structs in
     let z3_accessors = List.hd (Z3.Datatype.get_accessors sort) in
-    (* if Global.options.debug then Message.debug "struct accessors %s" (List.fold_left (fun acc a ->
-       Z3.FuncDecl.to_string a ^ "," ^ acc) "" z3_accessors); *)
+    (* if Global.options.debug then Message.debug "struct accessors %s"
+       (List.fold_left (fun acc a -> Z3.FuncDecl.to_string a ^ "," ^ acc) ""
+       z3_accessors); *)
     let idx_mappings =
       List.combine (StructField.Map.keys fields) z3_accessors
     in
@@ -669,10 +683,11 @@ let make_z3_struct_access
     let range = Z3.FuncDecl.get_range z3_accessor in
     (* FIXME CONTEXT: is this ok? *)
     (* Same as the Symb_reentrant _ case of the match *)
-    if range = ctx.ctx_reentrant_sort then field_expr else
-    SymbExpr.app_z3
-      (fun s -> Z3.Expr.mk_app ctx.ctx_z3 z3_accessor [s])
-      struct_expr
+    if range = ctx.ctx_reentrant_sort then field_expr
+    else
+      SymbExpr.app_z3
+        (fun s -> Z3.Expr.mk_app ctx.ctx_z3 z3_accessor [s])
+        struct_expr
 
 let make_z3_enum_inj
     ctx
@@ -682,11 +697,12 @@ let make_z3_enum_inj
   let sort = EnumName.Map.find name ctx.ctx_z3enums in
   let constructors = EnumName.Map.find name ctx.ctx_decl.ctx_enums in
   let z3_constructors = Z3.Datatype.get_constructors sort in
-  if Global.options.debug then Message.debug "enum constructors: @[<hov>%a@]"
-    (Format.pp_print_list
-       ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ")
-       (fun fmt c -> Format.pp_print_string fmt (Z3.FuncDecl.to_string c)))
-    z3_constructors;
+  if Global.options.debug then
+    Message.debug "enum constructors: @[<hov>%a@]"
+      (Format.pp_print_list
+         ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ")
+         (fun fmt c -> Format.pp_print_string fmt (Z3.FuncDecl.to_string c)))
+      z3_constructors;
   (* NOTE assumption: they are in the right order *)
   (* TODO for all instances of this "mappings" pattern, maybe have more
      information in the context to avoid it *)
@@ -709,11 +725,12 @@ let make_z3_enum_access
      constructor. In a Catala enum, each constructor has exactly (possibly
      [unit]) accessor, so we can safely [List.hd]. *)
   let z3_accessors = List.map List.hd (Z3.Datatype.get_accessors sort) in
-  if Global.options.debug then Message.debug "enum accessors: @[<hov>%a@]"
-    (Format.pp_print_list
-       ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ")
-       (fun fmt c -> Format.pp_print_string fmt (Z3.FuncDecl.to_string c)))
-    z3_accessors;
+  if Global.options.debug then
+    Message.debug "enum accessors: @[<hov>%a@]"
+      (Format.pp_print_list
+         ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ")
+         (fun fmt c -> Format.pp_print_string fmt (Z3.FuncDecl.to_string c)))
+      z3_accessors;
   let idx_mappings =
     List.combine (EnumConstructor.Map.keys constructors) z3_accessors
   in
@@ -762,8 +779,8 @@ let replace_EVar_mark
     match Var.Map.find_opt v vars_args with
     | Some arg ->
       let symb_expr = get_symb_expr arg in
-      (*if Global.options.debug then Message.debug "EApp>binder put mark %a on var " SymbExpr.formatter
-        symb_expr (* (Print.expr ()) e *);*)
+      (*if Global.options.debug then Message.debug "EApp>binder put mark %a on
+        var " SymbExpr.formatter symb_expr (* (Print.expr ()) e *);*)
       add_conc_info_e symb_expr ~constraints:[] e
     (* NOTE CONC we keep the position from the var, as in concrete
        interpreter *)
@@ -778,7 +795,8 @@ let propagate_generic_error
   match Mark.remove e, e_symb with
   | EGenericError, Symb_error _ ->
     let e_constraints = get_constraints_r e in
-    if Global.options.debug then Message.debug "Propagating error %a" SymbExpr.formatter e_symb;
+    if Global.options.debug then
+      Message.debug "Propagating error %a" SymbExpr.formatter e_symb;
     let constraints = e_constraints @ other_constraints in
     (* Add the new constraints but don't change the symbolic expression *)
     add_conc_info_e SymbExpr.none ~constraints e
@@ -803,8 +821,8 @@ let propagate_generic_error_list l other_constraints f =
   in
   aux [] other_constraints l
 
-(* TODO QU RAPHAEL: these empty errors have been removed from the standard interpreter
-   =>> OK *)
+(* TODO QU RAPHAEL: these empty errors have been removed from the standard
+   interpreter =>> OK *)
 (* (\* NOTE We have to rewrite EmptyError propagation functions from
    [Concrete] *)
 (* because they don't allow for [f] have a different input and output type
@@ -822,7 +840,7 @@ let propagate_generic_error_list l other_constraints f =
 (*   in *)
 (*   aux [] elist *)
 
-let handle_eq pos evaluate_operator (m: conc_info mark) lang e1 e2 =
+let handle_eq pos evaluate_operator (m : conc_info mark) lang e1 e2 =
   let eq_eval = evaluate_operator (Eq, pos) m lang in
   let open Runtime.Oper in
   match e1, e2 with
@@ -891,8 +909,9 @@ let op2
   let concrete = concrete_f x y in
   let e1 = get_symb_expr e1 in
   let e2 = get_symb_expr e2 in
-  if Global.options.debug then Message.debug "[op2] args %a, %a" SymbExpr.formatter_typed e1
-    SymbExpr.formatter_typed e2;
+  if Global.options.debug then
+    Message.debug "[op2] args %a, %a" SymbExpr.formatter_typed e1
+      SymbExpr.formatter_typed e2;
   let symb_expr = SymbExpr.app2_z3 (symbolic_f ctx.ctx_z3) e1 e2 in
   (* TODO handle errors *)
   add_conc_info_m m symb_expr ~constraints:[] concrete
@@ -920,8 +939,9 @@ let handle_division
     e2 : conc_result =
   let e1_symb = get_symb_expr e1 in
   let e2_symb = get_symb_expr e2 in
-  if Global.options.debug then Message.debug "[handle_div] args %a, %a" SymbExpr.formatter_typed e1_symb
-    SymbExpr.formatter_typed e2_symb;
+  if Global.options.debug then
+    Message.debug "[handle_div] args %a, %a" SymbExpr.formatter_typed e1_symb
+      SymbExpr.formatter_typed e2_symb;
 
   let zero = SymbExpr.mk_z3 (Z3.Arithmetic.Integer.mk_numeral_i ctx.ctx_z3 0) in
   let den_zero = SymbExpr.app2_z3 (Z3.Boolean.mk_eq ctx.ctx_z3) e2_symb zero in
@@ -940,7 +960,7 @@ let handle_division
        evaluated expressions, and their constraints are handled by [EAppOp]. *)
     let constraints = [den_not_zero_pc] in
     add_conc_info_m m symb_expr ~constraints concrete
-  with Runtime.(Error(DivisionByZero,_)) ->
+  with Runtime.(Error (DivisionByZero, _)) ->
     let den_zero_pc = PathConstraint.mk_z3 den_zero (Expr.pos e2) true in
     make_error_divisionbyzeroerror m [den_zero_pc]
       [
@@ -954,7 +974,7 @@ let rec evaluate_operator
     evaluate_expr
     ctx
     ((op, opos) : < overloaded : no ; .. > operator Mark.pos)
-    (m: conc_info mark)
+    (m : conc_info mark)
     lang
     (args : conc_expr list) : conc_result =
   let pos = Expr.mark_pos m in
@@ -965,8 +985,8 @@ let rec evaluate_operator
     @@ match args with _ :: denom :: _ -> Expr.pos denom | _ -> opos
   in
   let protect f x y =
-    (* TODO CONC For now, I crash on date ambiguities, because they should
-       not happen: any duration expressed with months or years is rejected early
+    (* TODO CONC For now, I crash on date ambiguities, because they should not
+       happen: any duration expressed with months or years is rejected early
        on. *)
     let get_binop_args_pos = function
       | (arg0 :: arg1 :: _ : ('t, 'm) gexpr list) ->
@@ -974,8 +994,7 @@ let rec evaluate_operator
       | _ -> assert false
     in
     try f (rpos ()) x y
-    with
-    | Runtime.(Error(UncomparableDurations,_)) ->
+    with Runtime.(Error (UncomparableDurations, _)) ->
       Message.error ~extra_pos:(get_binop_args_pos args)
         "Cannot compare together durations that cannot be converted to a \
          precise number of days"
@@ -1021,7 +1040,8 @@ let rec evaluate_operator
     let e2' = Mark.remove e2 in
     let concrete =
       ELit
-        (LBool (handle_eq opos (evaluate_operator evaluate_expr ctx) m lang e1' e2'))
+        (LBool
+           (handle_eq opos (evaluate_operator evaluate_expr ctx) m lang e1' e2'))
     in
     let s_e1 = get_symb_expr e1 in
     let s_e2 = get_symb_expr e2 in
@@ -1033,9 +1053,9 @@ let rec evaluate_operator
       EArray
         (List.map
            (fun e' ->
-              evaluate_expr
-                (Mark.copy e'
-                   (EApp { f; args = [e']; tys = [Expr.maybe_ty (Mark.get e')] })))
+             evaluate_expr
+               (Mark.copy e'
+                  (EApp { f; args = [e']; tys = [Expr.maybe_ty (Mark.get e')] })))
            es)
     in
     add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
@@ -1044,17 +1064,18 @@ let rec evaluate_operator
       EArray
         (List.map2
            (fun e1 e2 ->
-              evaluate_expr
-                (Mark.add m
-                   (EApp
-                      {
-                        f;
-                        args = [e1; e2];
-                        tys =
-                          [
-                            Expr.maybe_ty (Mark.get e1); Expr.maybe_ty (Mark.get e2);
-                          ];
-                      })))
+             evaluate_expr
+               (Mark.add m
+                  (EApp
+                     {
+                       f;
+                       args = [e1; e2];
+                       tys =
+                         [
+                           Expr.maybe_ty (Mark.get e1);
+                           Expr.maybe_ty (Mark.get e2);
+                         ];
+                     })))
            es1 es2)
     in
     add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
@@ -1066,18 +1087,20 @@ let rec evaluate_operator
       Mark.remove
         (List.fold_left
            (fun acc x ->
-              propagate_generic_error acc [] @@ fun acc ->
-              evaluate_expr
-                (Mark.copy f
-                   (EApp
-                      {
-                        f;
-                        args = [acc; x];
-                        tys =
-                          [
-                            Expr.maybe_ty (Mark.get acc); Expr.maybe_ty (Mark.get x);
-                          ];
-                      })))
+             propagate_generic_error acc []
+             @@ fun acc ->
+             evaluate_expr
+               (Mark.copy f
+                  (EApp
+                     {
+                       f;
+                       args = [acc; x];
+                       tys =
+                         [
+                           Expr.maybe_ty (Mark.get acc);
+                           Expr.maybe_ty (Mark.get x);
+                         ];
+                     })))
            (make_ok x0) xn)
     in
     add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
@@ -1086,47 +1109,50 @@ let rec evaluate_operator
     add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete |> make_ok
   | Filter, [f; (EArray es, _)] ->
     let concrete =
-    EArray
-      (List.filter
-         (fun e' ->
-           match
-             evaluate_expr
-               (Mark.copy e'
-                  (EApp { f; args = [e']; tys = [Expr.maybe_ty (Mark.get e')] }))
-           with
-           | ELit (LBool b), _ -> b
-           | _ ->
-             Message.error
-               ~pos:(Expr.pos (List.nth args 0))
-               "%a" Format.pp_print_text
-               "This predicate evaluated to something else than a boolean \
-                (should not happen if the term was well-typed)")
-         es)
+      EArray
+        (List.filter
+           (fun e' ->
+             match
+               evaluate_expr
+                 (Mark.copy e'
+                    (EApp
+                       { f; args = [e']; tys = [Expr.maybe_ty (Mark.get e')] }))
+             with
+             | ELit (LBool b), _ -> b
+             | _ ->
+               Message.error
+                 ~pos:(Expr.pos (List.nth args 0))
+                 "%a" Format.pp_print_text
+                 "This predicate evaluated to something else than a boolean \
+                  (should not happen if the term was well-typed)")
+           es)
     in
     add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete |> make_ok
   | Fold, [f; init; (EArray es, _)] ->
     let concrete =
-    Mark.remove
-      (List.fold_left
-         (fun acc e' ->
-            propagate_generic_error acc [] @@ fun acc ->
-           evaluate_expr
-             (Mark.copy e'
-                (EApp
-                   {
-                     f;
-                     args = [acc; e'];
-                     tys =
-                       [
-                         Expr.maybe_ty (Mark.get acc);
-                         Expr.maybe_ty (Mark.get e');
-                       ];
-                   })))
-         (make_ok init) es)
+      Mark.remove
+        (List.fold_left
+           (fun acc e' ->
+             propagate_generic_error acc []
+             @@ fun acc ->
+             evaluate_expr
+               (Mark.copy e'
+                  (EApp
+                     {
+                       f;
+                       args = [acc; e'];
+                       tys =
+                         [
+                           Expr.maybe_ty (Mark.get acc);
+                           Expr.maybe_ty (Mark.get e');
+                         ];
+                     })))
+           (make_ok init) es)
     in
     add_conc_info_m m SymbExpr.incomplete ~constraints:[] concrete
-  | (Length (* | Log _ *)
-  | Eq | Map | Map2 | Concat | Filter | Fold | Reduce), _ -> err ()
+  | ( (Length (* | Log _ *) | Eq | Map | Map2 | Concat | Filter | Fold | Reduce),
+      _ ) ->
+    err ()
   | Not, [((ELit (LBool b), _) as e)] ->
     op1 ctx m (fun x -> ELit (LBool (o_not x))) Z3.Boolean.mk_not b e
   | GetDay, [(ELit (LDate d), _)] ->
@@ -1156,8 +1182,8 @@ let rec evaluate_operator
     op2 ctx m
       (fun x y -> ELit (LBool (o_xor x y)))
       Z3.Boolean.mk_xor b1 b2 e1 e2
-  | ( ( Not | GetDay | GetMonth | GetYear | FirstDayOfMonth | LastDayOfMonth |
-        And | Or | Xor ),
+  | ( ( Not | GetDay | GetMonth | GetYear | FirstDayOfMonth | LastDayOfMonth
+      | And | Or | Xor ),
       _ ) ->
     err ()
   | Minus_int, [((ELit (LInt x), _) as e)] ->
@@ -1179,8 +1205,7 @@ let rec evaluate_operator
       (fun x -> ELit (LDuration (o_minus_dur x)))
       DateEncoding.minus_dur x e
   | ToInt_rat, [(ELit (LRat _x), _)] ->
-    failwith "ToInt_rat not implemented yet"
-    (* ELit (LInt (o_toint_rat x)) *)
+    failwith "ToInt_rat not implemented yet" (* ELit (LInt (o_toint_rat x)) *)
   | ToRat_int, [((ELit (LInt i), _) as e)] ->
     (* TODO maybe write specific tests for this and other similar cases? *)
     op1 ctx m (fun x -> ELit (LRat (o_torat_int x))) z3_force_real i e
@@ -1260,8 +1285,8 @@ let rec evaluate_operator
     op2list ctx m
       (fun x y -> ELit (LDuration (o_sub_dat_dat x y)))
       DateEncoding.sub_dat_dat x y e1 e2
-  | Sub_dat_dur r, [((ELit (LDate x), _) as e1); ((ELit (LDuration y), _) as e2)]
-    ->
+  | ( Sub_dat_dur r,
+      [((ELit (LDate x), _) as e1); ((ELit (LDuration y), _) as e2)] ) ->
     op2list ctx m
       (fun x y -> ELit (LDate (o_sub_dat_dur r (rpos ()) x y)))
       DateEncoding.sub_dat_dur x y e1 e2
@@ -1440,30 +1465,15 @@ let rec evaluate_operator
       (fun x y -> ELit (LBool (protect o_eq_dur_dur x y)))
       DateEncoding.eq_dur_dur x y e1 e2
   | HandleExceptions, [(EArray _exps, _)] ->
-  failwith "HandleExceptions not implemented yet"
-(*
-    (
-    let valid_exceptions =
-      ListLabels.filter exps ~f:(function
-        | EInj { name; cons; _ }, _ when EnumName.equal name Expr.option_enum ->
-          EnumConstructor.equal cons Expr.some_constr
-        | _ -> err ())
-    in
-    match valid_exceptions with
-    | [] ->
-      EInj
-        { name = Expr.option_enum; cons = Expr.none_constr; e = ELit LUnit, m }
-    | [((EInj { cons; name; _ } as e), _)]
-      when EnumName.equal name Expr.option_enum
-           && EnumConstructor.equal cons Expr.some_constr ->
-      e
-    | [_] -> err ()
-    | excs ->
-      raise
-        Runtime.(
-          Error (Conflict, List.map Expr.(fun e -> pos_to_runtime (pos e)) excs))
-    )
-*)
+    failwith "HandleExceptions not implemented yet"
+  (* ( let valid_exceptions = ListLabels.filter exps ~f:(function | EInj { name;
+     cons; _ }, _ when EnumName.equal name Expr.option_enum ->
+     EnumConstructor.equal cons Expr.some_constr | _ -> err ()) in match
+     valid_exceptions with | [] -> EInj { name = Expr.option_enum; cons =
+     Expr.none_constr; e = ELit LUnit, m } | [((EInj { cons; name; _ } as e),
+     _)] when EnumName.equal name Expr.option_enum && EnumConstructor.equal cons
+     Expr.some_constr -> e | [_] -> err () | excs -> raise Runtime.( Error
+     (Conflict, List.map Expr.(fun e -> pos_to_runtime (pos e)) excs)) ) *)
   | ( ( Minus_int | Minus_rat | Minus_mon | Minus_dur | ToInt_rat | ToRat_int
       | ToRat_mon | ToMoney_rat | Round_rat | Round_mon | Add_int_int
       | Add_rat_rat | Add_mon_mon | Add_dat_dur _ | Add_dur_dur | Sub_int_int
@@ -1482,9 +1492,11 @@ let rec evaluate_operator
 let rec evaluate_expr :
     context -> Global.backend_lang -> conc_expr -> conc_result =
  fun ctx lang e ->
-  if Global.options.debug then Message.debug "eval %a\nsymbolic: %a" (Print.expr ()) e SymbExpr.formatter
-     (get_symb_expr e);
-(*   if Global.options.debug then Message.debug "eval symbolic: %a" SymbExpr.formatter (get_symb_expr e); *)
+  if Global.options.debug then
+    Message.debug "eval %a\nsymbolic: %a" (Print.expr ()) e SymbExpr.formatter
+      (get_symb_expr e);
+  (* if Global.options.debug then Message.debug "eval symbolic: %a"
+     SymbExpr.formatter (get_symb_expr e); *)
   let m = Mark.get e in
   let pos = Expr.mark_pos m in
   let ret =
@@ -1522,37 +1534,44 @@ let rec evaluate_expr :
         if Bindlib.mbinder_arity binder = List.length args then (
           let vars, eb = Bindlib.unmbind binder in
           let vars_args_map = make_vars_args_map vars args in
-          if Global.options.debug then Message.debug "EApp>EAbs vars are %a"
-            (Format.pp_print_list Print.var_debug)
-            (Array.to_list vars);
-          (* if Global.options.debug then Message.debug "EApp>EAbs args are %a" (Format.pp_print_list
-             (Print.expr ())) args; *)
+          if Global.options.debug then
+            Message.debug "EApp>EAbs vars are %a"
+              (Format.pp_print_list Print.var_debug)
+              (Array.to_list vars);
+          (* if Global.options.debug then Message.debug "EApp>EAbs args are %a"
+             (Format.pp_print_list (Print.expr ())) args; *)
           if Global.options.debug then Message.debug "EApp>EAbs args are";
           List.iter
             (fun arg ->
-              if Global.options.debug then Message.debug "EApp>EAbs arg | %a | %i"
-                (* (Print.expr ()) arg *) SymbExpr.formatter (get_symb_expr arg)
-                (List.length (get_constraints arg)))
+              if Global.options.debug then
+                Message.debug "EApp>EAbs arg | %a | %i"
+                  (* (Print.expr ()) arg *) SymbExpr.formatter
+                  (get_symb_expr arg)
+                  (List.length (get_constraints arg)))
             args;
           let marked_eb =
             Expr.map_top_down ~f:(replace_EVar_mark vars_args_map) eb
           in
-          if Global.options.debug then Message.debug "EApp>EAbs vars replaced in box";
+          if Global.options.debug then
+            Message.debug "EApp>EAbs vars replaced in box";
           let marked_binder = Bindlib.unbox (Expr.bind vars marked_eb) in
-          if Global.options.debug then Message.debug "EApp>EAbs binder reconstructed";
+          if Global.options.debug then
+            Message.debug "EApp>EAbs binder reconstructed";
           let result =
             evaluate_expr ctx lang
               (Bindlib.msubst marked_binder
                  (Array.of_list (List.map Mark.remove args)))
           in
-          if Global.options.debug then Message.debug "EApp>EAbs substituted binder evaluated";
+          if Global.options.debug then
+            Message.debug "EApp>EAbs substituted binder evaluated";
           (* TODO [Expr.subst]? *)
           propagate_generic_error result (args_constraints @ f_constraints)
           @@ fun result ->
           let r_symb = get_symb_expr result in
-          if Global.options.debug then Message.debug
-            "EApp>EAbs extracted symbolic expression from result: %a"
-            SymbExpr.formatter r_symb;
+          if Global.options.debug then
+            Message.debug
+              "EApp>EAbs extracted symbolic expression from result: %a"
+              SymbExpr.formatter r_symb;
           let r_constraints = get_constraints result in
           (* the constraints generated by the evaluation of the application are:
            * - those generated by the evaluation of the function
@@ -1619,8 +1638,8 @@ let rec evaluate_expr :
       (* make symbolic expression using the symbolic sub-expressions *)
       (* TODO INC *)
       let symb_expr =
-        if List.exists (fun x -> get_symb_expr x = SymbExpr.incomplete) es
-        then SymbExpr.incomplete
+        if List.exists (fun x -> get_symb_expr x = SymbExpr.incomplete) es then
+          SymbExpr.incomplete
         else SymbExpr.mk_z3 (make_z3_struct ctx name es)
       in
 
@@ -1664,7 +1683,8 @@ let rec evaluate_expr :
           make_z3_struct_access ctx s field e_symb fd_symb
           (* TODO catch error... should not happen *)
         in
-        if Global.options.debug then Message.debug "EStructAccess symbolic struct access created";
+        if Global.options.debug then
+          Message.debug "EStructAccess symbolic struct access created";
         (* the constraints generated by struct access are only those generated
            by the subcall, as the field expression is already a value *)
         let constraints = get_constraints e in
@@ -1738,7 +1758,8 @@ let rec evaluate_expr :
         let arm_conditions = make_z3_arm_conditions ctx name cons e_symb in
         let arm_path_constraints =
           List.map
-            (fun (s, b) -> PathConstraint.mk_z3 (SymbExpr.simplify s) (Expr.pos e) b)
+            (fun (s, b) ->
+              PathConstraint.mk_z3 (SymbExpr.simplify s) (Expr.pos e) b)
             arm_conditions
         in
 
@@ -1777,8 +1798,9 @@ let rec evaluate_expr :
       let c_constraints = get_constraints cond in
       match Mark.remove cond with
       | ELit (LBool true) ->
-        if Global.options.debug then Message.debug "EIfThenElse>true adding %a to constraints"
-          SymbExpr.formatter c_symb;
+        if Global.options.debug then
+          Message.debug "EIfThenElse>true adding %a to constraints"
+            SymbExpr.formatter c_symb;
         let c_symb = SymbExpr.simplify c_symb in
         let c_path_constraint =
           PathConstraint.mk_z3 c_symb (Expr.pos cond) true
@@ -1800,8 +1822,9 @@ let rec evaluate_expr :
         in
         add_conc_info_m e_mark e_symb ~constraints e_concr |> make_ok
       | ELit (LBool false) ->
-        if Global.options.debug then Message.debug "EIfThenElse>false adding %a to constraints"
-          SymbExpr.formatter c_symb;
+        if Global.options.debug then
+          Message.debug "EIfThenElse>false adding %a to constraints"
+            SymbExpr.formatter c_symb;
         let not_c_symb =
           SymbExpr.app_z3 (Z3.Boolean.mk_not ctx.ctx_z3) c_symb
         in
@@ -1831,13 +1854,13 @@ let rec evaluate_expr :
           "Expected a boolean literal for the result of this condition (should \
            not happen if the term was well-typed)")
     | EArray es ->
-        let es = List.map (evaluate_expr ctx lang) es in
-        propagate_generic_error_list es []
-        @@ fun es ->
-        let constraints = gather_constraints es in
-        let es_concr = EArray es in
-        add_conc_info_m m SymbExpr.incomplete ~constraints es_concr |> make_ok
-        (* TODO INC *)
+      let es = List.map (evaluate_expr ctx lang) es in
+      propagate_generic_error_list es []
+      @@ fun es ->
+      let constraints = gather_constraints es in
+      let es_concr = EArray es in
+      add_conc_info_m m SymbExpr.incomplete ~constraints es_concr |> make_ok
+      (* TODO INC *)
     | EAssert e' ->
       (* TODO CONC REU *)
       propagate_generic_error (evaluate_expr ctx lang e') []
@@ -1879,7 +1902,8 @@ let rec evaluate_expr :
     | EEmpty ->
       if Global.options.debug then Message.debug "... it's an EEmptyError";
       make_ok e (* it is a value *)
-    | EFatalError _err -> failwith "EFatalError not implemented"
+    | EFatalError _err ->
+      failwith "EFatalError not implemented"
       (* raise (Runtime.Error (err, [Expr.pos_to_runtime pos])) *)
     | EErrorOnEmpty e' -> (
       if Global.options.debug then Message.debug "... it's an EErrorOnEmpty";
@@ -1905,7 +1929,8 @@ let rec evaluate_expr :
         } -> (
       (* failwith "[evaluate_expr] no more thunk" (* FIXME CONTEXT *) *)
       (* FIXME add metadata to find this case instead of this big match *)
-      if Global.options.debug then Message.debug "... it's a context variable definition";
+      if Global.options.debug then
+        Message.debug "... it's a context variable definition";
 
       let app = evaluate_expr ctx lang except in
       propagate_generic_error app []
@@ -1944,18 +1969,17 @@ let rec evaluate_expr :
            case *)
         let constraints = not_is_empty @ app_constraints in
         add_conc_info_e SymbExpr.none ~constraints app |> make_ok)
-    | EDefault
-        {
-          excepts = [ outer ];
-          just = ELit (LBool true), _;
-          cons;
-        } when SymbExpr.is_reentrant (get_symb_expr outer) -> (
+    | EDefault { excepts = [outer]; just = ELit (LBool true), _; cons }
+      when SymbExpr.is_reentrant (get_symb_expr outer) -> (
       (* FIXME add metadata to find this case instead of this match? *)
-      if Global.options.debug then Message.debug "... it's a context variable definition";
+      if Global.options.debug then
+        Message.debug "... it's a context variable definition";
 
       let outer_symb = get_symb_expr outer in
-      if Global.options.debug then Message.debug "context symb %a" SymbExpr.formatter outer_symb;
-      let inner = match Mark.remove outer with
+      if Global.options.debug then
+        Message.debug "context symb %a" SymbExpr.formatter outer_symb;
+      let inner =
+        match Mark.remove outer with
         | EEmpty -> outer
         | EPureDefault inner -> inner
         | _ -> failwith "no"
@@ -1971,7 +1995,8 @@ let rec evaluate_expr :
       | EEmpty ->
         if Global.options.debug then Message.debug "Context>empty";
         let is_empty : PathConstraint.naked_path =
-          PathConstraint.mk_reentrant outer_symb ctx.ctx_reentrant_const pos true
+          PathConstraint.mk_reentrant outer_symb ctx.ctx_reentrant_const pos
+            true
           |> Option.to_list
         in
         let result = evaluate_expr ctx lang cons in
@@ -1986,7 +2011,8 @@ let rec evaluate_expr :
       | _ ->
         if Global.options.debug then Message.debug "Context>non-empty";
         let not_is_empty : PathConstraint.naked_path =
-          PathConstraint.mk_reentrant outer_symb ctx.ctx_reentrant_const pos false
+          PathConstraint.mk_reentrant outer_symb ctx.ctx_reentrant_const pos
+            false
           |> Option.to_list
         in
         (* the only constraint is the new one encoding the fact that there is a
@@ -2001,19 +2027,21 @@ let rec evaluate_expr :
 
       let count_nonempty_greedy l =
         let l = List.map (evaluate_expr ctx lang) l in
-        if Global.options.debug then Message.debug "EDefault using greedy conflict finder";
+        if Global.options.debug then
+          Message.debug "EDefault using greedy conflict finder";
         let empty_count = List.length (List.filter Concrete.is_empty_error l) in
         let nonempty_count = List.length l - empty_count in
         nonempty_count, l
       in
 
       let count_nonempty_lazy l =
-        if Global.options.debug then Message.debug "EDefault using lazy conflict finder";
+        if Global.options.debug then
+          Message.debug "EDefault using lazy conflict finder";
         let l = List.map (fun e -> lazy (evaluate_expr ctx lang e)) l in
         let rec aux l seen_nonempty acc =
           match l with
           | [] -> Bool.to_int seen_nonempty, List.rev acc
-          | lazy ex :: exs ->
+          | (lazy ex) :: exs ->
             if not (Concrete.is_empty_error ex) then
               if seen_nonempty then 2, List.rev (ex :: acc)
               else aux exs true (ex :: acc)
@@ -2028,17 +2056,20 @@ let rec evaluate_expr :
       in
 
       let nonempty_count, excepts = count_nonempty excepts in
-      if Global.options.debug then Message.debug "EDefault found %n non-empty exceptions!" nonempty_count;
+      if Global.options.debug then
+        Message.debug "EDefault found %n non-empty exceptions!" nonempty_count;
       handle_default ctx lang m (Expr.pos e) nonempty_count excepts just cons
     | EPureDefault _ when SymbExpr.is_reentrant (get_symb_expr e) ->
-      if Global.options.debug then Message.debug "... it's an EPureDefault for reentrant";
+      if Global.options.debug then
+        Message.debug "... it's an EPureDefault for reentrant";
       e |> make_ok
     | EPureDefault e -> evaluate_expr ctx lang e
     | _ -> .
   in
-  (* if Global.options.debug then Message.debug "\teval returns %a | %a" (Print.expr ()) ret
-     SymbExpr.formatter (get_symb_expr_r ret); *)
-  if Global.options.debug then Message.debug "\teval returns %a" SymbExpr.formatter (get_symb_expr_r ret);
+  (* if Global.options.debug then Message.debug "\teval returns %a | %a"
+     (Print.expr ()) ret SymbExpr.formatter (get_symb_expr_r ret); *)
+  if Global.options.debug then
+    Message.debug "\teval returns %a" SymbExpr.formatter (get_symb_expr_r ret);
   ret
 
 and handle_default ctx lang m pos nonempty_count excepts just cons =
@@ -2065,8 +2096,9 @@ and handle_default ctx lang m pos nonempty_count excepts just cons =
       let constraints = j_constraints @ exc_constraints in
       add_conc_info_m m SymbExpr.none ~constraints EEmpty
     | ELit (LBool true) ->
-      if Global.options.debug then Message.debug "EDefault>true adding %a to constraints" SymbExpr.formatter
-        j_symb;
+      if Global.options.debug then
+        Message.debug "EDefault>true adding %a to constraints"
+          SymbExpr.formatter j_symb;
       let j_symb = SymbExpr.simplify j_symb in
       (* TODO catch error... should not happen *)
       (* TODO factorize the simplifications? *)
@@ -2097,8 +2129,9 @@ and handle_default ctx lang m pos nonempty_count excepts just cons =
       let not_j_path_constraint =
         PathConstraint.mk_z3 not_j_symb (Expr.pos just) false
       in
-      if Global.options.debug then Message.debug "EDefault>false adding %a to constraints" SymbExpr.formatter
-        not_j_symb;
+      if Global.options.debug then
+        Message.debug "EDefault>false adding %a to constraints"
+          SymbExpr.formatter not_j_symb;
       (* the constraints generated by the default when [just] is false are :
        * - those generated by the evaluation of the excepts
        * - those generated by the evaluation of [just]
@@ -2122,8 +2155,8 @@ and handle_default ctx lang m pos nonempty_count excepts just cons =
     let constraints = exc_constraints in
     add_conc_info_e r_symb ~constraints r |> make_ok
   | _ ->
-    (* TODO QU Raphaël: discrepancy with standard interpreter?
-       =>> NON à mon avis *)
+    (* TODO QU Raphaël: discrepancy with standard interpreter? =>> NON à mon
+       avis *)
     make_error_conflicterror m exc_constraints
       (List.map
          (fun except ->
@@ -2143,14 +2176,16 @@ let make_input_mark ctx m field (ty : typ) : conc_info mark =
   let _, sort = translate_typ ctx (Mark.remove ty) in
   let symb_expr =
     match Mark.remove ty with
-    | TArrow ([(TLit TUnit, _)], (TDefault _inner_ty, _)) -> failwith "[make_input_mark] no more thunks" (* FIXME CONTEXT *)
+    | TArrow ([(TLit TUnit, _)], (TDefault _inner_ty, _)) ->
+      failwith "[make_input_mark] no more thunks" (* FIXME CONTEXT *)
     | TDefault inner_ty ->
       (* Context variables carry the name of the actual input variable (that is
-         the name of the field in the input struct), as well as a symbol used
-         to mark the default expression, that can then be used in Z3 when the
-         given value is non-empty. See [make_reentrant_input]. *)
-      if Global.options.debug then Message.debug "[make_input_mark] reentrant variable <%s> : %a" name
-        Print.typ_debug ty;
+         the name of the field in the input struct), as well as a symbol used to
+         mark the default expression, that can then be used in Z3 when the given
+         value is non-empty. See [make_reentrant_input]. *)
+      if Global.options.debug then
+        Message.debug "[make_input_mark] reentrant variable <%s> : %a" name
+          Print.typ_debug ty;
       let _, inner_sort = translate_typ ctx (Mark.remove inner_ty) in
       let symbol = Z3.Expr.mk_const_s ctx.ctx_z3 name inner_sort in
       SymbExpr.mk_reentrant field symbol
@@ -2168,33 +2203,51 @@ let make_input_mark ctx m field (ty : typ) : conc_info mark =
   let pos = Expr.mark_pos m in
   Custom { pos; custom = { symb_expr; constraints = []; ty = Some ty } }
 
-let soft_constraints_of_input_mark ctx (m: conc_info mark) : PathConstraint.pc_expr list =
-  let (Custom { custom={ty; symb_expr; _}; _ }) = m in
-  let ty = Option.get ty in (* by construction ty is not None *)
+let soft_constraints_of_input_mark ctx (m : conc_info mark) :
+    PathConstraint.pc_expr list =
+  let (Custom { custom = { ty; symb_expr; _ }; _ }) = m in
+  let ty = Option.get ty in
+  (* by construction ty is not None *)
   let naked_ty = Mark.remove ty in
   let pos = Mark.get ty in
   let ctx = ctx.ctx_z3 in
   match naked_ty, symb_expr with
-    | TLit TMoney, Symb_z3 var ->
-        let zero = Z3.Arithmetic.Integer.mk_numeral_i ctx 0 in
-        let money_unit = Z3.Arithmetic.Integer.mk_numeral_i ctx 1_00 in
-        let money_ten = Z3.Arithmetic.Integer.mk_numeral_i ctx 10_00 in
-        let money_hundred = Z3.Arithmetic.Integer.mk_numeral_i ctx 100_00 in
-        let non_negative = Z3.Arithmetic.mk_ge ctx var zero in
-        let round_unit = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_unit) zero in
-        let round_ten = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_ten) zero in
-        let round_hundred = Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_hundred) zero in
-        List.map (fun (x, id) -> let x = SymbExpr.mk_z3 x in (PathConstraint.mk_soft x 1 (Some id) pos false).expr)
-        [
-          non_negative, "3non-negative" ;
-          round_unit, "2unit" ;
-          round_ten, "1ten" ;
-          round_hundred, "0hundred";
-        ]
-    | _ -> []
+  | TLit TMoney, Symb_z3 var ->
+    let zero = Z3.Arithmetic.Integer.mk_numeral_i ctx 0 in
+    let money_unit = Z3.Arithmetic.Integer.mk_numeral_i ctx 1_00 in
+    let money_ten = Z3.Arithmetic.Integer.mk_numeral_i ctx 10_00 in
+    let money_hundred = Z3.Arithmetic.Integer.mk_numeral_i ctx 100_00 in
+    let non_negative = Z3.Arithmetic.mk_ge ctx var zero in
+    let round_unit =
+      Z3.Boolean.mk_eq ctx
+        (Z3.Arithmetic.Integer.mk_mod ctx var money_unit)
+        zero
+    in
+    let round_ten =
+      Z3.Boolean.mk_eq ctx (Z3.Arithmetic.Integer.mk_mod ctx var money_ten) zero
+    in
+    let round_hundred =
+      Z3.Boolean.mk_eq ctx
+        (Z3.Arithmetic.Integer.mk_mod ctx var money_hundred)
+        zero
+    in
+    List.map
+      (fun (x, id) ->
+        let x = SymbExpr.mk_z3 x in
+        (PathConstraint.mk_soft x 1 (Some id) pos false).expr)
+      [
+        non_negative, "3non-negative";
+        round_unit, "2unit";
+        round_ten, "1ten";
+        round_hundred, "0hundred";
+      ]
+  | _ -> []
 
-let make_soft_constraints ctx (input_marks : conc_info mark StructField.Map.t) : PathConstraint.pc_expr list =
-  StructField.Map.fold (fun _ m acc -> soft_constraints_of_input_mark ctx m @ acc) input_marks []
+let make_soft_constraints ctx (input_marks : conc_info mark StructField.Map.t) :
+    PathConstraint.pc_expr list =
+  StructField.Map.fold
+    (fun _ m acc -> soft_constraints_of_input_mark ctx m @ acc)
+    input_marks []
 
 (** Evaluation *)
 
@@ -2202,9 +2255,11 @@ let make_soft_constraints ctx (input_marks : conc_info mark StructField.Map.t) :
     function that takes the input struct of the scope and returns its output
     struct *)
 let simplify_program ctx (p : (dcalc, 'm) gexpr program) s : conc_expr =
-  if Global.options.debug then Message.debug "[CONC] Make program expression concolic";
+  if Global.options.debug then
+    Message.debug "[CONC] Make program expression concolic";
   let e = Expr.unbox (Program.to_expr p s) in
-  if Global.options.debug then Message.debug "[CONC] Pre-compute program concretely";
+  if Global.options.debug then
+    Message.debug "[CONC] Pre-compute program concretely";
   let result = Concrete.evaluate_expr ctx.ctx_decl p.lang e in
   init_conc_expr result
 
@@ -2239,41 +2294,59 @@ struct
     z3solver_string : string;
     z3assertions : s_expr list;
   }
-  type z3_solver_result = Z3Sat of Z3.Model.model option | Z3Unsat | Z3Unknown of unknown_info
+
+  type z3_solver_result =
+    | Z3Sat of Z3.Model.model option
+    | Z3Unsat
+    | Z3Unknown of unknown_info
 
   (* FIXME this is ugly *)
   let num_unsat = ref 0
   let num_soft_unsat = ref 0
   let num_soft_sat = ref 0
 
-  module StringMap = Map.Make(String)
+  module StringMap = Map.Make (String)
+
   let soft_sats = ref StringMap.empty
   let soft_unsats = ref StringMap.empty
+
   let incr_sat group =
-    soft_sats := StringMap.update group (fun n -> Some ((Option.value ~default:0 n) + 1)) !soft_sats
+    soft_sats :=
+      StringMap.update group
+        (fun n -> Some (Option.value ~default:0 n + 1))
+        !soft_sats
+
   let incr_unsat group =
-    soft_unsats := StringMap.update group (fun n -> Some ((Option.value ~default:0 n) + 1)) !soft_unsats
+    soft_unsats :=
+      StringMap.update group
+        (fun n -> Some (Option.value ~default:0 n + 1))
+        !soft_unsats
+
   let print_soft_sats () =
     let open Format in
     let seq = StringMap.to_seq !soft_sats in
-    asprintf "sat groups:@[<v>@,%a@]" (pp_print_seq ~pp_sep:(pp_print_cut) (fun fmt (name, n) -> fprintf fmt "%n %s sat group" n name)) seq
+    asprintf "sat groups:@[<v>@,%a@]"
+      (pp_print_seq ~pp_sep:pp_print_cut (fun fmt (name, n) ->
+           fprintf fmt "%n %s sat group" n name))
+      seq
+
   let print_soft_unsats () =
     let open Format in
     let seq = StringMap.to_seq !soft_unsats in
-    asprintf "unsat groups:@[<v>@,%a@]" (pp_print_seq ~pp_sep:(pp_print_cut) (fun fmt (name, n) -> fprintf fmt "%n %s unsat group" n name)) seq
+    asprintf "unsat groups:@[<v>@,%a@]"
+      (pp_print_seq ~pp_sep:pp_print_cut (fun fmt (name, n) ->
+           fprintf fmt "%n %s unsat group" n name))
+      seq
 
   module type Z3SolverModuleType = sig
     type t
 
     val make : Z3.context -> t
-
     val add : t -> s_expr list -> unit
     val push : t -> unit
     val pop : t -> unit
-
     val check : t -> s_expr list -> Z3.Solver.status
     val get_model : t -> Z3.Model.model option
-
     val get_reason_unknown : t -> string
     val get_statistics : t -> Z3.Statistics.statistics
     val to_string : t -> string
@@ -2284,15 +2357,15 @@ struct
     type t = Z3.Solver.solver
 
     let make ctx = Z3.Solver.mk_solver ctx None
-
     let add s l = Z3.Solver.add s l
-(*     let add_soft _ _ l = if l <> [] then Message.error ~internal:true "Tried to add a soft constraint on an incompatible solver. Try activating the soft constraint option." *)
+
+    (* let add_soft _ _ l = if l <> [] then Message.error ~internal:true "Tried
+       to add a soft constraint on an incompatible solver. Try activating the
+       soft constraint option." *)
     let push = Z3.Solver.push
     let pop s = Z3.Solver.pop s 1
-
     let check s cs = Z3.Solver.check s cs
     let get_model = Z3.Solver.get_model
-
     let get_reason_unknown = Z3.Solver.get_reason_unknown
     let get_statistics = Z3.Solver.get_statistics
     let to_string = Z3.Solver.to_string
@@ -2300,20 +2373,25 @@ struct
   end
 
   module type Z3SolverType = sig
-    val solve : Z3.context -> s_expr list -> PathConstraint.soft list -> z3_solver_result
+    val solve :
+      Z3.context -> s_expr list -> PathConstraint.soft list -> z3_solver_result
+
     val push : Z3.context -> s_expr -> unit
     val pop : Z3.context -> unit -> unit
   end
 
   module SimpleZ3Solver (S : Z3SolverModuleType) : Z3SolverType = struct
-    let solve ctx (constraints : s_expr list) (_ : PathConstraint.soft list) : z3_solver_result =
+    let solve ctx (constraints : s_expr list) (_ : PathConstraint.soft list) :
+        z3_solver_result =
       let solver = S.make ctx in
       S.add solver constraints;
-      if Global.options.debug then Message.debug "Solver is\n%s" (S.to_string solver);
+      if Global.options.debug then
+        Message.debug "Solver is\n%s" (S.to_string solver);
       match S.check solver [] with
       | SATISFIABLE -> Z3Sat (S.get_model solver)
       | UNSATISFIABLE -> Z3Unsat
-      | UNKNOWN -> Z3Unknown
+      | UNKNOWN ->
+        Z3Unknown
           {
             z3reason = S.get_reason_unknown solver;
             z3stats = S.get_statistics solver;
@@ -2343,72 +2421,95 @@ struct
       S.add solver local_constraints;
       let status = S.check solver local_constraints in
       if Global.options.debug then Message.debug "\n%s" (S.to_string solver);
-      let result = match status with
-      | SATISFIABLE -> Z3Sat (S.get_model solver)
-      | UNSATISFIABLE -> Z3Unsat
-      | UNKNOWN -> Z3Unknown
-          {
-            z3reason = S.get_reason_unknown solver;
-            z3stats = S.get_statistics solver;
-            z3solver_string = S.to_string solver;
-            z3assertions = S.get_assertions solver;
-          }
+      let result =
+        match status with
+        | SATISFIABLE -> Z3Sat (S.get_model solver)
+        | UNSATISFIABLE -> Z3Unsat
+        | UNKNOWN ->
+          Z3Unknown
+            {
+              z3reason = S.get_reason_unknown solver;
+              z3stats = S.get_statistics solver;
+              z3solver_string = S.to_string solver;
+              z3assertions = S.get_assertions solver;
+            }
       in
       S.pop solver;
       result
 
     module StringMap = String.Map
 
-    let group_softs (softs : PathConstraint.soft list) : (PathConstraint.soft list) StringMap.t =
-      List.fold_left (fun acc (s: PathConstraint.soft) -> StringMap.update s.id (function None -> Some [s] | Some l -> Some (s::l)) acc) StringMap.empty softs
+    let group_softs (softs : PathConstraint.soft list) :
+        PathConstraint.soft list StringMap.t =
+      List.fold_left
+        (fun acc (s : PathConstraint.soft) ->
+          StringMap.update s.id
+            (function None -> Some [s] | Some l -> Some (s :: l))
+            acc)
+        StringMap.empty softs
 
     let fold_softs ctx name group acc =
       match acc with
       | Some _ -> acc
       | None -> begin
         if Global.options.debug then Message.debug "Trying soft group %s" name;
-        let soft_exprs = List.map (fun (s: PathConstraint.soft) -> s.symb) group in
+        let soft_exprs =
+          List.map (fun (s : PathConstraint.soft) -> s.symb) group
+        in
         let result_soft = _solve ctx soft_exprs in
         match result_soft with
-        | Z3Sat _ -> incr num_soft_sat; incr_sat name; Some result_soft
-        | Z3Unsat -> incr num_soft_unsat; incr_unsat name; None
+        | Z3Sat _ ->
+          incr num_soft_sat;
+          incr_sat name;
+          Some result_soft
+        | Z3Unsat ->
+          incr num_soft_unsat;
+          incr_unsat name;
+          None
         | Z3Unknown _ as r -> Some r
       end
 
     let solve ctx _ (softs : PathConstraint.soft list) : z3_solver_result =
-      if Global.options.debug then Message.debug "Trying solver without softs...";
+      if Global.options.debug then
+        Message.debug "Trying solver without softs...";
       let result = _solve ctx [] in
       match result with
       | Z3Sat _ ->
-          if softs = [] then result
-          else begin
-            if Global.options.debug then Message.debug "Sat without softs, so trying solver with softs";
-            let groups = group_softs softs in
-(*             Message.result "%s" (StringMap.to_seq groups |> List.of_seq |> List.map fst |> List.hd); *)
-            let try_softs = StringMap.fold (fold_softs ctx) groups None in
-            Option.value try_softs ~default:result
-          end
-      | _ -> incr num_unsat; result
+        if softs = [] then result
+        else begin
+          if Global.options.debug then
+            Message.debug "Sat without softs, so trying solver with softs";
+          let groups = group_softs softs in
+          (* Message.result "%s" (StringMap.to_seq groups |> List.of_seq |>
+             List.map fst |> List.hd); *)
+          let try_softs = StringMap.fold (fold_softs ctx) groups None in
+          Option.value try_softs ~default:result
+        end
+      | _ ->
+        incr num_unsat;
+        result
 
     let push ctx e =
       let t = Sys.time () in
       let solver = get_solver ctx in
       S.push solver;
       S.add solver [e];
-      if Global.options.debug then Message.debug "after_push %f" (Sys.time () -. t)
+      if Global.options.debug then
+        Message.debug "after_push %f" (Sys.time () -. t)
 
     let pop ctx () =
       let t = Sys.time () in
       let solver = get_solver ctx in
       S.pop solver;
-      if Global.options.debug then Message.debug "after_pop %f" (Sys.time () -. t)
+      if Global.options.debug then
+        Message.debug "after_pop %f" (Sys.time () -. t)
   end
 
   let z3Solver =
     let module SM = Z3SolverModule_Solver in
-    if Optimizations.incremental_solver Settings.optims
-    then (module IncrementalZ3Solver(SM) : Z3SolverType)
-    else (module SimpleZ3Solver(SM) : Z3SolverType)
+    if Optimizations.incremental_solver Settings.optims then
+      (module IncrementalZ3Solver (SM) : Z3SolverType)
+    else (module SimpleZ3Solver (SM) : Z3SolverType)
 
   module Z3Solver = (val z3Solver)
 
@@ -2449,8 +2550,13 @@ struct
 
   type solver_result = Sat of model option | Unsat | Unknown of unknown_info
 
-  let split_input (l : input) : s_expr list * PathConstraint.soft list * StructField.Set.t =
-    let rec aux l (acc_z3 : s_expr list) (acc_soft : PathConstraint.soft list) (acc_reentrant : StructField.Set.t) =
+  let split_input (l : input) :
+      s_expr list * PathConstraint.soft list * StructField.Set.t =
+    let rec aux
+        l
+        (acc_z3 : s_expr list)
+        (acc_soft : PathConstraint.soft list)
+        (acc_reentrant : StructField.Set.t) =
       let open PathConstraint in
       match l with
       | [] -> acc_z3, acc_soft, acc_reentrant
@@ -2460,57 +2566,79 @@ struct
         aux l' acc_z3 acc_soft
           (if e.is_empty then StructField.Set.add e.symb.name acc_reentrant
            else acc_reentrant)
-      | Pc_incomplete :: _ -> Message.error ~internal:true "[Solver.split_input] should not get Pc_incomplete as argument"
+      | Pc_incomplete :: _ ->
+        Message.error ~internal:true
+          "[Solver.split_input] should not get Pc_incomplete as argument"
     in
     aux l [] [] StructField.Set.empty
 
-(* https://discuss.ocaml.org/t/computation-with-time-constraint/5548/9 *)
+  (* https://discuss.ocaml.org/t/computation-with-time-constraint/5548/9 *)
   exception Timeout
+
   let delayed_fun f timeout =
-    if not @@ Optimizations.timeout Settings.optims then f () else
-    let _ =
-      Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout))
-    in
-    ignore (Unix.alarm timeout);
-    try
-      let r = f () in
-      ignore (Unix.alarm 0); r
-    with
-    | e  -> ignore (Unix.alarm 0); raise e
+    if not @@ Optimizations.timeout Settings.optims then f ()
+    else
+      let _ =
+        Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout))
+      in
+      ignore (Unix.alarm timeout);
+      try
+        let r = f () in
+        ignore (Unix.alarm 0);
+        r
+      with e ->
+        ignore (Unix.alarm 0);
+        raise e
 
   let solve (ctx : context) (constraints : input) =
-    if Optimizations.check_easy_unsat Settings.optims ctx.ctx_z3 constraints then Unsat else
-    let rec aux retry ctx constraints =
-      let z3_constraints, z3_soft_constraints, model_empty_reentrants = split_input constraints in
-      try
-        let status = delayed_fun (fun () -> Z3Solver.solve ctx.ctx_z3 z3_constraints z3_soft_constraints) 1 in
-        begin
-          match status with
-          | Z3Sat (Some model_z3) -> Sat (Some { model_z3; model_empty_reentrants })
-          | Z3Sat None -> Sat None
-          | Z3Unsat -> Unsat
-          | Z3Unknown info -> Unknown info
-        end
-      with
-      | Timeout -> if retry then begin
-          Message.warning "Concolic execution solver timed out once";
-          Message.warning "Trying to solve again...";
-          aux false ctx constraints
-        end
-        else Message.error ~internal:true "[CONC] Solver timed out"
-    in aux (Optimizations.timeout_retry Settings.optims) ctx constraints
+    if Optimizations.check_easy_unsat Settings.optims ctx.ctx_z3 constraints
+    then Unsat
+    else
+      let rec aux retry ctx constraints =
+        let z3_constraints, z3_soft_constraints, model_empty_reentrants =
+          split_input constraints
+        in
+        try
+          let status =
+            delayed_fun
+              (fun () ->
+                Z3Solver.solve ctx.ctx_z3 z3_constraints z3_soft_constraints)
+              1
+          in
+          begin
+            match status with
+            | Z3Sat (Some model_z3) ->
+              Sat (Some { model_z3; model_empty_reentrants })
+            | Z3Sat None -> Sat None
+            | Z3Unsat -> Unsat
+            | Z3Unknown info -> Unknown info
+          end
+        with Timeout ->
+          if retry then begin
+            Message.warning "Concolic execution solver timed out once";
+            Message.warning "Trying to solve again...";
+            aux false ctx constraints
+          end
+          else Message.error ~internal:true "[CONC] Solver timed out"
+      in
+      aux (Optimizations.timeout_retry Settings.optims) ctx constraints
 
   let push ctx (pc : PathConstraint.pc_expr) =
     match pc with
     | Pc_z3 pc -> Z3Solver.push ctx.ctx_z3 pc
     | Pc_soft _ -> () (* Z3Solver.push_soft ctx.ctx_z3 sc *)
     | Pc_reentrant _ -> ()
-    | Pc_incomplete -> Message.error ~internal:true "[Solver.push] should not get Pc_incomplete as argument"
+    | Pc_incomplete ->
+      Message.error ~internal:true
+        "[Solver.push] should not get Pc_incomplete as argument"
+
   let pop ctx (pc : PathConstraint.pc_expr) =
     match pc with
     | Pc_z3 _ | Pc_soft _ -> Z3Solver.pop ctx.ctx_z3 ()
     | Pc_reentrant _ -> ()
-    | Pc_incomplete -> Message.error ~internal:true "[Solver.pop] should not get Pc_incomplete as argument"
+    | Pc_incomplete ->
+      Message.error ~internal:true
+        "[Solver.pop] should not get Pc_incomplete as argument"
 
   (** Create a dummy concolic mark with a position and a type. It has no
       symbolic expression or constraints, and is used for subexpressions inside
@@ -2689,35 +2817,39 @@ struct
        symbolic expression. *)
     if StructField.Set.mem name empty_reentrants then (
       (* If the context variable must evaluate to its default value (as defined
-         in the scope), then we make an empty term. During evaluation,
-         the [name] of the variable will be used to generate a constraint
-         encoding whether it is empty, but the symbolic expression on the
-         (empty) innner term will not be used. *)
+         in the scope), then we make an empty term. During evaluation, the
+         [name] of the variable will be used to generate a constraint encoding
+         whether it is empty, but the symbolic expression on the (empty) innner
+         term will not be used. *)
       if Global.options.debug then Message.debug "[make_reentrant_input] empty";
       Expr.eempty mk)
     else (
       (* If the context variable must evaluate to a specific value computed by
-         the Z3 model, then we make this inner term and encapsulate it. The
-         mark on the inner term (inside the default) is the symbol in the
+         the Z3 model, then we make this inner term and encapsulate it. The mark
+         on the inner term (inside the default) is the symbol in the
          Symb_reentrant structure, and will be be used during evaluation. The
          mark on the outer term (the default term itself) will be used only for
          its [name] field and will be used to generate a constraint encoding
          whether it is empty. *)
-      if Global.options.debug then Message.debug "[make_reentrant_input] non empty";
+      if Global.options.debug then
+        Message.debug "[make_reentrant_input] non empty";
       match Mark.remove ty with
-      | TArrow ([(TLit TUnit, _)], (TDefault _inner_ty, _)) -> failwith "[make_reentrant_input] no more thunk" (* FIXME CONTEXT *)
+      | TArrow ([(TLit TUnit, _)], (TDefault _inner_ty, _)) ->
+        failwith "[make_reentrant_input] no more thunk" (* FIXME CONTEXT *)
       | TDefault inner_ty ->
         let inner_mk =
           map_conc_mark ~symb_expr_f:(fun _ -> Symb_z3 symb_expr) mk
         in
         let term = make_term ctx z3_model inner_mk inner_ty symb_expr in
         let (Custom { custom; _ }) = Mark.get term in
-        if Global.options.debug then Message.debug "[make_reentrant_input] non empty inner: %a"
-          SymbExpr.formatter_typed custom.symb_expr;
+        if Global.options.debug then
+          Message.debug "[make_reentrant_input] non empty inner: %a"
+            SymbExpr.formatter_typed custom.symb_expr;
         let term = Expr.epuredefault term mk in
         let (Custom { custom; _ }) = Mark.get term in
-        if Global.options.debug then Message.debug "[make_reentrant_input] non empty thunked: %a"
-          SymbExpr.formatter_typed custom.symb_expr;
+        if Global.options.debug then
+          Message.debug "[make_reentrant_input] non empty thunked: %a"
+            SymbExpr.formatter_typed custom.symb_expr;
         term
       | _ -> failwith "[make_reentrant_input] did not get an arrow type")
 
@@ -2746,15 +2878,18 @@ struct
         | Symb_none ->
           failwith "[inputs_of_model] input mark should not be none"
         | Symb_incomplete ->
-          failwith "[inputs_of_model] input mark should not be incomplete" (* TODO INC *)
+          failwith "[inputs_of_model] input mark should not be incomplete"
+          (* TODO INC *)
         | Symb_abs ->
-          failwith "[inputs_of_model] input mark should not be abs" (* TODO INC *)
+          failwith
+            "[inputs_of_model] input mark should not be abs" (* TODO INC *)
         | Symb_error _ ->
           failwith "[inputs_of_model] input mark should not be an error"
       in
       let (Custom { custom; _ }) = Mark.get t in
-      if Global.options.debug then Message.debug "[inputs_of_model] input has symb? %a" SymbExpr.formatter
-        custom.symb_expr;
+      if Global.options.debug then
+        Message.debug "[inputs_of_model] input has symb? %a" SymbExpr.formatter
+          custom.symb_expr;
       t
     in
     StructField.Map.mapi f input_marks
@@ -2765,38 +2900,52 @@ end
     Negated. This function shall be called on an output of
     [PathConstraint.make_expected_path]. *)
 let pc_expr_of_apc ctx (apc : PathConstraint.annotated_pc) :
-  PathConstraint.pc_expr (* FIXME Solver.input *) =
+    PathConstraint.pc_expr (* FIXME Solver.input *) =
   let open PathConstraint in
   match apc with
-    | Normal c -> c.expr
-    | Done c -> c.expr
-    | Negated c -> begin
-      match c.expr with
-      | Pc_z3 e -> Pc_z3 (Z3.Boolean.mk_not ctx.ctx_z3 e)
-      | Pc_soft _ -> failwith "[pc_expr_of_apc] negation of soft constraint should not happen"
-      | Pc_reentrant e -> Pc_reentrant { e with is_empty = not e.is_empty }
-      | Pc_incomplete -> Message.error ~internal:true "[pc_expr_of_apc] should not get Pc_incomplete as argument"
-    end
+  | Normal c -> c.expr
+  | Done c -> c.expr
+  | Negated c -> begin
+    match c.expr with
+    | Pc_z3 e -> Pc_z3 (Z3.Boolean.mk_not ctx.ctx_z3 e)
+    | Pc_soft _ ->
+      failwith "[pc_expr_of_apc] negation of soft constraint should not happen"
+    | Pc_reentrant e -> Pc_reentrant { e with is_empty = not e.is_empty }
+    | Pc_incomplete ->
+      Message.error ~internal:true
+        "[pc_expr_of_apc] should not get Pc_incomplete as argument"
+  end
+
 let constraint_list_of_path ctx (path : PathConstraint.annotated_path) :
     PathConstraint.pc_expr list (* FIXME Solver.input? *) =
   List.map (pc_expr_of_apc ctx) path
 
-let apply_diff ctx f_push f_pop (diff : PathConstraint.incremental_annotated_pc list) : unit =
+let apply_diff
+    ctx
+    f_push
+    f_pop
+    (diff : PathConstraint.incremental_annotated_pc list) : unit =
   if Global.options.debug then Message.debug "apply_diff";
   let f = function
-    | PathConstraint.IncrPush apc -> let expr = pc_expr_of_apc ctx apc in f_push ctx expr
-    | PathConstraint.IncrPop apc -> let expr = pc_expr_of_apc ctx apc in f_pop ctx expr
+    | PathConstraint.IncrPush apc ->
+      let expr = pc_expr_of_apc ctx apc in
+      f_push ctx expr
+    | PathConstraint.IncrPop apc ->
+      let expr = pc_expr_of_apc ctx apc in
+      f_pop ctx expr
   in
   List.iter f diff
 
 (* FIXME what do I print for context variables? *)
 let print_value language fmt value =
   let f =
-  if Global.options.debug then Print.expr () else
-    match Mark.remove value with
-    | EPureDefault _ | EEmpty -> Print.expr ()
-    | _ -> Print.UserFacing.value language
-  in f fmt value
+    if Global.options.debug then Print.expr ()
+    else
+      match Mark.remove value with
+      | EPureDefault _ | EEmpty -> Print.expr ()
+      | _ -> Print.UserFacing.value language
+  in
+  f fmt value
 
 let print_fields language (prefix : string) fields =
   let ordered_fields =
@@ -2805,8 +2954,7 @@ let print_fields language (prefix : string) fields =
   List.iter
     (fun ((var, _), value) ->
       Message.result "%s@[<hov 2>%s@ =@ %a@]%s" prefix var
-        (print_value language)
-        value
+        (print_value language) value
         (if Global.options.debug then
            " | " ^ SymbExpr.to_string (_get_symb_expr_unsafe value)
          else ""))
@@ -2867,8 +3015,7 @@ module Stats = struct
     let total_time = stop_period stats.total_time in
     { stats with total_time }
 
-  let running_period stats : period =
-    stop_period stats.total_time
+  let running_period stats : period = stop_period stats.total_time
 
   let fold_execs (execs : execution list) : step list =
     let f (steps : step list) (exec : execution) =
@@ -2908,7 +3055,9 @@ module Stats = struct
 
     let executions (fmt : formatter) (execs : execution list) =
       let folded = fold_execs execs |> List.rev in
-      let max_constraints = List.fold_left (fun acc exe -> max acc (exe.num_constraints)) 0 execs in
+      let max_constraints =
+        List.fold_left (fun acc exe -> max acc exe.num_constraints) 0 execs
+      in
       pp_print_list ~pp_sep:pp_print_cut step fmt folded;
       pp_print_cut fmt ();
       fprintf fmt "max constraints: %n" max_constraints
@@ -2931,7 +3080,8 @@ let interpret_program_concolic
     (mutation_seed : int option)
     (p : (dcalc, m) gexpr program)
     s : (Uid.MarkedString.info * conc_expr) list =
-  if Global.options.debug then Message.debug "=== Start concolic interpretation... ===";
+  if Global.options.debug then
+    Message.debug "=== Start concolic interpretation... ===";
   Optimizations.check_optims_coherent optims;
 
   (* output_name, out_fmt : string * Format.formatter) *)
@@ -2953,25 +3103,39 @@ let interpret_program_concolic
   if Optimizations.mutation optims then Mutation.init mutation_seed;
 
   let scope_e =
-    if Optimizations.random_mutations optims
-    then begin
-      let mutations = List.filter_map (fun (o, f, p) -> if o optims then Some (f, p) else None) [
-        Optimizations.mutation_remove, Mutation.remove_excepts 0.3, 0.3;
-        Optimizations.mutation_duplicate, Mutation.duplicate_excepts, 0.3;
-        Optimizations.mutation_negate_justs, Mutation.negate_justs, 0.1;
-      ] in
-      if Global.options.debug then Message.debug "Before random mutations:\n%a" (Print.expr ()) scope_e;
-      let mutated_scope_e = Mutation.apply_mutations mutations scope_e |> Expr.unbox in
-      if Global.options.debug then Message.debug "\nAfter random mutations:\n%a" (Print.expr ()) mutated_scope_e;
+    if Optimizations.random_mutations optims then begin
+      let mutations =
+        List.filter_map
+          (fun (o, f, p) -> if o optims then Some (f, p) else None)
+          [
+            Optimizations.mutation_remove, Mutation.remove_excepts 0.3, 0.3;
+            Optimizations.mutation_duplicate, Mutation.duplicate_excepts, 0.3;
+            Optimizations.mutation_negate_justs, Mutation.negate_justs, 0.1;
+          ]
+      in
+      if Global.options.debug then
+        Message.debug "Before random mutations:\n%a" (Print.expr ()) scope_e;
+      let mutated_scope_e =
+        Mutation.apply_mutations mutations scope_e |> Expr.unbox
+      in
+      if Global.options.debug then
+        Message.debug "\nAfter random mutations:\n%a" (Print.expr ())
+          mutated_scope_e;
       mutated_scope_e
     end
     else if Optimizations.mutation_one_conflict optims then begin
-      if Global.options.debug then Message.debug "Before one mutation:\n%a" (Print.expr ()) scope_e;
-      let mutated_scope_e = Mutation.create_one_conflict scope_e |> Expr.unbox in
-      if Global.options.debug then Message.debug "\nAfter one mutation:\n%a" (Print.expr ()) mutated_scope_e;
+      if Global.options.debug then
+        Message.debug "Before one mutation:\n%a" (Print.expr ()) scope_e;
+      let mutated_scope_e =
+        Mutation.create_one_conflict scope_e |> Expr.unbox
+      in
+      if Global.options.debug then
+        Message.debug "\nAfter one mutation:\n%a" (Print.expr ())
+          mutated_scope_e;
       mutated_scope_e
     end
-    else scope_e in
+    else scope_e
+  in
 
   let scope_e = Optimizations.optimize_expr optims scope_e in
 
@@ -2979,7 +3143,6 @@ let interpret_program_concolic
     Message.result "%a" Mutation.pprint_ast_stats (Mutation.get_stats scope_e);
     exit 0
   end;
-
 
   let stats = Stats.stop_step s_simplify |> Stats.add_stat_step stats in
   match scope_e with
@@ -2994,19 +3157,21 @@ let interpret_program_concolic
     let input_marks = StructField.Map.mapi (make_input_mark ctx mark_e) taus in
     let soft_constraints =
       if Optimizations.soft_constraints optims then
-      make_soft_constraints ctx input_marks
-      else [] in
-    if Global.options.debug then Message.debug "Initial soft constraints: %a\n"
-    (Format.pp_print_list
-       ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ")
-       (PathConstraint.Print.pc_expr)) soft_constraints;
+        make_soft_constraints ctx input_marks
+      else []
+    in
+    if Global.options.debug then
+      Message.debug "Initial soft constraints: %a\n"
+        (Format.pp_print_list
+           ~pp_sep:(fun fmt () -> Format.fprintf fmt ",@ ")
+           PathConstraint.Print.pc_expr)
+        soft_constraints;
 
     let total_tests = ref 0 in
 
     let module Solver = Solver (struct
       let optims = optims
     end) in
-
     (* add soft constraints to solver if it is incremental *)
     List.iter (Solver.push ctx) soft_constraints;
 
@@ -3014,12 +3179,15 @@ let interpret_program_concolic
 
     let rec concolic_loop (previous_path : PathConstraint.annotated_path) stats
         : Stats.t =
-      if Optimizations.tests_vs_time optims then Message.result "time of step: %a" Stats.Print.period (Stats.running_period stats);
+      if Optimizations.tests_vs_time optims then
+        Message.result "time of step: %a" Stats.Print.period
+          (Stats.running_period stats);
       let exec = Stats.start_exec (List.length previous_path) in
       let s_print_pc = Stats.start_step "print path constraints" in
       if Global.options.debug then Message.debug "";
-      if Global.options.debug then Message.debug "Trying new path constraints:@ @[<v>%a@]"
-        PathConstraint.Print.annotated_path previous_path;
+      if Global.options.debug then
+        Message.debug "Trying new path constraints:@ @[<v>%a@]"
+          PathConstraint.Print.annotated_path previous_path;
       let exec = Stats.stop_step s_print_pc |> Stats.add_exec_step exec in
       let s_extract_constraints =
         Stats.start_step "extract solver constraints"
@@ -3037,13 +3205,16 @@ let interpret_program_concolic
       match solver_result with
       | Solver.Sat (Some m) ->
         if Global.options.debug then Message.debug "Solver returned a model";
-        if Global.options.debug then Message.debug "model:\n%s" (Solver.string_of_model m);
+        if Global.options.debug then
+          Message.debug "model:\n%s" (Solver.string_of_model m);
 
         let s_inputs = Stats.start_step "get inputs from model" in
         let inputs = Solver.inputs_of_model ctx m input_marks in
 
         if not Global.options.debug then Message.result "";
-        if Optimizations.tests_vs_time optims then Message.result "time of test: %a" Stats.Print.period (Stats.running_period stats);
+        if Optimizations.tests_vs_time optims then
+          Message.result "time of test: %a" Stats.Print.period
+            (Stats.running_period stats);
         Message.result "Evaluating with inputs:";
         let inputs_list =
           List.map
@@ -3060,7 +3231,6 @@ let interpret_program_concolic
 
         Message.result "Output of scope after evaluation:";
 
-
         begin
           match Mark.remove res with
           | EStruct { fields; _ } ->
@@ -3069,31 +3239,34 @@ let interpret_program_concolic
                 (fun (fld, e) -> StructField.get_info fld, e)
                 (StructField.Map.bindings fields)
             in
-            print_fields p.lang ". " outputs_list;
+            print_fields p.lang ". " outputs_list
           | EGenericError ->
             (* TODO better error messages *)
             (* TODO test the different cases *)
             Message.result "Found error %a at %s" SymbExpr.formatter
               (get_symb_expr_r res)
-              (Pos.to_string_short (Expr.pos res));
+              (Pos.to_string_short (Expr.pos res))
           | _ ->
             Message.error ~pos:(Expr.pos scope_e)
               "The concolic interpretation of a program should always yield a \
                struct corresponding to the scope variables"
         end;
         incr total_tests;
-        
+
         let incomplete =
-          List.exists PathConstraint.is_incomplete (get_constraints_r res) in
+          List.exists PathConstraint.is_incomplete (get_constraints_r res)
+        in
 
         if incomplete then begin
           found_incomplete := true;
-          Message.warning "Concolic evaluation found an expression that \
-                           cannot be encoded (a list or a date). The current
-                           path will be dropped.";
+          Message.warning
+            "Concolic evaluation found an expression that cannot be encoded (a \
+             list or a date). The current\n\
+            \                           path will be dropped.";
           match previous_path with
           | [] ->
-            Message.result "Incomplete execution finished with no more constraints.";
+            Message.result
+              "Incomplete execution finished with no more constraints.";
             (* add empty steps for stats *)
             let exec =
               Stats.start_step "choose new path constraints"
@@ -3109,12 +3282,14 @@ let interpret_program_concolic
             stats
           | apc :: new_path_constraints ->
             let s_new_pc = Stats.start_step "choose new path constraints" in
-            let new_expected_path, diff = PathConstraint.make_expected_path new_path_constraints in
+            let new_expected_path, diff =
+              PathConstraint.make_expected_path new_path_constraints
+            in
 
             let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
 
             let s_diff = Stats.start_step "apply diff" in
-            let diff = (PathConstraint.IncrPop apc :: diff) in
+            let diff = PathConstraint.IncrPop apc :: diff in
             apply_diff ctx Solver.push Solver.pop diff;
             let exec = Stats.stop_step s_diff |> Stats.add_exec_step exec in
 
@@ -3123,31 +3298,36 @@ let interpret_program_concolic
             else concolic_loop new_expected_path stats
         end
         else
+          let s_new_pc = Stats.start_step "choose new path constraints" in
+          let res_path_constraints = get_constraints_r res in
 
-        let s_new_pc = Stats.start_step "choose new path constraints" in
-        let res_path_constraints = get_constraints_r res in
+          let res_path_constraints =
+            Optimizations.remove_trivial_constraints optims res_path_constraints
+          in
 
-        let res_path_constraints =
-          Optimizations.remove_trivial_constraints optims res_path_constraints
-        in
+          if Global.options.debug then
+            Message.debug "Path constraints after evaluation:@.@[<v>%a@]"
+              PathConstraint.Print.naked_path res_path_constraints;
 
-        if Global.options.debug then Message.debug "Path constraints after evaluation:@.@[<v>%a@]"
-          PathConstraint.Print.naked_path res_path_constraints;
+          (* TODO find a better way than all those revs *)
+          let new_path_constraints, diff_compare =
+            PathConstraint.compare_paths (List.rev previous_path)
+              (List.rev res_path_constraints)
+          in
+          let new_path_constraints, diff_expected =
+            PathConstraint.make_expected_path (List.rev new_path_constraints)
+          in
 
-        (* TODO find a better way than all those revs *)
-        let new_path_constraints, diff_compare = PathConstraint.compare_paths (List.rev previous_path) (List.rev res_path_constraints) in
-        let new_path_constraints, diff_expected = PathConstraint.make_expected_path (List.rev new_path_constraints) in
+          let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
+          let s_diff = Stats.start_step "apply diff" in
 
-        let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
-        let s_diff = Stats.start_step "apply diff" in
+          let diff = diff_compare @ diff_expected in
+          apply_diff ctx Solver.push Solver.pop diff;
 
-        let diff = diff_compare @ diff_expected in
-        apply_diff ctx Solver.push Solver.pop diff;
-
-        let exec = Stats.stop_step s_diff |> Stats.add_exec_step exec in
-        let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
-        if new_path_constraints = [] then stats
-        else concolic_loop new_path_constraints stats
+          let exec = Stats.stop_step s_diff |> Stats.add_exec_step exec in
+          let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
+          if new_path_constraints = [] then stats
+          else concolic_loop new_path_constraints stats
       | Solver.Unsat -> begin
         if Global.options.debug then Message.debug "Solver returned Unsat";
         match previous_path with
@@ -3165,11 +3345,13 @@ let interpret_program_concolic
             |> Stats.add_exec_step exec
           in
           let s_new_pc = Stats.start_step "choose new path constraints" in
-          let new_expected_path, diff = PathConstraint.make_expected_path new_path_constraints in
+          let new_expected_path, diff =
+            PathConstraint.make_expected_path new_path_constraints
+          in
 
           let exec = Stats.stop_step s_new_pc |> Stats.add_exec_step exec in
           let s_diff = Stats.start_step "apply diff" in
-          let diff = (PathConstraint.IncrPop apc :: diff) in
+          let diff = PathConstraint.IncrPop apc :: diff in
           apply_diff ctx Solver.push Solver.pop diff;
           let exec = Stats.stop_step s_diff |> Stats.add_exec_step exec in
           let stats = Stats.stop_exec exec |> Stats.add_stat_exec stats in
@@ -3191,8 +3373,9 @@ let interpret_program_concolic
 
     Message.result "Concolic interpreter done";
     if !found_incomplete then
-      Message.warning "Please note that the concolic execution may be \
-      incomplete: it could systematically explore the whole program.";
+      Message.warning
+        "Please note that the concolic execution may be incomplete: it could \
+         systematically explore the whole program.";
 
     let stats = Stats.stop stats in
     if print_stats then
@@ -3200,25 +3383,45 @@ let interpret_program_concolic
         "=== Concolic execution statistics ===\n%a\n%d tests\n%s%s======"
         Stats.print stats !total_tests
         (* FIXME ugly *)
-        (if Optimizations.soft_constraints optims
-          then
-            "Soft constraints:\n"
-          ^ "  " ^ string_of_int !Solver.num_unsat ^ " hard unsat\n"
-          ^ "  " ^ string_of_int !Solver.num_soft_unsat ^ " soft unsat\n"
-          ^ "  " ^ string_of_int !Solver.num_soft_sat ^ " soft sat\n"
-          ^ "  " ^ Solver.print_soft_sats () ^ "\n"
-          ^ "  " ^ Solver.print_soft_unsats () ^ "\n"
-          else "")
-        (if Optimizations.mutation optims
-          then
-            "Mutations:\n"
-          ^ "  out of " ^ string_of_int ast_stats.defaults ^ " defaults"
-          ^ " (" ^ string_of_int ast_stats.defaults_with_excepts ^ " non-empty)"
-          ^ " and " ^ string_of_int (List.fold_left (+) 0 ast_stats.excepts_sizes) ^ " excepts...\n"
-          ^ "  " ^ string_of_int !Mutation.remove_excepts_n ^ " excepts removed\n"
-          ^ "  " ^ string_of_int !Mutation.duplicate_excepts_n ^ " excepts duplicated\n"
-          ^ "  " ^ string_of_int !Mutation.negate_justs_n ^ " justs negated\n"
-        else "");
+        (if Optimizations.soft_constraints optims then
+           "Soft constraints:\n"
+           ^ "  "
+           ^ string_of_int !Solver.num_unsat
+           ^ " hard unsat\n"
+           ^ "  "
+           ^ string_of_int !Solver.num_soft_unsat
+           ^ " soft unsat\n"
+           ^ "  "
+           ^ string_of_int !Solver.num_soft_sat
+           ^ " soft sat\n"
+           ^ "  "
+           ^ Solver.print_soft_sats ()
+           ^ "\n"
+           ^ "  "
+           ^ Solver.print_soft_unsats ()
+           ^ "\n"
+         else "")
+        (if Optimizations.mutation optims then
+           "Mutations:\n"
+           ^ "  out of "
+           ^ string_of_int ast_stats.defaults
+           ^ " defaults"
+           ^ " ("
+           ^ string_of_int ast_stats.defaults_with_excepts
+           ^ " non-empty)"
+           ^ " and "
+           ^ string_of_int (List.fold_left ( + ) 0 ast_stats.excepts_sizes)
+           ^ " excepts...\n"
+           ^ "  "
+           ^ string_of_int !Mutation.remove_excepts_n
+           ^ " excepts removed\n"
+           ^ "  "
+           ^ string_of_int !Mutation.duplicate_excepts_n
+           ^ " excepts duplicated\n"
+           ^ "  "
+           ^ string_of_int !Mutation.negate_justs_n
+           ^ " justs negated\n"
+         else "");
     (* XXX BROKEN output *)
     []
   end

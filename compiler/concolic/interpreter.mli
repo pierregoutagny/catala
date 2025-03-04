@@ -20,7 +20,6 @@
 open Catala_utils
 open Shared_ast
 module Optimizations = Concolic_optimizations
-
 open Conc_types
 
 val interpret_program_concolic :
