@@ -819,6 +819,41 @@ module Commands = struct
         $ Cli.Flags.check_invariants
         $ Cli.Flags.autotest)
 
+  let showlist typed options includes optimize check_invariants autotest =
+    let prg, _ =
+      Passes.dcalc options ~includes ~optimize ~check_invariants ~autotest
+        ~typed
+    in
+    let rec showlist acc e t =
+      let _ =
+        match Mark.remove e with
+        | EAppOp { tys; _ } ->
+          if
+            List.exists
+              (function TArray _ -> true | _ -> false)
+              (List.map Mark.remove tys)
+          then
+            Message.result "%a@\n%a" Pos.format_loc_text (Expr.pos e)
+              (Print.expr ()) e
+        | _ -> ()
+      in
+      Expr.shallow_fold (fun e acc -> showlist acc e t) e acc
+    in
+    Program.fold_exprs ~f:showlist ~init:() prg
+
+  let showlist_cmd =
+    let f = showlist Expr.typed in
+    Cmd.v
+      (Cmd.info "showlist" ~man:Cli.man_base ~docs:Cli.s_debug
+         ~doc:"Display informations about lists")
+      Term.(
+        const f
+        $ Cli.Flags.Global.options
+        $ Cli.Flags.include_dirs
+        $ Cli.Flags.optimize
+        $ Cli.Flags.check_invariants
+        $ Cli.Flags.autotest)
+
   let proof
       options
       includes
@@ -1397,6 +1432,7 @@ module Commands = struct
       makefile_cmd;
       scopelang_cmd;
       dcalc_cmd;
+      showlist_cmd;
       lcalc_cmd;
       scalc_cmd;
       exceptions_cmd;
