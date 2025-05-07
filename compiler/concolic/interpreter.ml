@@ -1206,6 +1206,7 @@ let rec evaluate_operator
       DateEncoding.minus_dur x e
   | ToInt_rat, [(ELit (LRat _x), _)] ->
     failwith "ToInt_rat not implemented yet" (* ELit (LInt (o_toint_rat x)) *)
+  (* is this used? should it be [round] or floor?*)
   | ToRat_int, [((ELit (LInt i), _) as e)] ->
     (* TODO maybe write specific tests for this and other similar cases? *)
     op1 ctx m (fun x -> ELit (LRat (o_torat_int x))) z3_force_real i e
@@ -1493,8 +1494,8 @@ let rec evaluate_expr :
     context -> Global.backend_lang -> conc_expr -> conc_result =
  fun ctx lang e ->
   if Global.options.debug then
-    Message.debug "eval %a\nsymbolic: %a" (Print.expr ()) e SymbExpr.formatter
-      (get_symb_expr e);
+    Message.debug "@[<v 0>eval %a@,symbolic: %a@]" (Print.expr ()) e
+      SymbExpr.formatter (get_symb_expr e);
   (* if Global.options.debug then Message.debug "eval symbolic: %a"
      SymbExpr.formatter (get_symb_expr e); *)
   let m = Mark.get e in
