@@ -343,6 +343,20 @@ let translate_typ_lit (ctx : context) (t : typ_lit) : Z3.Sort.sort =
   | TDate -> DateEncoding.mk_sort_date ctx
   | TDuration -> DateEncoding.mk_sort_duration ctx
 
+let make_tuple_sort_name (sorts : Z3.Sort.sort list) : string =
+  "Tup(" ^ (String.concat "," @@ List.map Z3.Sort.to_string sorts) ^ ")"
+
+(** [make_tuple_sort] returns the Z3 sort corresponding to a catala tuple type.
+    * It's name is systematically derived from the names of the consitutive
+    types, * and the fields are simply numbered. *)
+let make_tuple_sort ctx (sorts : Z3.Sort.sort list) : Z3.Sort.sort =
+  (* TODO use Format here? *)
+  let name = Z3.Symbol.mk_string ctx (make_tuple_sort_name sorts) in
+  let fieldnames =
+    List.init (List.length sorts) (fun i -> i) |> Z3.Symbol.mk_ints ctx
+  in
+  Z3.Tuple.mk_sort ctx name fieldnames sorts
+
 (** [translate_typ] returns the Z3 sort correponding to the Catala type [t] **)
 let rec translate_typ (ctx : context) (t : naked_typ) : context * Z3.Sort.sort =
   match t with
@@ -353,7 +367,11 @@ let rec translate_typ (ctx : context) (t : naked_typ) : context * Z3.Sort.sort =
     (* use [type_ordering] from Driver to make sure ? =>> actually it does not
        work because the input struct for scope [A], called [A_in], is not a part
        of this order *)
-  | TTuple _ -> failwith "[translate_typ] TTuple not implemented"
+  | TTuple tys ->
+    let ctx, sorts =
+      List.fold_left_map translate_typ ctx @@ List.map Mark.remove tys
+    in
+    ctx, make_tuple_sort ctx.ctx_z3 sorts
   | TEnum name -> find_or_create_enum ctx name
   | TOption _ -> failwith "[translate_typ] TOption not implemented"
   | TArrow ([(TLit TUnit, _)], (TDefault _, _)) ->
@@ -765,6 +783,25 @@ let make_z3_arm_conditions
     (EnumConstructor.Map.keys constructors)
     z3_recognizers
 
+let make_z3_tuple ctx (symbs : SymbExpr.t list) : SymbExpr.t =
+  SymbExpr.applist_z3
+    (fun symbs ->
+      let sort =
+        make_tuple_sort ctx.ctx_z3 @@ List.map Z3.Expr.get_sort symbs
+      in
+      let decl = Z3.Tuple.get_mk_decl sort in
+      Z3.Expr.mk_app ctx.ctx_z3 decl symbs)
+    symbs
+
+let make_z3_tuple_access ctx (e : SymbExpr.t) (index : int) : SymbExpr.t =
+  SymbExpr.app_z3
+    (fun symb ->
+      let sort = Z3.Expr.get_sort symb in
+      let accessors = Z3.Tuple.get_field_decls sort in
+      let decl = List.nth accessors index in
+      Z3.Expr.mk_app ctx.ctx_z3 decl [symb])
+    e
+
 let make_vars_args_map
     (vars : conc_naked_expr Bindlib.var array)
     (args : conc_expr list) : (conc_expr, conc_expr) Var.Map.t =
@@ -852,7 +889,7 @@ let handle_eq pos evaluate_operator (m : conc_info mark) lang e1 e2 =
   | ELit (LDuration x1), ELit (LDuration x2) ->
     o_eq_dur_dur (Expr.pos_to_runtime (Expr.mark_pos m)) x1 x2
   | ELit (LDate x1), ELit (LDate x2) -> o_eq_dat_dat x1 x2
-  | EArray es1, EArray es2 -> (
+  | EArray es1, EArray es2 | ETuple es1, ETuple es2 -> (
     try
       List.for_all2
         (fun e1 e2 ->
@@ -1696,8 +1733,34 @@ let rec evaluate_expr :
            happen if the term was well-typed)"
           (Print.UserFacing.expr lang)
           e StructName.format s)
-    | ETuple _ -> failwith "ETuple not implemented"
-    | ETupleAccess _ -> failwith "ETupleAccess not implemented"
+    | ETuple es ->
+      if Global.options.debug then Message.debug "... it's an ETuple";
+      let es = List.map (evaluate_expr ctx lang) es in
+      propagate_generic_error_list es []
+      @@ fun es ->
+      let concrete = ETuple es in
+      let es_symbs = List.map get_symb_expr es in
+      let symb_expr = make_z3_tuple ctx es_symbs in
+      let constraints = gather_constraints es in
+      add_conc_info_m m symb_expr ~constraints concrete |> make_ok
+    | ETupleAccess { e = e1; index; size } -> (
+      if Global.options.debug then Message.debug "... it's an ETupleAccess";
+      propagate_generic_error (evaluate_expr ctx lang e1) []
+      @@ fun e1 ->
+      match e1 with
+      | ETuple es, _ when List.length es = size -> begin
+        let field_expr = List.nth es index in
+        let symb_expr = make_z3_tuple_access ctx (get_symb_expr e1) index in
+        let constraints = get_constraints e1 in
+        add_conc_info_m m symb_expr ~constraints (Mark.remove field_expr)
+        |> make_ok
+      end
+      | e ->
+        Message.error ~pos:(Expr.pos e)
+          "The expression %a@ was@ expected@ to@ be@ a@ tuple@ of@ size@ %d@ \
+           (should not happen if the term was well-typed)"
+          (Print.UserFacing.expr lang)
+          e size)
     | EInj { name; e; cons } ->
       if Global.options.debug then Message.debug "... it's an EInj";
       propagate_generic_error (evaluate_expr ctx lang e) []
@@ -2678,7 +2741,12 @@ struct
       Message.error ~pos:(Expr.mark_pos mark)
         "[default_expr_of_typ] should not be called on a function. This should \
          not happen if functions were handled properly."
-    | TTuple _ -> failwith "TTuple not implemented"
+    | TTuple tys ->
+      let pos = Expr.mark_pos mark in
+      let fields =
+        List.map (fun ty -> default_expr_of_typ ctx (dummy_mark pos ty) ty) tys
+      in
+      Expr.etuple fields mark
     | TStruct name ->
       (* When a field of the input structure is a struct itself, its fields will
          only be evaluated for their concrete values, as their symbolic value
@@ -2741,7 +2809,23 @@ struct
       Expr.elit lit mark
     | TAny -> failwith "[value_of_symb_expr] TAny not implemented"
     | TClosureEnv -> failwith "[value_of_symb_expr] TClosureEnv not implemented"
-    | TTuple _ -> failwith "[value_of_symb_expr] TTuple not implemented"
+    | TTuple tys ->
+      let pos = Expr.mark_pos mark in
+      let e_symb = SymbExpr.mk_z3 e in
+      let expr_of_i i ty =
+        let access = make_z3_tuple_access ctx e_symb i in
+        match access with
+        | Symb_z3 access ->
+          let ev = Option.get (Z3.Model.eval model access true) in
+          value_of_symb_expr ctx model (dummy_mark pos ty) ty ev
+        | _ ->
+          failwith
+            "[value_of_symb_expr] access expression is not Z3, this should not \
+             happen"
+        (* TODO make better error handling here *)
+      in
+      let fields = List.mapi expr_of_i tys in
+      Expr.etuple fields mark
     | TStruct name ->
       (* To get the values of fields inside a Z3 struct and reconstruct a Catala
          struct out of those, evaluate a Z3 "accessor" to the corresponding

@@ -1,0 +1,80 @@
+## Test
+
+```catala
+declaration scope A:
+  input n content integer
+  input m content integer
+  output x content integer
+  internal y content (integer, (boolean, integer))
+
+scope A:
+  definition y equals (n, (false, 0))
+  definition x equals 42
+  exception definition x under condition (y.1 = m) or (y.2).1 consequence equals 0
+```
+
+```catala-test-inline
+$ catala DCalc -s A
+let scope A (A_in: A_in {n_in: integer; m_in: integer}): A {x: integer} =
+  let get n : integer = A_in.n_in in
+  let get m : integer = A_in.m_in in
+  let set y : (integer, (bool, integer)) =
+    error_empty ⟨ ⟨true ⊢ ⟨(n, (false, 0))⟩⟩ | false ⊢ ∅ ⟩
+  in
+  let set x : integer =
+    error_empty
+      ⟨ ⟨ ⟨y.0 = m || y.1.0 ⊢ ⟨0⟩⟩ | false ⊢ ∅ ⟩
+      | true ⊢ ⟨ ⟨true ⊢ ⟨42⟩⟩ | false ⊢ ∅ ⟩ ⟩
+  in
+  return { A x = x; }
+```
+
+```catala-test-inline
+$ catala Concolic --conc-optim=incremental -s A
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . m_in = 0
+└─
+┌─[RESULT]─
+│ . n_in = 0
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . x = 0
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . m_in = 3
+└─
+┌─[RESULT]─
+│ . n_in = 2
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . x = 42
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Concolic interpreter done
+└─
+┌─[RESULT]─
+│ Computation successful!
+└─
+```
+

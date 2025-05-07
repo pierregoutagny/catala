@@ -1,0 +1,87 @@
+## Test
+
+```catala
+declaration scope A:
+  input m content integer
+  input s content (integer, (boolean, boolean))
+  input t content (boolean, boolean)
+  output o condition
+
+scope A:
+  rule o under condition ((s.1 = m) or (s.2).1) and ((t = s.2) or t.1 = false) consequence fulfilled
+```
+
+```catala-test-inline
+$ catala DCalc -s A
+let scope A
+  (A_in:
+     A_in {m_in: integer; s_in: (integer, (bool, bool)); t_in: (bool, bool)})
+  : A {o: bool}
+  =
+  let get m : integer = A_in.m_in in
+  let get s : (integer, (bool, bool)) = A_in.s_in in
+  let get t : (bool, bool) = A_in.t_in in
+  let set o : bool =
+    error_empty
+      ⟨ ⟨ ⟨(s.0 = m || s.1.0) && (t = s.1 || t.0 = false) ⊢ ⟨true⟩⟩
+        | false ⊢ ∅ ⟩
+      | true ⊢ ⟨ ⟨true ⊢ ⟨false⟩⟩ | false ⊢ ∅ ⟩ ⟩
+  in
+  return { A o = o; }
+```
+
+```catala-test-inline
+$ catala Concolic --conc-optim=incremental -s A
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . m_in = 0
+└─
+┌─[RESULT]─
+│ . s_in = (0, (true, true))
+└─
+┌─[RESULT]─
+│ . t_in = (true, true)
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o = true
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . m_in = 0
+└─
+┌─[RESULT]─
+│ . s_in = (2, (false, false))
+└─
+┌─[RESULT]─
+│ . t_in = (true, false)
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o = false
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Concolic interpreter done
+└─
+┌─[RESULT]─
+│ Computation successful!
+└─
+```
+
