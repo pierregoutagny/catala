@@ -1,0 +1,70 @@
+### Tuples
+
+While lists are for variable-size collections of values of the same type,
+sometimes it is useful to group together a fixed number of values of different,
+known types. These are called pairs when the number is two, tuples in the
+general case.
+
+In general, it should be favoured to explicitly declare a named structure, with
+named `data` fields to hold each of those. But sometimes, for intermediate
+values, that can become cumbersome. Elements of a tuple are simply separated by
+commas, and delimited by parentheses as so:
+
+```catala
+declaration scope UseOfTuple:
+  input money_and_date content (money, date)
+  output when content date
+
+scope UseOfTuple:
+  # definition money_and_date equals ($12, |2024-01-01|)
+  definition when equals money_and_date.2
+
+  # Assertion to make concolic interesting:
+  assertion (money_and_date.1 = $12 and when = |2024-01-01|)
+```
+
+Access to a member of a tuple is simply done using syntax `.N`, where `N` is
+the index in the tuple, starting at 1.
+
+```catala-test-inline
+$ catala Concolic -s UseOfTuple
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . money_and_date_in = ($0.00, 2010-01-01)
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ Found error ↯AssertionError↯ at tests/concolic/good/tuples_tutorial.catala_en:23.14-23.60
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . money_and_date_in = ($12.00, 2024-01-01)
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . when = 2024-01-01
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Concolic interpreter done
+└─
+┌─[RESULT]─
+│ Computation successful!
+└─
+```
