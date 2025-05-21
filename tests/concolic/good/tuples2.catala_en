@@ -1,0 +1,143 @@
+
+```catala
+declaration structure Str:
+  data x1 content (integer, date)
+
+declaration enumeration En:
+  -- One content Str
+  -- Two content (integer, Str)
+
+declaration str content Str equals
+  Str { --x1: (12, |2001-01-01|) }
+
+declaration f2 content decimal
+  depends on str content Str,
+             en content En
+  equals
+  match en with pattern
+  -- One of str1:
+     let a equals str.x1.1 in
+     let (b, w) equals str1.x1 in
+     a / b
+  -- Two of z:
+     let (z1, z2) equals z in z1 / 2
+
+declaration scope Test:
+  input i content (Str, En)
+  output o1 content (date, decimal)
+  output o2 content (date, decimal)
+
+scope Test:
+  definition o1 equals
+      ((i.1).x1.2, f2 of i)
+  definition o2 equals
+      (|2001-01-03|,
+        f2 of str, Two content (12, str))
+
+  assertion o1 = o2
+```
+
+```catala-test-inline
+$ catala concolic -s Test
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . i_in =
+│     (Str { -- x1: (0, 2010-01-01) }, One Str { -- x1: (0, 2010-01-01) })
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ Found error ↯DivisionByZero(tests/concolic/good/tuples2.catala_en:21.10-21.11,tests/concolic/good/tuples2.catala_en:21.6-21.11,)↯ at tests/concolic/good/tuples2.catala_en:21.6-21.11
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . i_in =
+│     (Str { -- x1: (2, 2010-01-04) }, One Str { -- x1: (4, 2010-01-06) })
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ Found error ↯AssertionError↯ at tests/concolic/good/tuples2.catala_en:37.13-37.20
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . i_in =
+│     (Str { -- x1: (6, 2001-01-03) }, One Str { -- x1: (1, 2010-01-03) })
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o1 = (2001-01-03, 6.0)
+└─
+┌─[RESULT]─
+│ . o2 = (2001-01-03, 6.0)
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . i_in =
+│     (
+│       Str { -- x1: (2, 2010-01-04) },
+│       Two (6, Str { -- x1: (4, 2010-01-06) })
+│     )
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ Found error ↯AssertionError↯ at tests/concolic/good/tuples2.catala_en:37.13-37.20
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Evaluating with inputs:
+└─
+┌─[RESULT]─
+│ . i_in =
+│     (
+│       Str { -- x1: (2, 2001-01-03) },
+│       Two (12, Str { -- x1: (3, 2010-01-05) })
+│     )
+└─
+┌─[RESULT]─
+│ Output of scope after evaluation:
+└─
+┌─[RESULT]─
+│ . o1 = (2001-01-03, 6.0)
+└─
+┌─[RESULT]─
+│ . o2 = (2001-01-03, 6.0)
+└─
+┌─[RESULT]─
+│ 
+└─
+┌─[RESULT]─
+│ Concolic interpreter done
+└─
+┌─[RESULT]─
+│ Computation successful!
+└─
+```
