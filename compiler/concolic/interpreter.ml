@@ -2421,7 +2421,8 @@ struct
       S.push solver;
       S.add solver local_constraints;
       let status = S.check solver local_constraints in
-      if Global.options.debug then Message.debug "\n%s" (S.to_string solver);
+      if Global.options.debug then
+        Message.debug "Solver is\n%s" (S.to_string solver);
       let result =
         match status with
         | SATISFIABLE -> Z3Sat (S.get_model solver)
