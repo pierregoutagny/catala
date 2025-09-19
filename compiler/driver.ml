@@ -819,10 +819,10 @@ module Commands = struct
         $ Cli.Flags.check_invariants
         $ Cli.Flags.autotest)
 
-  let showlist typed options includes optimize check_invariants autotest =
+  let showlist options includes stdlib optimize check_invariants =
     let prg, _ =
-      Passes.dcalc options ~includes ~optimize ~check_invariants ~autotest
-        ~typed
+      Passes.dcalc options ~includes ~stdlib ~optimize ~check_invariants
+        ~autotest:false ~typed:Expr.typed
     in
     let rec showlist acc e t =
       let _ =
@@ -842,17 +842,16 @@ module Commands = struct
     Program.fold_exprs ~f:showlist ~init:() prg
 
   let showlist_cmd =
-    let f = showlist Expr.typed in
     Cmd.v
       (Cmd.info "showlist" ~man:Cli.man_base ~docs:Cli.s_debug
          ~doc:"Display informations about lists")
       Term.(
-        const f
+        const showlist
         $ Cli.Flags.Global.options
         $ Cli.Flags.include_dirs
+        $ Cli.Flags.stdlib_dir
         $ Cli.Flags.optimize
-        $ Cli.Flags.check_invariants
-        $ Cli.Flags.autotest)
+        $ Cli.Flags.check_invariants)
 
   let proof
       options
