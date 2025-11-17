@@ -853,6 +853,74 @@ module Commands = struct
         $ Cli.Flags.optimize
         $ Cli.Flags.check_invariants)
 
+  let show_exc_depth options includes stdlib optimize check_invariants =
+    let module IntMap = Stdlib.Map.Make (Int) in
+    let map_add (l : 'a list) : 'a list list IntMap.t -> 'a list list IntMap.t =
+      IntMap.update (List.length l) (function
+        | None -> Some [l]
+        | Some ls -> Some (l :: ls))
+    in
+    let prg, _ =
+      Passes.dcalc options ~includes ~stdlib ~optimize ~check_invariants
+        ~autotest:false ~typed:Expr.typed
+    in
+    let max chain1 chain2 =
+      if List.length chain1 > List.length chain2 then chain1 else chain2
+    in
+    let rec get_chains e (current_chain, m) =
+      let acc =
+        match Mark.remove e with
+        | EDefault { excepts; just; cons } -> e :: current_chain, m
+        | ELit _ | EVar _ | EFatalError _ | EPos _ | EExternal _ | ELocation _
+        | EEmpty ->
+          [], map_add current_chain m
+        | _ -> current_chain, m
+      in
+      Expr.shallow_fold get_chains e acc
+    in
+    let chains =
+      Program.fold_exprs
+        ~f:(fun acc e _t ->
+          let last_chain, m = get_chains e ([], acc) in
+          map_add last_chain m)
+        ~init:IntMap.empty prg
+    in
+    let max_length, argmax_length = IntMap.max_binding chains in
+    let open Format in
+    let pp_e fmt e =
+      fprintf fmt "@@ %a@,expr %a" Pos.format_loc_text (Expr.pos e)
+        (Print.expr ()) e
+    in
+    let pp_chain fmt chain =
+      fprintf fmt "%d> %a" (List.length chain) (pp_print_list pp_e) chain
+    in
+    let pp_chains fmt = fprintf fmt "%a" pp_chain in
+    Message.result
+      (* printf "@[<v 2>chains:@,%a@]@." (pp_print_list (Print.expr ()))
+         chains *)
+      (* "@[<v 2>deepest nested excepts is of depths %d and there are
+         %d:@,%a@]@." max_length (List.length argmax_length) (pp_print_list
+         pp_e) (List.hd argmax_length) *)
+      "@[<v 2>nested excepts :@,%a@]"
+      (pp_print_list (fun fmt (k, l) ->
+           if k = 0 then ()
+           else
+             fprintf fmt "@[<v 2>depth %d: %d@,%a@]" k (List.length l)
+               (pp_print_list pp_chains) l))
+    @@ IntMap.bindings chains
+
+  let show_exc_depth_cmd =
+    Cmd.v
+      (Cmd.info "show_exc_depth" ~man:Cli.man_base ~docs:Cli.s_debug
+         ~doc:"Display depth of exceptions")
+      Term.(
+        const show_exc_depth
+        $ Cli.Flags.Global.options
+        $ Cli.Flags.include_dirs
+        $ Cli.Flags.stdlib_dir
+        $ Cli.Flags.optimize
+        $ Cli.Flags.check_invariants)
+
   let proof
       options
       includes
@@ -1432,6 +1500,7 @@ module Commands = struct
       scopelang_cmd;
       dcalc_cmd;
       showlist_cmd;
+      show_exc_depth_cmd;
       lcalc_cmd;
       scalc_cmd;
       exceptions_cmd;
