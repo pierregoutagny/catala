@@ -2204,7 +2204,21 @@ struct
       S.add solver constraints;
       if Global.options.debug then Message.debug "Solver is\n%s" (S.to_string solver);
       match S.check solver [] with
-      | SATISFIABLE -> Z3Sat (S.get_model solver)
+      | SATISFIABLE -> begin
+        match S.get_model solver with
+        | Some m -> Z3Sat (Some m)
+        | None ->
+          Message.warning
+            "Z3 returned SAT without a model, producing unknown instead to get \
+             info";
+          Z3Unknown
+            {
+              z3reason = S.get_reason_unknown solver;
+              z3stats = S.get_statistics solver;
+              z3solver_string = S.to_string solver;
+              z3assertions = S.get_assertions solver;
+            }
+      end
       | UNSATISFIABLE -> Z3Unsat
       | UNKNOWN -> Z3Unknown
           {
@@ -3298,7 +3312,7 @@ let interpret_program_concolic
           else concolic_loop new_expected_path stats
       end
       | Solver.Sat None ->
-        failwith "[CONC] Constraints satisfiable but no model was produced"
+        Message.error ~internal:true "[CONC] Constraints satisfiable but no model was produced"
       | Solver.Unknown info ->
         Message.error ~internal:true
           "[CONC] Unknown solver result, debug info:@.%a@."
