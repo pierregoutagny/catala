@@ -853,6 +853,46 @@ module Commands = struct
         $ Cli.Flags.optimize
         $ Cli.Flags.check_invariants)
 
+  let showdate options includes stdlib optimize check_invariants =
+    let prg, _ =
+      Passes.dcalc options ~includes ~stdlib ~optimize ~check_invariants
+        ~autotest:false ~typed:Expr.typed
+    in
+    let rec showdate acc e t =
+      let has_date =
+        Expr.shallow_fold (fun e acc -> showdate false e t) e acc
+      in
+      begin
+        match Mark.get e with
+        | Typed { ty; _ } -> begin
+          match Mark.remove ty with
+          | TLit (TDate | TDuration) ->
+            (* Message.result "setting has_date because of %a" (Print.expr ())
+               e; *)
+            true
+          | TLit TBool ->
+            if has_date then Message.result "%a" (Print.expr ()) e;
+            false
+          | _ -> has_date || acc
+        end
+        | _ -> Message.error "@[<v 2>should be typed:@,%a@]" (Print.expr ()) e
+      end
+    in
+    let _ = Program.fold_exprs ~f:showdate ~init:false prg in
+    ()
+
+  let showdate_cmd =
+    Cmd.v
+      (Cmd.info "showdate" ~man:Cli.man_base ~docs:Cli.s_debug
+         ~doc:"Display informations about lists")
+      Term.(
+        const showdate
+        $ Cli.Flags.Global.options
+        $ Cli.Flags.include_dirs
+        $ Cli.Flags.stdlib_dir
+        $ Cli.Flags.optimize
+        $ Cli.Flags.check_invariants)
+
   let show_exc_depth options includes stdlib optimize check_invariants =
     let module IntMap = Stdlib.Map.Make (Int) in
     let map_add (l : 'a list) : 'a list list IntMap.t -> 'a list list IntMap.t =
@@ -1500,6 +1540,7 @@ module Commands = struct
       scopelang_cmd;
       dcalc_cmd;
       showlist_cmd;
+      showdate_cmd;
       show_exc_depth_cmd;
       lcalc_cmd;
       scalc_cmd;
