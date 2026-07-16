@@ -125,7 +125,7 @@ class Decimal:
             return False
 
     def __str__(self) -> str:
-        return "{}".format(mpfr(self.value))
+        return str(mpfr(self.value))
 
     def __repr__(self) -> str:
         return f"Decimal({self.value.__repr__()})"
@@ -181,7 +181,7 @@ class Money:
             return False
 
     def __str__(self) -> str:
-        return "${:.2}".format(self.value.value / 100)
+        return str(self.value.value / 100)
 
     def __repr__(self) -> str:
         return f"Money({self.value.__repr__()})"
@@ -431,7 +431,7 @@ def money_of_decimal(d: Decimal) -> Money:
     """
     Warning: rounds to the nearest cent
     """
-    return Money(Integer(mpz(d.value) * mpz(100)))
+    return Money(Integer(f_div(d.value.numerator * mpz(100), d.value.denominator)))
 
 
 # --------
